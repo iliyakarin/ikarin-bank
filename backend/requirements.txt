@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary
+aiokafka          # Async Kafka for FastAPI
+confluent-kafka   # High-performance Kafka for the Consumer
+clickhouse-connect
+python-dotenv
