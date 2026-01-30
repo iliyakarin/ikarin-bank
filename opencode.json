@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "dmr": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Docker Model Runner",
+      "options": {
+        "baseURL": "http://localhost:12435/v1"
+      },
+      "models": {
+        "GLM-4.7-flash": {
+          "name": "docker.io/ai/glm-4.7-flash:latest"
+        }
+      }
+    }
+  }
+}

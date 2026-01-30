@@ -6,3 +6,7 @@ aiokafka          # Async Kafka for FastAPI
 confluent-kafka   # High-performance Kafka for the Consumer
 clickhouse-connect
 python-dotenv
+passlib[bcrypt]
+bcrypt==4.0.1
+python-jose[cryptography]
+python-multipart
