@@ -18,10 +18,9 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:latest
     container_name: bank-clickhouse
-    env_file: .env
     environment:
-      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
-      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+      - CLICKHOUSE_DB=banking_log
+
     ports:
       - "8123:8123"
     volumes:
@@ -74,6 +73,8 @@ services:
     container_name: bank-api
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     env_file: .env
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     ports:
       - "8000:8000"
     volumes:
@@ -89,8 +90,10 @@ services:
   consumer:
     build: ./backend
     container_name: bank-consumer
-    command: python consumer_optimized.py
+    command: python consumer.py
     env_file: .env
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     depends_on:
       kafka:
         condition: service_started
