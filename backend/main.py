@@ -614,83 +614,28 @@ async def get_recent_transactions(
 ):
     """Get recent transactions from the last N hours - user must be sender or recipient."""
     try:
-        print(
-            f"[DEBUG] Fetching recent transactions for {current_user.email}, hours={hours}"
-        )
-
         user_email = current_user.email.lower()
-
-        # Get recent transactions from PostgreSQL (including pending ones)
-        user_accounts = (
-            db.query(Account).filter(Account.user_id == current_user.id).all()
-        )
+        
+        # 1. Get PENDING transactions from Postgres (only outgoing ones exist here)
+        user_accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
         account_ids = [acc.id for acc in user_accounts]
-
+        
         pg_transactions = (
             db.query(Transaction)
             .filter(Transaction.account_id.in_(account_ids))
             .filter(
-                Transaction.created_at
-                >= datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
+                Transaction.created_at >= datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
             )
             .order_by(Transaction.created_at.desc())
-            .limit(20)
+            .limit(10)
             .all()
         )
-
-        # Convert PostgreSQL transactions to expected format
-        pg_result = []
-
-        for tx in pg_transactions:
-            # Determine transaction type for PostgreSQL transactions
-            tx_type = "expense"  # default
-            sender_email = current_user.email
-            recipient_email = None
-
-            # Check if this is a transfer by looking at merchant field
-            if tx.merchant and "Transfer to " in tx.merchant:
-                tx_type = "transfer"
-                recipient_email = tx.merchant.replace("Transfer to ", "")
-            elif tx.category and tx.category.lower() in ["salary", "income", "deposit"]:
-                tx_type = "income"
-                sender_email = None
-                recipient_email = current_user.email
-
-            pg_result.append(
-                {
-                    "id": str(tx.id),
-                    "amount": float(tx.amount),
-                    "category": tx.category,
-                    "merchant": tx.merchant,
-                    "sender_email": sender_email,
-                    "recipient_email": recipient_email,
-                    "transaction_type": tx_type,
-                    "created_at": tx.created_at.isoformat() if tx.created_at else None,
-                    "status": tx.status,
-                }
-            )
-
-        print(f"[DEBUG] Got {len(pg_result)} transactions from PostgreSQL")
-
-        return {"transactions": pg_result}
-    except Exception as e:
-        print(f"[ERROR] Error fetching recent transactions: {e}")
-        import traceback
-
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500, detail=f"Failed to fetch transactions: {str(e)}"
-        )
-
+        
+        # 2. Get CLEARED/HISTORY transactions from ClickHouse (incoming AND outgoing)
         ch_client = clickhouse_connect.get_client(
             host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
         )
-
-        print(f"[DEBUG] Connected to ClickHouse at {CH_HOST}:{CH_PORT}")
-
-        user_email = current_user.email.lower()
-
-        # Simple query for ClickHouse
+        
         query = f"""
             SELECT 
                 toString(transaction_id) as id,
@@ -705,33 +650,71 @@ async def get_recent_transactions(
             WHERE (sender_email = '{user_email}' OR recipient_email = '{user_email}')
             AND event_time >= now() - INTERVAL {hours} HOUR
             ORDER BY event_time DESC
-            LIMIT 10
+            LIMIT 20
         """
+        
+        ch_results = ch_client.query(query).result_rows
+        
+        # 3. Merge and formatting
+        # We prefer ClickHouse data (status='cleared'), but keep Postgres data if it's not in CH yet (status='pending')
+        
+        final_txs = []
+        ch_ids = set()
+        
+        # Process ClickHouse results first (Confirmed transactions)
+        for row in ch_results:
+            tx_id = row[0]
+            ch_ids.add(tx_id)
+            final_txs.append({
+                "id": tx_id,
+                "amount": float(row[1]),
+                "category": row[2],
+                "merchant": row[3],
+                "sender_email": row[4],
+                "recipient_email": row[5],
+                "transaction_type": row[6],
+                "created_at": row[7].isoformat() if row[7] else None,
+                "status": "cleared"
+            })
+            
+        # Process Postgres results (Pending/In-flight)
+        for tx in pg_transactions:
+            if str(tx.id) not in ch_ids:
+                # Same logic as before to determine type for PG txs
+                tx_type = "expense"
+                sender_email = current_user.email
+                recipient_email = None
 
-        print(f"[DEBUG] Executing query:\n{query}")
-        result = ch_client.query(query).result_rows
-        print(f"[DEBUG] Got {len(result)} results")
+                if tx.merchant and "Transfer to " in tx.merchant:
+                    tx_type = "transfer"
+                    recipient_email = tx.merchant.replace("Transfer to ", "")
+                elif tx.category and tx.category.lower() in ["salary", "income", "deposit"]:
+                    tx_type = "income"
+                    sender_email = None
+                    recipient_email = current_user.email
+                
+                final_txs.append({
+                    "id": str(tx.id),
+                    "amount": float(tx.amount),
+                    "category": tx.category,
+                    "merchant": tx.merchant,
+                    "sender_email": sender_email,
+                    "recipient_email": recipient_email,
+                    "transaction_type": tx_type,
+                    "created_at": tx.created_at.isoformat() if tx.created_at else None,
+                    "status": tx.status,
+                })
 
-        return {
-            "transactions": [
-                {
-                    "id": row[0],
-                    "amount": float(row[1]),
-                    "category": row[2],
-                    "merchant": row[3],
-                    "sender_email": row[4],
-                    "recipient_email": row[5],
-                    "transaction_type": row[6],
-                    "created_at": row[7].isoformat() if row[7] else None,
-                }
-                for row in result
-            ]
-        }
+        # Sort combined list by date desc
+        final_txs.sort(key=lambda x: x["created_at"] or "", reverse=True)
+        
+        return {"transactions": final_txs[:20]}
+
     except Exception as e:
-        print(f"[ERROR] Error fetching recent transactions: {e}")
+        print(f"[ERROR] Error fetching transactions: {e}")
         import traceback
-
         traceback.print_exc()
+        # Fallback to empty list or partial data if critical failure
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch transactions: {str(e)}"
         )

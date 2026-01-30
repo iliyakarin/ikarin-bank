@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS banking.transactions (
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (transaction_id);
 
--- Create read-only user
 CREATE USER IF NOT EXISTS readonly_admin IDENTIFIED WITH sha256_password BY 'readonly_secure_2025';
 GRANT SELECT ON banking.transactions TO readonly_admin;
 GRANT SELECT ON system.tables TO readonly_admin;
