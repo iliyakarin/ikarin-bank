@@ -1,74 +1,69 @@
-"use client";
+'use client';
+import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { NavLink } from '@/lib/types';
+import { LayoutDashboard, Send, CreditCard, Wallet, LogOut, History } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { useAuth } from '@/lib/AuthContext';
 
-const navLinks: NavLink[] = [
-    { name: 'Dashboard', href: '/dashboard', icon: '📊' },
-    { name: 'Transfer', href: '/transfer', icon: '💸' },
-    { name: 'Cards', href: '/cards', icon: '💳' },
-    { name: 'Savings', href: '/savings', icon: '🎯' },
+const navItems = [
+    { name: 'Dashboard', href: '/client', icon: LayoutDashboard },
+    { name: 'Send Money', href: '/client/send', icon: Send },
+    { name: 'My Cards', href: '/client/cards', icon: CreditCard },
+    { name: 'Transactions', href: '/client/transactions', icon: History },
 ];
 
 export default function Sidebar() {
     const pathname = usePathname();
+    const { logout } = useAuth();
 
     return (
-        <>
-            {/* Desktop Sidebar */}
-            <aside className="hidden md:flex flex-col w-64 h-screen sticky top-0 bg-white border-r border-gray-200 p-4 transition-all duration-300">
-                <div className="flex items-center gap-2 mb-10 px-2">
-                    <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center text-white font-bold">K</div>
-                    <span className="text-xl font-bold text-gray-900">Karin Bank</span>
+        <aside className="w-20 md:w-64 h-screen bg-gradient-to-b from-white/10 via-white/5 to-transparent backdrop-blur-md border-r border-white/10 flex flex-col items-center md:items-stretch py-8 sticky top-0 transition-all duration-300 ease-in-out z-50">
+            {/* Logo */}
+            <div className="px-6 mb-12 flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                    <Wallet className="text-white w-6 h-6" />
                 </div>
+                <span className="font-bold text-xl hidden md:block tracking-tight text-white">KarinBank</span>
+            </div>
 
-                <nav className="flex-1 space-y-1">
-                    {navLinks.map((link) => {
-                        const isActive = pathname === link.href;
-                        return (
-                            <Link
-                                key={link.href}
-                                href={link.href}
-                                className={`flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${isActive
-                                        ? 'bg-primary-50 text-primary-600 font-medium'
-                                        : 'text-gray-600 hover:bg-gray-50'
-                                    }`}
-                            >
-                                <span className="text-xl">{link.icon}</span>
-                                <span>{link.name}</span>
-                            </Link>
-                        );
-                    })}
-                </nav>
-
-                <div className="mt-auto p-4 bg-gray-50 rounded-xl">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-primary-200"></div>
-                        <div>
-                            <p className="text-sm font-medium text-gray-900">Alex Karin</p>
-                            <p className="text-xs text-gray-500">Premium Member</p>
-                        </div>
-                    </div>
-                </div>
-            </aside>
-
-            {/* Mobile Bottom Nav */}
-            <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center h-16 px-2 z-50">
-                {navLinks.map((link) => {
-                    const isActive = pathname === link.href;
+            {/* Navigation */}
+            <nav className="flex-1 px-4 space-y-2">
+                {navItems.map((item) => {
+                    const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+                    const Icon = item.icon;
                     return (
-                        <Link
-                            key={link.href}
-                            href={link.href}
-                            className={`flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-primary-600 font-medium' : 'text-gray-500'
-                                }`}
-                        >
-                            <span className="text-xl">{link.icon}</span>
-                            <span className="text-[10px]">{link.name}</span>
+                        <Link key={item.name} href={item.href}>
+                            <div className={`relative flex items-center gap-4 px-4 py-3 rounded-xl transition-all group ${
+                                isActive ? 'text-white font-semibold' : 'text-white/60 hover:text-white hover:bg-white/10'
+                            }`}>
+                                {isActive && (
+                                    <motion.div
+                                        layoutId="activeNav"
+                                        className="absolute inset-0 bg-gradient-to-r from-purple-500/30 to-indigo-500/30 rounded-xl border border-white/20"
+                                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                                    />
+                                )}
+                                <Icon className={`relative z-10 w-6 h-6 ${
+                                    isActive ? 'text-white' : 'group-hover:text-white'
+                                }`} />
+                                <span className="relative z-10 hidden md:block">{item.name}</span>
+                            </div>
                         </Link>
                     );
                 })}
             </nav>
-        </>
+
+            {/* Bottom Actions */}
+            <div className="px-4 mt-auto space-y-2">
+                <button
+                    onClick={logout}
+                    className="w-full flex items-center gap-4 px-4 py-3 text-red-400/70 hover:text-red-400 hover:bg-red-500/20 rounded-xl transition-all group"
+                >
+                    <LogOut className="w-6 h-6" />
+                    <span className="hidden md:block">Sign Out</span>
+                </button>
+            </div>
+        </aside>
     );
 }

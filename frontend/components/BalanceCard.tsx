@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { TrendingUp, Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface BalanceCardProps {
     balance: number;
@@ -12,6 +12,15 @@ interface BalanceCardProps {
 
 export default function BalanceCard({ balance, growth, accountNumber }: BalanceCardProps) {
     const [showFullAccount, setShowFullAccount] = useState(false);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    const formattedBalance = mounted
+        ? balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : balance.toFixed(2);
 
     return (
         <motion.div
@@ -29,7 +38,7 @@ export default function BalanceCard({ balance, growth, accountNumber }: BalanceC
                     <div className="flex flex-col gap-1">
                         <span className="text-sm font-medium text-white/50 uppercase tracking-widest">Total Balance</span>
                         <h2 className="text-5xl font-bold text-white tracking-tight">
-                            ${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ${formattedBalance}
                         </h2>
                     </div>
                     <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400">
@@ -66,3 +75,4 @@ export default function BalanceCard({ balance, growth, accountNumber }: BalanceC
         </motion.div>
     );
 }
+
