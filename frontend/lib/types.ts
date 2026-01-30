@@ -1,4 +1,5 @@
-export type TransactionStatus = 'pending' | 'cleared';
+export type TransactionStatus = 'pending' | 'sent_to_kafka' | 'cleared';
+export type TransactionType = 'income' | 'expense' | 'transfer';
 
 export interface Transaction {
     id: string;
@@ -6,7 +7,10 @@ export interface Transaction {
     amount: number;
     category: string;
     merchant: string;
+    sender_email?: string;
+    recipient_email?: string;
     status: TransactionStatus;
+    transaction_type: TransactionType;
     created_at: string; // ISO string
 }
 

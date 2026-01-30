@@ -34,6 +34,7 @@ python_venv/
 
 # Build & Output
 .next/
+.turbo/
 build/
 dist/
 out/
@@ -42,6 +43,11 @@ out/
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Infrastructure
+.terraform/
+*.tfstate*
+.serverless/
 
 # IDE & OS
 .vscode/
