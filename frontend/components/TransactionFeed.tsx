@@ -16,7 +16,14 @@ const categoryIcons: Record<string, string> = {
 
 function TransactionItem({ transaction }: TransactionItemProps) {
     const isPending = transaction.status === 'pending';
+    const isProcessing = transaction.status === 'sent_to_kafka';
     const icon = categoryIcons[transaction.category] || '💰';
+    
+    // Determine if this is a deduction (expense or transfer) or income
+    const isIncome = transaction.transaction_type === 'income';
+    const isDeduction = transaction.transaction_type === 'expense' || transaction.transaction_type === 'transfer';
+    const amountColor = isIncome ? 'text-gray-900' : 'text-red-500';
+    const amountPrefix = isIncome ? '+' : '-';
 
     return (
         <div className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer group">
@@ -28,12 +35,19 @@ function TransactionItem({ transaction }: TransactionItemProps) {
                     <p className="font-bold text-gray-900">{transaction.merchant}</p>
                     <div className="flex items-center gap-2">
                         <p className="text-xs text-gray-500">{transaction.category}</p>
-                        {isPending ? (
-                            <span className="flex items-center gap-1 text-[10px] font-bold text-orange-500 uppercase tracking-tighter animate-pulse-subtle">
+                        {isPending && (
+                            <span className="flex items-center gap-1 text-[10px] font-bold text-orange-500 uppercase tracking-tighter animate-pulse">
                                 <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
                                 Pending
                             </span>
-                        ) : (
+                        )}
+                        {isProcessing && (
+                            <span className="flex items-center gap-1 text-[10px] font-bold text-blue-500 uppercase tracking-tighter animate-pulse-subtle">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                                Processing
+                            </span>
+                        )}
+                        {!isPending && !isProcessing && (
                             <span className="flex items-center gap-1 text-[10px] font-bold text-green-500 uppercase tracking-tighter">
                                 <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
                                 Cleared
@@ -43,8 +57,8 @@ function TransactionItem({ transaction }: TransactionItemProps) {
                 </div>
             </div>
             <div className="text-right">
-                <p className={`font-bold ${transaction.amount < 0 ? 'text-red-500' : 'text-gray-900'}`}>
-                    {transaction.amount < 0 ? '-' : ''}${Math.abs(transaction.amount).toFixed(2)}
+                <p className={`font-bold ${amountColor}`}>
+                    {amountPrefix}${Math.abs(transaction.amount).toFixed(2)}
                 </p>
                 <p className="text-[10px] text-gray-400">
                     {new Date(transaction.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
