@@ -3,8 +3,10 @@ import os
 import time
 from datetime import datetime
 from typing import List, Dict, Any
-
+from confluent_kafka import Consumer, KafkaException, TopicPartition
+import asyncio
 import logging
+import clickhouse_connect
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -153,7 +155,7 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
         return False
 
 
-def run_optimized_consumer():
+async def run_optimized_consumer():
     """Optimized Kafka consumer with better batching and async processing"""
     logger.info("🚀 Starting optimized Kafka consumer...")
 
@@ -166,7 +168,6 @@ def run_optimized_consumer():
         "session.timeout.ms": OPTIMAL_SESSION_TIMEOUT,
         "metadata.max.age.ms": 600000,  # 10 minutes instead of 30 seconds
         "socket.keepalive.enable": True,
-        "max.poll.records": 2000,  # Increased poll limit
         "fetch.min.bytes": 1,
         "fetch.error.backoff.ms": 1000,
         "retry.backoff.ms": 1000,
@@ -308,4 +309,7 @@ def run_optimized_consumer():
 
 
 if __name__ == "__main__":
-    run_optimized_consumer()
+    try:
+        asyncio.run(run_optimized_consumer())
+    except KeyboardInterrupt:
+        logger.info("👋 Consumer stopping...")
