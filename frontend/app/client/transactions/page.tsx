@@ -200,10 +200,9 @@ export default function TransactionsPage() {
                                             <td className="px-6 py-4 text-white/70 text-sm">{tx.category}</td>
                                             <td className="px-6 py-4 text-white/70 text-sm">{tx.sender_email || '—'}</td>
                                             <td className="px-6 py-4 text-white/70 text-sm">{tx.recipient_email || '—'}</td>
-                                            <td className={`px-6 py-4 text-right font-mono font-semibold ${
-                                                tx.transaction_type === 'income' ? 'text-emerald-400' : 'text-white'
-                                            }`}>
-                                                {tx.transaction_type === 'income' ? '+' : '-'} ${Math.abs(tx.amount).toFixed(2)}
+                                            <td className={`px-6 py-4 text-right font-mono font-semibold ${tx.transaction_type === 'income' ? 'text-emerald-400' : 'text-white'
+                                                }`}>
+                                                {tx.transaction_type === 'income' ? '+' : '-'}${Math.abs(tx.amount).toFixed(2)}
                                             </td>
                                             <td className="px-6 py-4 text-white/60 text-sm text-right">{new Date(tx.timestamp).toLocaleString()}</td>
                                             <td className="px-6 py-4 text-right text-white/70">{tx.status || 'Cleared'}</td>
