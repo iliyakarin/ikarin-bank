@@ -399,6 +399,10 @@ async def startup_event():
             producer = AIOKafkaProducer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 enable_idempotence=True,
+                security_protocol="SASL_PLAINTEXT",
+                sasl_mechanism="PLAIN",
+                sasl_plain_username=KAFKA_USER,
+                sasl_plain_password=KAFKA_PASSWORD,
             )
             await producer.start()
             print(f"[INFO] Kafka producer connected successfully")
@@ -420,7 +424,8 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    await producer.stop()
+    if producer:
+        await producer.stop()
 
 
 class TransferRequest(BaseModel):
