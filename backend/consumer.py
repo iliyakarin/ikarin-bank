@@ -3,7 +3,7 @@ import os
 import time
 from datetime import datetime
 from typing import List, Dict, Any
-from confluent_kafka import Consumer, KafkaException, TopicPartition
+from confluent_kafka import Consumer, KafkaException, TopicPartition, KafkaError
 import asyncio
 import logging
 import clickhouse_connect
@@ -41,10 +41,6 @@ def get_clickhouse_client():
             port=CH_PORT,
             username=CH_USER,
             password=CH_PASSWORD,
-            # Performance optimizations
-            send_progress=True,
-            send_progress_timeout=10,
-            insert_block_size=1000,
         )
         logger.info("🚀 ClickHouse client connected with performance optimizations")
     return ch_client
@@ -101,7 +97,7 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                 msg["amount"],
                 msg["category"],
                 msg["merchant"],
-                msg["transaction_type"],
+                msg.get("transaction_type", "expense"),
                 msg["timestamp"],
             ]
             for msg in batch
