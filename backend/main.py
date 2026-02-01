@@ -456,6 +456,7 @@ async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_d
             "amount": transfer.amount,
             "category": transfer.category,
             "merchant": transfer.merchant,
+            "transaction_type": "expense",
             "status": "pending",
             "timestamp": datetime.datetime.utcnow().isoformat(),
         }
@@ -522,20 +523,39 @@ async def create_p2p_transfer(
         db.commit()
 
         # 4. Event Dispatch (Kafka) - include sender/recipient emails for data isolation
-        payload = {
-            "transaction_id": tx_id,
+        # We send TWO events: one for the sender and one for the recipient to ensure ClickHouse records reflect both sides
+        sender_payload = {
+            "transaction_id": f"{tx_id}-sender",
             "account_id": sender_account.id,
             "sender_email": current_user.email,
             "recipient_email": recipient.email,
             "amount": transfer.amount,
             "category": "P2P",
             "merchant": f"Sent to {recipient.email}",
+            "transaction_type": "expense",
             "status": "pending",
             "timestamp": datetime.datetime.utcnow().isoformat(),
         }
+        
+        recipient_payload = {
+            "transaction_id": f"{tx_id}-recipient",
+            "account_id": recipient_account.id,
+            "sender_email": current_user.email,
+            "recipient_email": recipient.email,
+            "amount": transfer.amount,
+            "category": "P2P",
+            "merchant": f"Received from {current_user.email}",
+            "transaction_type": "income",
+            "status": "pending",
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+        }
+
         if producer:
             await producer.send_and_wait(
-                KAFKA_TOPIC, json.dumps(payload).encode("utf-8")
+                KAFKA_TOPIC, json.dumps(sender_payload).encode("utf-8")
+            )
+            await producer.send_and_wait(
+                KAFKA_TOPIC, json.dumps(recipient_payload).encode("utf-8")
             )
 
         new_tx.status = "sent_to_kafka"
@@ -641,6 +661,13 @@ async def get_recent_transactions(
             host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
         )
         
+        # Join account IDs for ClickHouse query to ensure we only get transactions belonging to the user's specific accounts
+        # This prevents duplicate entries for P2P transfers while ensuring both sender and recipient see their record.
+        if not account_ids:
+            return {"transactions": []}
+            
+        account_ids_str = ",".join([str(aid) for aid in account_ids])
+        
         query = f"""
             SELECT 
                 toString(transaction_id) as id,
@@ -652,7 +679,7 @@ async def get_recent_transactions(
                 transaction_type,
                 event_time
             FROM banking.transactions
-            WHERE (sender_email = '{user_email}' OR recipient_email = '{user_email}')
+            WHERE account_id IN ({account_ids_str})
             AND event_time >= now() - INTERVAL {hours} HOUR
             ORDER BY event_time DESC
             LIMIT 20
