@@ -16,28 +16,16 @@ const categoryIcons: Record<string, string> = {
 function TransactionItem({ transaction, index }: { transaction: Transaction, index: number }) {
     const isPending = transaction.status === 'pending' || transaction.status === 'sent_to_kafka';
     const icon = categoryIcons[transaction.category] || '💰';
-    
+
     // Determine if this is a deduction (expense or transfer) or income
-    const isIncome = transaction.transaction_type === 'income';
-    const isTransfer = transaction.transaction_type === 'transfer';
-    
-    // For transfers, determine if it's incoming or outgoing based on email
-    const userEmail = 'ikarin@example.com'; // In real app, get from auth context
-    const isIncomingTransfer = isTransfer && transaction.sender_email !== userEmail;
-    const isOutgoingTransfer = isTransfer && transaction.sender_email === userEmail;
-    
+    const isIncome = transaction.amount > 0;
+    const isTransfer = transaction.transaction_type === 'transfer' || transaction.category === 'Transfer';
+
     // Apply colors and prefixes
-    let amountColor, amountPrefix;
-    if (isIncome || isIncomingTransfer) {
-        amountColor = 'text-emerald-600';
-        amountPrefix = '+';
-    } else if (isOutgoingTransfer) {
-        amountColor = 'text-red-500';
-        amountPrefix = '-';
-    } else {
-        amountColor = 'text-red-500';
-        amountPrefix = '-';
-    }
+    const amountColor = isIncome ? 'text-emerald-600' : 'text-red-500';
+    const amountPrefix = isIncome ? '+' : '-';
+
+
 
     return (
         <motion.div
