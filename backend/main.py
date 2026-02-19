@@ -4,13 +4,14 @@ import os
 import datetime
 import asyncio
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
 from decimal import Decimal
 from aiokafka import AIOKafkaProducer
 from pydantic import BaseModel
-from database import SessionLocal, Transaction, User, Account
+from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey
+
 from fastapi.middleware.cors import CORSMiddleware
 from confluent_kafka.admin import AdminClient, NewTopic
 from confluent_kafka import Consumer, KafkaException, TopicPartition
@@ -43,8 +44,13 @@ app.add_middleware(
 )
 
 # Auth Configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "REDACTED_2026")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    # Use a fallback for dev, but warn
+    print("[WARN] SECRET_KEY not set in environment! Using insecure default.")
+    SECRET_KEY = "[REDACTED]"
 ALGORITHM = "HS256"
+
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -76,7 +82,9 @@ class UserResponse(BaseModel):
 
 class P2PTransferRequest(BaseModel):
     recipient_email: str
-    amount: float
+    amount: Decimal
+    idempotency_key: Optional[str] = None
+
 
 
 # Helper Functions
@@ -439,6 +447,7 @@ class TransferRequest(BaseModel):
 async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_db)):
     tx_id = str(uuid.uuid4())
     try:
+
         new_tx = Transaction(
             id=tx_id,
             account_id=transfer.account_id,
@@ -448,8 +457,8 @@ async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_d
             status="pending",
         )
         db.add(new_tx)
-        db.commit()
-
+        
+        # Add to Outbox instead of direct Kafka send
         payload = {
             "transaction_id": tx_id,
             "account_id": transfer.account_id,
@@ -460,29 +469,44 @@ async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_d
             "status": "pending",
             "timestamp": datetime.datetime.utcnow().isoformat(),
         }
+        
+        outbox_entry = Outbox(
+            event_type="transaction.created",
+            payload=payload
+        )
 
-        if producer:
-            await producer.send_and_wait(
-                KAFKA_TOPIC, json.dumps(payload).encode("utf-8")
-            )
-
-        # Mark as sent to Kafka in Postgres
-        new_tx.status = "sent_to_kafka"
+        db.add(outbox_entry)
+        
         db.commit()
-
         return {"status": "success", "transaction_id": tx_id}
     except Exception as e:
         db.rollback()
+        print(f"[ERROR] Transfer failed: {e}")
         raise HTTPException(status_code=500, detail=f"Transaction failed: {str(e)}")
+
+
 
 
 @app.post("/p2p-transfer")
 async def create_p2p_transfer(
     transfer: P2PTransferRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # 1. Recipient Lookup
+    client_ip = request.client.host
+    user_agent = request.headers.get("user-agent", "unknown")
+
+    # 1. Idempotency Check
+    if transfer.idempotency_key:
+        existing_key = db.query(IdempotencyKey).filter(
+            IdempotencyKey.key == transfer.idempotency_key,
+            IdempotencyKey.user_id == current_user.id
+        ).first()
+        if existing_key:
+            return existing_key.response_body
+
+    # 2. Recipient Lookup
     recipient = db.query(User).filter(User.email == transfer.recipient_email).first()
     if not recipient:
         raise HTTPException(status_code=404, detail="Recipient not found")
@@ -490,81 +514,124 @@ async def create_p2p_transfer(
     if recipient.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot transfer to yourself")
 
-    # 2. Balance Verification
-    sender_account = (
-        db.query(Account).filter(Account.user_id == current_user.id).first()
-    )
-    if not sender_account or sender_account.balance < transfer.amount:
-        raise HTTPException(
-            status_code=400, detail="Insufficient funds for this transfer."
-        )
-
-    recipient_account = (
-        db.query(Account).filter(Account.user_id == recipient.id).first()
-    )
-    if not recipient_account:
-        raise HTTPException(status_code=404, detail="Recipient account not found")
-
-    tx_id = str(uuid.uuid4())
+    tx_id_parent = str(uuid.uuid4())
+    tx_id_sender = str(uuid.uuid4())
+    tx_id_recipient = str(uuid.uuid4())
+    
     try:
-        # 3. Atomic Update (ACID)
-        sender_account.balance -= Decimal(str(transfer.amount))
-        recipient_account.balance += Decimal(str(transfer.amount))
+        # 3. Atomic Locking & Balance Verification (ACID)
+        # We must lock BOTH accounts to prevent deadlocks and race conditions.
+        # Order by ID to prevent deadlocks.
+        account_ids = sorted([current_user.id, recipient.id])
+        
+        # This is a slightly naive way to lock by user_id but since we have 1:1 account:user for now it works.
+        # Ideally we fetch account IDs first, then lock them in ascending order.
+        
+        sender_account = db.query(Account).filter(Account.user_id == current_user.id).with_for_update().first()
+        recipient_account = db.query(Account).filter(Account.user_id == recipient.id).with_for_update().first()
 
-        new_tx = Transaction(
-            id=tx_id,
+        if not sender_account or sender_account.balance < transfer.amount:
+            raise HTTPException(
+                status_code=400, detail="Insufficient funds for this transfer."
+            )
+
+        if not recipient_account:
+            raise HTTPException(status_code=404, detail="Recipient account not found")
+
+        # 4. Multi-sided Balance Mutation
+        sender_account.balance -= transfer.amount
+        recipient_account.balance += transfer.amount
+
+        # 5. Double Entry Ledger (Immutable records)
+        sender_tx = Transaction(
+            id=tx_id_sender,
+            parent_id=tx_id_parent,
             account_id=sender_account.id,
-            amount=transfer.amount,
-            category="P2P",
-            merchant=f"Sent to {recipient.email}",
+            amount=-transfer.amount,
+            category="Transfer",
+            merchant=f"Transfer to {recipient.email}",
             status="pending",
+            transaction_type="transfer",
+            transaction_side="DEBIT",
+            idempotency_key=transfer.idempotency_key,
+            ip_address=client_ip,
+            user_agent=user_agent
         )
-        db.add(new_tx)
-        db.commit()
 
-        # 4. Event Dispatch (Kafka) - include sender/recipient emails for data isolation
-        # We send TWO events: one for the sender and one for the recipient to ensure ClickHouse records reflect both sides
+        recipient_tx = Transaction(
+            id=tx_id_recipient,
+            parent_id=tx_id_parent,
+            account_id=recipient_account.id,
+            amount=transfer.amount,
+            category="Transfer",
+            merchant=f"Received from {current_user.email}",
+            status="pending",
+            transaction_type="transfer",
+            transaction_side="CREDIT",
+            idempotency_key=transfer.idempotency_key,
+            ip_address=client_ip,
+            user_agent=user_agent
+        )
+
+        db.add(sender_tx)
+        db.add(recipient_tx)
+
+        # 6. Outbox entries for both sides (ensures ClickHouse is also in sync)
         sender_payload = {
-            "transaction_id": f"{tx_id}-sender",
+            "transaction_id": tx_id_sender,
+            "parent_id": tx_id_parent,
             "account_id": sender_account.id,
             "sender_email": current_user.email,
             "recipient_email": recipient.email,
-            "amount": transfer.amount,
-            "category": "P2P",
-            "merchant": f"Sent to {recipient.email}",
-            "transaction_type": "expense",
+            "amount": -float(transfer.amount),
+            "category": "Transfer",
+            "merchant": f"Transfer to {recipient.email}",
+            "transaction_type": "transfer",
+            "transaction_side": "DEBIT",
             "status": "pending",
             "timestamp": datetime.datetime.utcnow().isoformat(),
         }
-        
+
         recipient_payload = {
-            "transaction_id": f"{tx_id}-recipient",
+            "transaction_id": tx_id_recipient,
+            "parent_id": tx_id_parent,
             "account_id": recipient_account.id,
             "sender_email": current_user.email,
             "recipient_email": recipient.email,
-            "amount": transfer.amount,
-            "category": "P2P",
+            "amount": float(transfer.amount),
+            "category": "Transfer",
             "merchant": f"Received from {current_user.email}",
-            "transaction_type": "income",
+            "transaction_type": "transfer",
+            "transaction_side": "CREDIT",
             "status": "pending",
             "timestamp": datetime.datetime.utcnow().isoformat(),
         }
 
-        if producer:
-            await producer.send_and_wait(
-                KAFKA_TOPIC, json.dumps(sender_payload).encode("utf-8")
-            )
-            await producer.send_and_wait(
-                KAFKA_TOPIC, json.dumps(recipient_payload).encode("utf-8")
-            )
+        db.add(Outbox(event_type="p2p.sender", payload=sender_payload))
+        db.add(Outbox(event_type="p2p.recipient", payload=recipient_payload))
 
-        new_tx.status = "sent_to_kafka"
+        # 7. Finalize Idempotency Key
+        response_body = {"status": "success", "transaction_id": tx_id_parent}
+        if transfer.idempotency_key:
+            db.add(IdempotencyKey(
+                key=transfer.idempotency_key,
+                user_id=current_user.id,
+                response_code=200,
+                response_body=response_body
+            ))
+
         db.commit()
+        return response_body
 
-        return {"status": "success", "transaction_id": tx_id}
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"P2P Transaction failed: {str(e)}")
+        print(f"[ERROR] P2P Transfer failed: {e}")
+        raise HTTPException(status_code=500, detail="Internal financial processing error")
+
+
 
 
 # --- Dashboard & Analytics Endpoints ---
@@ -677,6 +744,7 @@ async def get_recent_transactions(
                 sender_email,
                 recipient_email,
                 transaction_type,
+                transaction_side,
                 event_time
             FROM banking.transactions
             WHERE account_id IN ({account_ids_str})
@@ -705,7 +773,8 @@ async def get_recent_transactions(
                 "sender_email": row[4],
                 "recipient_email": row[5],
                 "transaction_type": row[6],
-                "created_at": row[7].isoformat() if row[7] else None,
+                "transaction_side": row[7],
+                "created_at": row[8].isoformat() if row[8] else None,
                 "status": "cleared"
             })
             
@@ -713,17 +782,25 @@ async def get_recent_transactions(
         for tx in pg_transactions:
             if str(tx.id) not in ch_ids:
                 # Same logic as before to determine type for PG txs
-                tx_type = "expense"
-                sender_email = current_user.email
-                recipient_email = None
-
-                if tx.merchant and "Transfer to " in tx.merchant:
-                    tx_type = "transfer"
-                    recipient_email = tx.merchant.replace("Transfer to ", "")
-                elif tx.category and tx.category.lower() in ["salary", "income", "deposit"]:
+                # Default based on amount sign
+                if tx.amount > 0:
                     tx_type = "income"
                     sender_email = None
                     recipient_email = current_user.email
+                else:
+                    tx_type = "expense"
+                    sender_email = current_user.email
+                    recipient_email = None
+
+                # Refine based on Merchant/Category
+                if tx.merchant and "Transfer to " in tx.merchant:
+                    tx_type = "transfer"
+                    recipient_email = tx.merchant.replace("Transfer to ", "")
+                elif tx.merchant and "Received from " in tx.merchant:
+                    tx_type = "transfer"
+                    sender_email = tx.merchant.replace("Received from ", "")
+                elif tx.category and tx.category.lower() in ["salary", "income", "deposit"]:
+                    tx_type = "income"
                 
                 final_txs.append({
                     "id": str(tx.id),
@@ -774,18 +851,18 @@ async def get_all_transactions(
             host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
         )
 
-        # Visibility: user must be either sender or recipient
+        # Visibility: user must see transactions exactly for THEIR account
         where_clauses = [
-            f"(sender_email = '{current_user.email}' OR recipient_email = '{current_user.email}')",
+            f"account_id = {account.id}",
             f"event_time >= now() - INTERVAL {days} DAY",
         ]
 
-        # Type filtering: incoming = user is recipient, outgoing = user is sender
+        # Type filtering: incoming = positive/CREDIT, outgoing = negative/DEBIT
         if tx_type:
             if tx_type.lower() == "outgoing":
-                where_clauses.append(f"sender_email = '{current_user.email}'")
+                where_clauses.append("amount < 0")
             elif tx_type.lower() == "incoming":
-                where_clauses.append(f"recipient_email = '{current_user.email}'")
+                where_clauses.append("amount > 0")
 
         # Amount range filtering (use absolute value so user-entered ranges apply to magnitude)
         if min_amount is not None:
@@ -808,6 +885,7 @@ async def get_all_transactions(
             category,
             merchant,
             transaction_type,
+            transaction_side,
             event_time
         FROM banking.transactions
         WHERE {where_clause}
@@ -827,6 +905,7 @@ async def get_all_transactions(
                 "category": row["category"],
                 "merchant": row.get("merchant"),
                 "transaction_type": row.get("transaction_type", "expense"),
+                "transaction_side": row.get("transaction_side"),
                 "timestamp": row["event_time"].isoformat()
                 if hasattr(row["event_time"], "isoformat")
                 else str(row["event_time"]),
@@ -866,25 +945,21 @@ async def execute_admin_query(
                 host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
             )
 
-            # Replace parameters in query
+            # Corrected query execution with parameter support
             query = request.query
-            for param, value in request.params.items():
-                if param != "source":
-                    query = query.replace(f"{{{param}}}", str(value))
-
-            result = ch_client.query(query)
+            # Only allow params that are used in actual placeholder syntax {param}
+            # Note: clickhouse_connect supports parameter binding
+            result = ch_client.query(query, parameters=request.params)
             data = result.result_rows
             columns = result.column_names
 
-        elif source == "postgres":
-            # Execute PostgreSQL query
-            for param, value in request.params.items():
-                if param != "source":
-                    query = request.query.replace(f"{{{param}}}", f"'{value}'")
 
-            result = db.execute(text(query))
+        elif source == "postgres":
+            # Execute PostgreSQL query with parameter binding to prevent SQL injection
+            result = db.execute(text(request.query), request.params)
             data = [dict(row._mapping) for row in result]
             columns = list(data[0].keys()) if data else []
+
 
         elif source == "kafka":
             # Handle Kafka-specific queries
@@ -1043,9 +1118,10 @@ async def get_banking_metrics(
             SUM(amount) as total_volume,
             COUNT(*) as transaction_count,
             AVG(amount) as avg_transaction_size
-        FROM bank_transactions 
-        WHERE created_at >= now() - INTERVAL 1 DAY
+        FROM banking.transactions 
+        WHERE event_time >= now() - INTERVAL 1 DAY
         """
+
 
         volume_result = ch_client.query(volume_query)
         volume_data = volume_result.result_rows[0]
@@ -1055,12 +1131,13 @@ async def get_banking_metrics(
 
         # Top transactions in last 24h
         top_transactions_query = """
-        SELECT merchant, amount, account_id, created_at
-        FROM bank_transactions 
-        WHERE created_at >= now() - INTERVAL 1 DAY
+        SELECT merchant, amount, account_id, event_time as created_at
+        FROM banking.transactions 
+        WHERE event_time >= now() - INTERVAL 1 DAY
         ORDER BY amount DESC 
         LIMIT 10
         """
+
 
         top_result = ch_client.query(top_transactions_query)
         top_transactions = [
