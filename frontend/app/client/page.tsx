@@ -36,15 +36,15 @@ export default function DashboardPage() {
     };
 
     const stats = {
-        totalIncome: transactions.filter(t => t.transaction_type === 'income').reduce((sum, t) => sum + t.amount, 0),
-        totalExpenses: transactions.filter(t => t.transaction_type === 'expense' || t.transaction_type === 'transfer').reduce((sum, t) => sum + t.amount, 0),
+        totalIncome: transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0),
+        totalExpenses: transactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0),
         transactionCount: transactions.length,
     };
 
     const balanceHistoryData = transactions
         .map(t => ({
             date: new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            balance: t.transaction_type === 'income' ? t.amount : -t.amount,
+            balance: t.amount,
         }))
         .reverse();
 
@@ -206,11 +206,10 @@ export default function DashboardPage() {
                                     <button
                                         key={days}
                                         onClick={() => setDayFilter(days)}
-                                        className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                                            dayFilter === days
-                                                ? 'bg-purple-500 text-white'
-                                                : 'bg-white/10 text-white/60 hover:bg-white/20'
-                                        }`}
+                                        className={`px-4 py-2 rounded-lg font-semibold transition-all ${dayFilter === days
+                                            ? 'bg-purple-500 text-white'
+                                            : 'bg-white/10 text-white/60 hover:bg-white/20'
+                                            }`}
                                     >
                                         {days}d
                                     </button>

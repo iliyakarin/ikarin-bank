@@ -73,8 +73,8 @@ export default function TransactionsPage() {
 
     const stats = {
         total: transactions.length,
-        sent: transactions.filter(t => t.transaction_type === 'expense' || t.transaction_type === 'transfer').reduce((sum, t) => sum + t.amount, 0),
-        received: transactions.filter(t => t.transaction_type === 'income').reduce((sum, t) => sum + t.amount, 0),
+        sent: transactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0),
+        received: transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0),
     };
 
     return (
@@ -200,9 +200,9 @@ export default function TransactionsPage() {
                                             <td className="px-6 py-4 text-white/70 text-sm">{tx.category}</td>
                                             <td className="px-6 py-4 text-white/70 text-sm">{tx.sender_email || '—'}</td>
                                             <td className="px-6 py-4 text-white/70 text-sm">{tx.recipient_email || '—'}</td>
-                                            <td className={`px-6 py-4 text-right font-mono font-semibold ${tx.transaction_type === 'income' ? 'text-emerald-400' : 'text-white'
+                                            <td className={`px-6 py-4 text-right font-mono font-semibold ${tx.amount > 0 ? 'text-emerald-400' : 'text-white'
                                                 }`}>
-                                                {tx.transaction_type === 'income' ? '+' : '-'}${Math.abs(tx.amount).toFixed(2)}
+                                                {tx.amount > 0 ? '+' : '-'}${Math.abs(tx.amount).toFixed(2)}
                                             </td>
                                             <td className="px-6 py-4 text-white/60 text-sm text-right">{new Date(tx.timestamp).toLocaleString()}</td>
                                             <td className="px-6 py-4 text-right text-white/70">{tx.status || 'Cleared'}</td>

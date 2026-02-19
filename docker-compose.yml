@@ -67,7 +67,9 @@ services:
     env_file: .env
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - PYTHONUNBUFFERED=1
     ports:
+
       - "8000:8000"
     volumes:
       - ./backend:/app
@@ -88,11 +90,31 @@ services:
       - ./backend:/app
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - PYTHONUNBUFFERED=1
+
     depends_on:
       kafka:
         condition: service_started
       clickhouse:
         condition: service_healthy
+
+  outbox-worker:
+    build: ./backend
+    container_name: bank-outbox-worker
+    command: python outbox_worker.py
+    env_file: .env
+    volumes:
+      - ./backend:/app
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+
 
   frontend:
     build: ./frontend

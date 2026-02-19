@@ -24,6 +24,22 @@ CREATE TABLE transactions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX idx_transactions_account_id ON transactions(account_id);
+CREATE INDEX idx_transactions_created_at ON transactions(created_at);
+
+-- Outbox table for reliable event delivery
+CREATE TABLE outbox (
+    id SERIAL PRIMARY KEY,
+    event_type VARCHAR(50) NOT NULL,
+    payload JSONB NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP
+);
+
+CREATE INDEX idx_outbox_status ON outbox(status);
+
+
 -- Seed data
 INSERT INTO users (first_name, last_name, email, password_hash) VALUES 
 ('Iliya', 'Karin', 'ikarin@example.com', '$2b$12$/VohZlBcVbRcK1VHOXr5.eQMIwvO80BvojvneaWq9UOiLkOjnKNGG'), -- password123
