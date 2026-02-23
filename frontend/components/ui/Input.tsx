@@ -16,12 +16,27 @@ export default function Input({
     leftElement,
     rightElement,
     className = '',
+    id: customId,
+    'aria-describedby': customDescribedBy,
     ...props
 }: InputProps) {
+    const generatedId = React.useId();
+    const id = customId || generatedId;
+    const errorId = `${id}-error`;
+    const helperId = `${id}-helper`;
+    const describedBy = [
+        error ? errorId : null,
+        helperText ? helperId : null,
+        customDescribedBy
+    ].filter(Boolean).join(' ');
+
     return (
         <div className="space-y-1.5 w-full">
             {label && (
-                <label className="text-sm font-bold text-gray-700 ml-1">
+                <label
+                    htmlFor={id}
+                    className="text-sm font-bold text-gray-700 ml-1 cursor-pointer"
+                >
                     {label}
                 </label>
             )}
@@ -32,6 +47,10 @@ export default function Input({
                     </div>
                 )}
                 <input
+                    {...props}
+                    id={id}
+                    aria-invalid={!!error}
+                    aria-describedby={describedBy || undefined}
                     className={`
                         w-full bg-gray-50 border-2 border-transparent rounded-xl px-4 py-3 
                         text-black placeholder:text-gray-400 font-medium outline-none
@@ -42,7 +61,6 @@ export default function Input({
                         ${error ? 'border-red-100 focus:border-red-200 focus:ring-red-50/50 bg-red-50/30' : ''}
                         ${className}
                     `}
-                    {...props}
                 />
                 {rightElement && (
                     <div className="absolute right-4 top-1/2 -translate-y-1/2">
@@ -51,9 +69,9 @@ export default function Input({
                 )}
             </div>
             {error ? (
-                <p className="text-xs font-bold text-red-500 ml-1 mt-1">{error}</p>
+                <p id={errorId} className="text-xs font-bold text-red-500 ml-1 mt-1" role="alert">{error}</p>
             ) : helperText ? (
-                <p className="text-xs font-medium text-gray-400 ml-1 mt-1">{helperText}</p>
+                <p id={helperId} className="text-xs font-medium text-gray-400 ml-1 mt-1">{helperText}</p>
             ) : null}
         </div>
     );
