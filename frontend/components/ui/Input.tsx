@@ -16,12 +16,18 @@ export default function Input({
     leftElement,
     rightElement,
     className = '',
+    id,
     ...props
 }: InputProps) {
+    const generatedId = React.useId();
+    const inputId = id || generatedId;
+    const helperId = `${inputId}-helper`;
+    const errorId = `${inputId}-error`;
+
     return (
         <div className="space-y-1.5 w-full">
             {label && (
-                <label className="text-sm font-bold text-gray-700 ml-1">
+                <label htmlFor={inputId} className="text-sm font-bold text-gray-700 ml-1">
                     {label}
                 </label>
             )}
@@ -32,6 +38,8 @@ export default function Input({
                     </div>
                 )}
                 <input
+                    id={inputId}
+                    aria-describedby={error ? errorId : helperText ? helperId : undefined}
                     className={`
                         w-full bg-gray-50 border-2 border-transparent rounded-xl px-4 py-3 
                         text-black placeholder:text-gray-400 font-medium outline-none
@@ -51,9 +59,9 @@ export default function Input({
                 )}
             </div>
             {error ? (
-                <p className="text-xs font-bold text-red-500 ml-1 mt-1">{error}</p>
+                <p id={errorId} className="text-xs font-bold text-red-500 ml-1 mt-1">{error}</p>
             ) : helperText ? (
-                <p className="text-xs font-medium text-gray-400 ml-1 mt-1">{helperText}</p>
+                <p id={helperId} className="text-xs font-medium text-gray-400 ml-1 mt-1">{helperText}</p>
             ) : null}
         </div>
     );

@@ -33,7 +33,7 @@ export default function Sidebar() {
                     const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
                     const Icon = item.icon;
                     return (
-                        <Link key={item.name} href={item.href}>
+                        <Link key={item.name} href={item.href} aria-label={item.name}>
                             <div className={`relative flex items-center gap-4 px-4 py-3 rounded-xl transition-all group ${
                                 isActive ? 'text-white font-semibold' : 'text-white/60 hover:text-white hover:bg-white/10'
                             }`}>
@@ -58,6 +58,7 @@ export default function Sidebar() {
             <div className="px-4 mt-auto space-y-2">
                 <button
                     onClick={logout}
+                    aria-label="Sign Out"
                     className="w-full flex items-center gap-4 px-4 py-3 text-red-400/70 hover:text-red-400 hover:bg-red-500/20 rounded-xl transition-all group"
                 >
                     <LogOut className="w-6 h-6" />

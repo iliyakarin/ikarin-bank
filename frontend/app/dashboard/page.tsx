@@ -70,6 +70,7 @@ export default function DashboardPage() {
                         onClick={handleRefresh}
                         className="p-3 bg-white/5 rounded-2xl border border-white/10 text-white hover:bg-white/10 transition-all"
                         title="Refresh data"
+                        aria-label="Refresh data"
                     >
                         <RefreshCw size={20} />
                     </motion.button>

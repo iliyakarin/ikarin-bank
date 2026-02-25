@@ -133,6 +133,7 @@ export default function RegisterPage() {
                                             onClick={generatePassword}
                                             className="p-2 hover:bg-gray-100 rounded-lg transition-colors group/btn"
                                             title="Generate Secure Password"
+                                            aria-label="Generate Secure Password"
                                         >
                                             <RefreshCw className="w-4 h-4 text-gray-400 group-hover/btn:text-black group-hover/btn:rotate-180 transition-all duration-500" />
                                         </button>
