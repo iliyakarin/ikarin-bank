@@ -270,9 +270,9 @@ async def get_traces(db: Session = Depends(get_db)):
     # Get matching records from ClickHouse
     ch_client = clickhouse_connect.get_client(host=CH_HOST, port=CH_PORT)
     # Using IN clause for efficiency
-    formatted_ids = "'" + "','".join(tx_ids) + "'"
-    query = f"SELECT transaction_id, event_time FROM transactions WHERE transaction_id IN ({formatted_ids})"
-    ch_txs = ch_client.query(query).named_results()
+    # Use parameterized query to prevent SQL injection
+    query = "SELECT transaction_id, event_time FROM transactions WHERE transaction_id IN {tx_ids:Array(String)}"
+    ch_txs = ch_client.query(query, parameters={'tx_ids': tx_ids}).named_results()
 
     ch_map = {row["transaction_id"]: row["event_time"] for row in ch_txs}
 
