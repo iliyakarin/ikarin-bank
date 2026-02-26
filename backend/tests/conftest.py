@@ -19,8 +19,6 @@ class MockType:
         self.kwargs = kwargs
 
     def __call__(self, *args, **kwargs):
-        # Allow calling types like String(50) to return a new instance with args
-        # Propagate the name
         return MockType(self.name, *args, **kwargs)
 
     def __repr__(self):
@@ -37,13 +35,8 @@ def mock_db_dependency():
     Patches sys.modules to inject mock sqlalchemy and other dependencies.
     Yields the mock objects for verification.
     """
-    # Create the main mock object for sqlalchemy
     mock_sqlalchemy = MagicMock()
-
-    # Set up Column mock
     mock_sqlalchemy.Column = MagicMock(side_effect=MockColumn)
-
-    # Set up Type mocks
     mock_sqlalchemy.Integer = MockType("Integer")
     mock_sqlalchemy.String = MockType("String")
     mock_sqlalchemy.Numeric = MockType("Numeric")
@@ -51,19 +44,16 @@ def mock_db_dependency():
     mock_sqlalchemy.ForeignKey = MockType("ForeignKey")
     mock_sqlalchemy.JSON = MockType("JSON")
 
-    # Mock declarative_base
     class MockBase:
         pass
 
     mock_declarative_base = MagicMock(return_value=MockBase)
     mock_sqlalchemy.ext.declarative.declarative_base = mock_declarative_base
 
-    # Mock JSONB for postgresql dialect
     mock_postgresql = MagicMock()
     mock_postgresql.JSONB = MockType("JSONB")
     mock_sqlalchemy.dialects.postgresql = mock_postgresql
 
-    # Patch sys.modules
     modules_to_patch = {
         "sqlalchemy": mock_sqlalchemy,
         "sqlalchemy.ext.declarative": mock_sqlalchemy.ext.declarative,
@@ -71,14 +61,12 @@ def mock_db_dependency():
         "sqlalchemy.dialects.postgresql": mock_postgresql
     }
 
-    # Ensure backend.database is reloaded for each test
     if "backend.database" in sys.modules:
         del sys.modules["backend.database"]
 
     with patch.dict(sys.modules, modules_to_patch):
         yield mock_sqlalchemy
 
-    # Clean up backend.database to avoid polluting other tests
     if "backend.database" in sys.modules:
         del sys.modules["backend.database"]
 
@@ -88,9 +76,37 @@ def mock_fastapi_dependency():
     Patches sys.modules to inject mock fastapi and other dependencies for API testing.
     """
     mock_fastapi = MagicMock()
-    mock_fastapi.FastAPI = MagicMock()
+
+    # --- IMPORTANT: Mock Decorators ---
+    # We must mock FastAPI methods like @app.get, @app.post, etc.
+    # to return the decorated function AS IS.
+    # Otherwise, they return a MagicMock, which is not callable/awaitable as the original function.
+
+    def passthrough_decorator(*args, **kwargs):
+        def wrapper(func):
+            return func
+        return wrapper
+
+    mock_app_instance = MagicMock()
+    mock_app_instance.get.side_effect = passthrough_decorator
+    mock_app_instance.post.side_effect = passthrough_decorator
+    mock_app_instance.put.side_effect = passthrough_decorator
+    mock_app_instance.delete.side_effect = passthrough_decorator
+    mock_app_instance.patch.side_effect = passthrough_decorator
+    mock_app_instance.add_middleware = MagicMock()
+
+    mock_fastapi.FastAPI.return_value = mock_app_instance
+
     mock_fastapi.Depends = MagicMock()
-    mock_fastapi.HTTPException = MagicMock()
+
+    # We need HTTPException to be a real exception so we can catch it
+    class MockHTTPException(Exception):
+        def __init__(self, status_code, detail=None, headers=None):
+            self.status_code = status_code
+            self.detail = detail
+            self.headers = headers
+    mock_fastapi.HTTPException = MockHTTPException
+
     mock_fastapi.BackgroundTasks = MagicMock()
     mock_fastapi.Request = MagicMock()
 
@@ -118,7 +134,6 @@ def mock_fastapi_dependency():
     mock_pydantic = MagicMock()
     mock_database = MagicMock()
 
-    # We also need to mock sqlalchemy for main.py imports
     mock_sqlalchemy = MagicMock()
     mock_sqlalchemy.orm = MagicMock()
     mock_sqlalchemy.func = MagicMock()
@@ -142,13 +157,13 @@ def mock_fastapi_dependency():
         "sqlalchemy.orm": mock_sqlalchemy.orm
     }
 
-    # Ensure backend.main is reloaded
     if "backend.main" in sys.modules:
         del sys.modules["backend.main"]
 
     with patch.dict(sys.modules, modules_to_patch):
-        # We verify that we can import main
         import backend.main
+        # Re-inject our MockHTTPException if import reloaded it from mock
+        backend.main.HTTPException = MockHTTPException
         yield backend.main
 
     if "backend.main" in sys.modules:
