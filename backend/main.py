@@ -372,7 +372,9 @@ def get_kafka_status():
 
 
 @app.get("/admin/postgres-logs")
-def get_postgres_logs(db: Session = Depends(get_db)):
+def get_postgres_logs(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     return db.query(Transaction).order_by(Transaction.created_at.desc()).limit(10).all()
 
 
