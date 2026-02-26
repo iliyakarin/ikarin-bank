@@ -43,10 +43,17 @@ with patch('fastapi.FastAPI', return_value=mock_fastapi_app), \
      patch('fastapi.security.OAuth2PasswordBearer'), \
      patch('passlib.context.CryptContext'):
 
-    import main
+    try:
+        import backend.main as main
+    except ImportError:
+        import main
+
     main.HTTPException = MockHTTPException
     # We need to access get_ch_logs directly
-    from main import get_ch_logs, admin_only, get_kafka_status
+    try:
+        from backend.main import get_ch_logs, admin_only, get_kafka_status
+    except ImportError:
+        from main import get_ch_logs, admin_only, get_kafka_status
 
 class MockUser:
     def __init__(self, email, is_admin=False, role="user"):
@@ -124,12 +131,12 @@ class TestAdminRoutes(unittest.TestCase):
 
         # 2. Admin user via email list
         regular_user_in_list = MockUser("admin@example.com", is_admin=False, role="user")
-        with patch('main.ADMIN_EMAILS', ["admin@example.com"]):
+        with patch('backend.main.ADMIN_EMAILS', ["admin@example.com"]):
             self.assertEqual(admin_only(regular_user_in_list), regular_user_in_list)
 
         # 3. Non-admin user
         regular_user = MockUser("user@example.com", is_admin=False, role="user")
-        with patch('main.ADMIN_EMAILS', ["admin@example.com"]):
+        with patch('backend.main.ADMIN_EMAILS', ["admin@example.com"]):
             with self.assertRaises(MockHTTPException) as cm:
                 admin_only(regular_user)
             self.assertEqual(cm.exception.status_code, 403)
