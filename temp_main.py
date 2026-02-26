@@ -327,7 +327,6 @@ class SimulationRequest(BaseModel):
 async def simulate_traffic(
     req: SimulationRequest,
     background_tasks: BackgroundTasks,
-    # Ensure this endpoint is protected by admin_only dependency
     current_user: User = Depends(admin_only),
 ):
     background_tasks.add_task(run_simulation, req.tps, req.count)
@@ -483,7 +482,7 @@ async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_d
             status="pending",
         )
         db.add(new_tx)
-        
+
         # Add to Outbox instead of direct Kafka send
         payload = {
             "transaction_id": tx_id,
@@ -495,14 +494,14 @@ async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_d
             "status": "pending",
             "timestamp": datetime.datetime.utcnow().isoformat(),
         }
-        
+
         outbox_entry = Outbox(
             event_type="transaction.created",
             payload=payload
         )
 
         db.add(outbox_entry)
-        
+
         db.commit()
         return {"status": "success", "transaction_id": tx_id}
     except Exception as e:
@@ -543,16 +542,16 @@ async def create_p2p_transfer(
     tx_id_parent = str(uuid.uuid4())
     tx_id_sender = str(uuid.uuid4())
     tx_id_recipient = str(uuid.uuid4())
-    
+
     try:
         # 3. Atomic Locking & Balance Verification (ACID)
         # We must lock BOTH accounts to prevent deadlocks and race conditions.
         # Order by ID to prevent deadlocks.
         account_ids = sorted([current_user.id, recipient.id])
-        
+
         # This is a slightly naive way to lock by user_id but since we have 1:1 account:user for now it works.
         # Ideally we fetch account IDs first, then lock them in ascending order.
-        
+
         sender_account = db.query(Account).filter(Account.user_id == current_user.id).with_for_update().first()
         recipient_account = db.query(Account).filter(Account.user_id == recipient.id).with_for_update().first()
 
@@ -681,12 +680,12 @@ async def get_balance_history(
 
         # Query ClickHouse for balance trend
         query = f"""
-        SELECT 
+        SELECT
             toDate(event_time) as date,
             account_id,
             sum(amount) as daily_change
         FROM banking.transactions
-        WHERE account_id = {account.id} 
+        WHERE account_id = {account.id}
             AND event_time >= now() - INTERVAL {days} DAY
         GROUP BY toDate(event_time), account_id
         ORDER BY date
@@ -733,11 +732,11 @@ async def get_recent_transactions(
     """Get recent transactions from the last N hours - user must be sender or recipient."""
     try:
         user_email = current_user.email.lower()
-        
+
         # 1. Get PENDING transactions from Postgres (only outgoing ones exist here)
         user_accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
         account_ids = [acc.id for acc in user_accounts]
-        
+
         pg_transactions = (
             db.query(Transaction)
             .filter(Transaction.account_id.in_(account_ids))
@@ -748,21 +747,21 @@ async def get_recent_transactions(
             .limit(10)
             .all()
         )
-        
+
         # 2. Get CLEARED/HISTORY transactions from ClickHouse (incoming AND outgoing)
         ch_client = clickhouse_connect.get_client(
             host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
         )
-        
+
         # Join account IDs for ClickHouse query to ensure we only get transactions belonging to the user's specific accounts
         # This prevents duplicate entries for P2P transfers while ensuring both sender and recipient see their record.
         if not account_ids:
             return {"transactions": []}
-            
+
         account_ids_str = ",".join([str(aid) for aid in account_ids])
-        
+
         query = f"""
-            SELECT 
+            SELECT
                 toString(transaction_id) as id,
                 amount,
                 category,
@@ -778,15 +777,15 @@ async def get_recent_transactions(
             ORDER BY event_time DESC
             LIMIT 20
         """
-        
+
         ch_results = ch_client.query(query).result_rows
-        
+
         # 3. Merge and formatting
         # We prefer ClickHouse data (status='cleared'), but keep Postgres data if it's not in CH yet (status='pending')
-        
+
         final_txs = []
         ch_ids = set()
-        
+
         # Process ClickHouse results first (Confirmed transactions)
         for row in ch_results:
             tx_id = row[0]
@@ -803,7 +802,7 @@ async def get_recent_transactions(
                 "created_at": row[8].isoformat() if row[8] else None,
                 "status": "cleared"
             })
-            
+
         # Process Postgres results (Pending/In-flight)
         for tx in pg_transactions:
             if str(tx.id) not in ch_ids:
@@ -827,7 +826,7 @@ async def get_recent_transactions(
                     sender_email = tx.merchant.replace("Received from ", "")
                 elif tx.category and tx.category.lower() in ["salary", "income", "deposit"]:
                     tx_type = "income"
-                
+
                 final_txs.append({
                     "id": str(tx.id),
                     "amount": float(tx.amount),
@@ -842,7 +841,7 @@ async def get_recent_transactions(
 
         # Sort combined list by date desc
         final_txs.sort(key=lambda x: x["created_at"] or "", reverse=True)
-        
+
         return {"transactions": final_txs[:20]}
 
     except Exception as e:
@@ -1172,11 +1171,11 @@ async def get_banking_metrics(
 
         # 24h transaction metrics
         volume_query = """
-        SELECT 
+        SELECT
             SUM(amount) as total_volume,
             COUNT(*) as transaction_count,
             AVG(amount) as avg_transaction_size
-        FROM banking.transactions 
+        FROM banking.transactions
         WHERE event_time >= now() - INTERVAL 1 DAY
         """
 
@@ -1190,9 +1189,9 @@ async def get_banking_metrics(
         # Top transactions in last 24h
         top_transactions_query = """
         SELECT merchant, amount, account_id, event_time as created_at
-        FROM banking.transactions 
+        FROM banking.transactions
         WHERE event_time >= now() - INTERVAL 1 DAY
-        ORDER BY amount DESC 
+        ORDER BY amount DESC
         LIMIT 10
         """
 
@@ -1210,13 +1209,13 @@ async def get_banking_metrics(
 
         # Hourly volume for last 24h
         hourly_query = """
-        SELECT 
+        SELECT
             toHour(created_at) as hour,
             COUNT(*) as count,
             SUM(amount) as total
-        FROM bank_transactions 
+        FROM bank_transactions
         WHERE created_at >= now() - INTERVAL 1 DAY
-        GROUP BY hour 
+        GROUP BY hour
         ORDER BY hour
         """
 
@@ -1232,15 +1231,15 @@ async def get_banking_metrics(
 
         # Top merchants by volume (7 days)
         merchant_query = """
-        SELECT 
+        SELECT
             merchant,
             COUNT(*) as transaction_count,
             SUM(amount) as total_amount
-        FROM bank_transactions 
+        FROM bank_transactions
         WHERE created_at >= now() - INTERVAL 7 DAY
             AND merchant != ''
-        GROUP BY merchant 
-        ORDER BY total_amount DESC 
+        GROUP BY merchant
+        ORDER BY total_amount DESC
         LIMIT 10
         """
 
@@ -1256,12 +1255,12 @@ async def get_banking_metrics(
 
         # User registration trends (30 days)
         user_growth_query = """
-        SELECT 
+        SELECT
             DATE(created_at) as date,
             COUNT(*) as count
-        FROM users 
+        FROM users
         WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
-        GROUP BY DATE(created_at) 
+        GROUP BY DATE(created_at)
         ORDER BY date DESC
         """
 
