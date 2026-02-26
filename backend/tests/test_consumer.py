@@ -1,6 +1,8 @@
+
+import sys
 import unittest
 from unittest.mock import MagicMock, patch, mock_open
-import sys
+import os
 import json
 import asyncio
 from datetime import datetime
@@ -11,7 +13,7 @@ sys.modules['clickhouse_connect'] = MagicMock()
 
 # Now we can import the consumer module safely
 # We need to make sure we are importing the newly refactored consumer.py
-import consumer
+import backend.consumer as consumer
 
 class TestConsumer(unittest.IsolatedAsyncioTestCase):
 
@@ -21,7 +23,7 @@ class TestConsumer(unittest.IsolatedAsyncioTestCase):
         self.mock_consumer = MagicMock()
 
         # Patch get_client to return our mock
-        self.patcher_ch = patch('consumer.clickhouse_connect.get_client', return_value=self.mock_ch_client)
+        self.patcher_ch = patch('backend.consumer.clickhouse_connect.get_client', return_value=self.mock_ch_client)
         self.patcher_ch.start()
 
         # Reset the global client in consumer module
