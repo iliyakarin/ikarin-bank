@@ -381,6 +381,7 @@ async def run_simulation(tps: int, count: int):
 
 @app.get("/admin/kafka-status")
 def get_kafka_status(current_user: User = Depends(admin_only)):
+    """Get Kafka topics status (Admin only)."""
     admin = AdminClient(
         {
             "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
