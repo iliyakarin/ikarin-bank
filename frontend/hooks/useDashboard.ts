@@ -116,16 +116,15 @@ interface UseBalanceResult {
 }
 
 export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const [balance, setBalance] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [userId, setUserId] = useState<number | null>(null);
     const mountedRef = useRef(true);
     const abortControllerRef = useRef<AbortController | null>(null);
 
     const fetchBalance = useCallback(async () => {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || !user?.id) return;
 
         setLoading(true);
         setError(null);
@@ -143,20 +142,7 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
                 throw new Error('No authentication token found');
             }
 
-            const userResponse = await fetch('http://localhost:8000/auth/me', {
-                headers: { 'Authorization': `Bearer ${authToken}` },
-                signal: controller.signal,
-            });
-
-            if (!userResponse.ok) {
-                throw new Error('Failed to fetch user info');
-            }
-
-            const user = await userResponse.json();
-
             if (mountedRef.current) {
-                setUserId(user.id);
-
                 const balanceResponse = await fetch(
                     `http://localhost:8000/accounts/${user.id}`,
                     {
@@ -186,7 +172,7 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
                 setLoading(false);
             }
         }
-    }, [token]);
+    }, [token, user]);
 
     useEffect(() => {
         fetchBalance();
@@ -210,7 +196,7 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
         };
     }, []);
 
-    return { balance, loading, error, refresh: fetchBalance, userId };
+    return { balance, loading, error, refresh: fetchBalance, userId: user?.id || null };
 }
 
 interface UseBalanceHistoryResult {
