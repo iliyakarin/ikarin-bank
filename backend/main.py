@@ -1,6 +1,7 @@
 import json
 import uuid
 import os
+import re
 import datetime
 import asyncio
 from typing import List, Dict, Any, Optional
@@ -23,6 +24,9 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 app = FastAPI(title="Simple Bank API")
 
 # Configuration
+ADMIN_EMAILS = os.getenv(
+    "ADMIN_EMAILS", "ikarin@admin.com,ikarin2@admin.com"
+).split(",")
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "bank_transactions")
 KAFKA_USER = os.getenv("KAFKA_USER", "admin")
@@ -135,6 +139,17 @@ async def get_current_user(
     return user
 
 
+def admin_only(current_user: User = Depends(get_current_user)):
+    """Check if current user is an admin"""
+    # Check for admin status via explicit list or potential database flag
+    is_admin_flag = getattr(current_user, "is_admin", False)
+    if not is_admin_flag and current_user.email not in ADMIN_EMAILS:
+        raise HTTPException(
+            status_code=403, detail="Admin privileges required for this operation"
+        )
+    return current_user
+
+
 # --- Auth Endpoints ---
 
 
@@ -200,7 +215,9 @@ async def get_account_balance(
 
 
 @app.get("/admin/stats")
-async def get_stats(db: Session = Depends(get_db)):
+async def get_stats(
+    db: Session = Depends(get_db), current_user: User = Depends(admin_only)
+):
     # 1. Postgres Count
     pg_count = db.query(func.count(Transaction.id)).scalar()
 
@@ -255,12 +272,16 @@ async def get_stats(db: Session = Depends(get_db)):
 
 
 @app.get("/admin/metrics")
-async def get_metrics(db: Session = Depends(get_db)):
+async def get_metrics(
+    db: Session = Depends(get_db), current_user: User = Depends(admin_only)
+):
     return await get_stats(db)
 
 
 @app.get("/admin/traces")
-async def get_traces(db: Session = Depends(get_db)):
+async def get_traces(
+    db: Session = Depends(get_db), current_user: User = Depends(admin_only)
+):
     # Get last 20 transactions from Postgres
     pg_txs = (
         db.query(Transaction).order_by(Transaction.created_at.desc()).limit(20).all()
@@ -270,9 +291,9 @@ async def get_traces(db: Session = Depends(get_db)):
     # Get matching records from ClickHouse
     ch_client = clickhouse_connect.get_client(host=CH_HOST, port=CH_PORT)
     # Using IN clause for efficiency
-    formatted_ids = "'" + "','".join(tx_ids) + "'"
-    query = f"SELECT transaction_id, event_time FROM transactions WHERE transaction_id IN ({formatted_ids})"
-    ch_txs = ch_client.query(query).named_results()
+    # Use parameterized query to prevent SQL injection
+    query = "SELECT transaction_id, event_time FROM transactions WHERE transaction_id IN {tx_ids:Array(String)}"
+    ch_txs = ch_client.query(query, parameters={'tx_ids': tx_ids}).named_results()
 
     ch_map = {row["transaction_id"]: row["event_time"] for row in ch_txs}
 
@@ -307,7 +328,11 @@ class SimulationRequest(BaseModel):
 
 
 @app.post("/admin/simulate")
-async def simulate_traffic(req: SimulationRequest, background_tasks: BackgroundTasks):
+async def simulate_traffic(
+    req: SimulationRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(admin_only),
+):
     background_tasks.add_task(run_simulation, req.tps, req.count)
     return {"status": "simulation_started", "tps": req.tps, "total": req.count}
 
@@ -361,7 +386,7 @@ async def run_simulation(tps: int, count: int):
 
 
 @app.get("/admin/kafka-status")
-def get_kafka_status():
+def get_kafka_status(current_user: User = Depends(admin_only)):
     admin = AdminClient(
         {
             "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
@@ -372,12 +397,14 @@ def get_kafka_status():
 
 
 @app.get("/admin/postgres-logs")
-def get_postgres_logs(db: Session = Depends(get_db)):
+def get_postgres_logs(
+    db: Session = Depends(get_db), current_user: User = Depends(admin_only)
+):
     return db.query(Transaction).order_by(Transaction.created_at.desc()).limit(10).all()
 
 
 @app.get("/admin/clickhouse-logs")
-def get_ch_logs():
+def get_ch_logs(current_user: User = Depends(admin_only)):
     client = clickhouse_connect.get_client(
         host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
     )
@@ -931,7 +958,7 @@ class QueryRequest(BaseModel):
 @app.post("/admin/query")
 async def execute_admin_query(
     request: QueryRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(admin_only),
     db: Session = Depends(get_db),
 ):
     """Execute admin query against ClickHouse, PostgreSQL, or Kafka"""
@@ -939,10 +966,42 @@ async def execute_admin_query(
         source = request.params.get("source", "clickhouse")
         start_time = datetime.datetime.now()
 
+        # SQL Validation for relational/analytical sources
+        if source in ["clickhouse", "postgres"]:
+            query_upper = request.query.strip().upper()
+            if not query_upper.startswith("SELECT"):
+                raise HTTPException(
+                    status_code=400, detail="Only SELECT queries are allowed"
+                )
+
+            # Block forbidden keywords that could be used for injection or destructive actions
+            forbidden = [
+                "DROP",
+                "DELETE",
+                "UPDATE",
+                "INSERT",
+                "TRUNCATE",
+                "ALTER",
+                "CREATE",
+                "GRANT",
+                "REVOKE",
+                "RENAME",
+            ]
+            for word in forbidden:
+                if re.search(r"\b" + word + r"\b", query_upper):
+                    raise HTTPException(
+                        status_code=400, detail=f"Forbidden keyword '{word}' detected"
+                    )
+
         if source == "clickhouse":
-            # Connect to ClickHouse and execute query
+            # Connect to ClickHouse using readonly credentials for safety
             ch_client = clickhouse_connect.get_client(
-                host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
+                host=CH_HOST,
+                port=CH_PORT,
+                username=os.getenv("CLICKHOUSE_READONLY_USER", "readonly_admin"),
+                password=os.getenv(
+                    "CLICKHOUSE_READONLY_PASSWORD", "readonly_secure_2025"
+                ),
             )
 
             # Corrected query execution with parameter support
@@ -1092,7 +1151,7 @@ async def execute_admin_query(
 
 @app.get("/admin/banking-metrics")
 async def get_banking_metrics(
-    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    db: Session = Depends(get_db), current_user: User = Depends(admin_only)
 ):
     """Get comprehensive banking metrics for admin dashboard"""
     try:
