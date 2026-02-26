@@ -1,6 +1,10 @@
 import sys
 import pytest
 from unittest.mock import MagicMock, patch
+import os
+
+# Set SECRET_KEY before importing main
+os.environ["SECRET_KEY"] = "test_secret_key"
 
 # Define Mock classes to capture arguments
 class MockColumn:
