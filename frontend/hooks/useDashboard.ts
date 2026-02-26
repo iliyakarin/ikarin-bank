@@ -148,7 +148,7 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
                 throw new Error('No authentication token found');
             }
 
-            if (mountedRef.current) {
+            if (mountedRef.current && user) {
                 const balanceResponse = await fetch(
                     `http://localhost:8000/accounts/${user.id}`,
                     {
@@ -203,7 +203,7 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
         };
     }, []);
 
-    return { balance, loading, error, refresh: () => fetchBalance(true), userId, refetching };
+    return { balance, loading, error, refresh: () => fetchBalance(true), userId: user ? user.id : null, refetching };
 }
 
 interface UseBalanceHistoryResult {
