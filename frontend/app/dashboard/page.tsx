@@ -18,28 +18,6 @@ export default function DashboardPage() {
     const { transactions, loading: transactionsLoading, error: transactionsError, refresh: refreshTransactions, refetching } = useTransactions(24, true);
     const { balance, loading: balanceLoading, refresh: refreshBalance } = useBalance(true);
 
-    useEffect(() => {
-        const fetchUser = async () => {
-            if (typeof window === 'undefined') return;
-
-            const authToken = token || localStorage.getItem('bank_token');
-            if (!authToken) return;
-
-            try {
-                const userRes = await fetch('http://localhost:8000/auth/me', {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                });
-                if (userRes.ok) {
-                    const user = await userRes.json();
-                    setUserName(user.first_name);
-                }
-            } catch (err) {
-                console.error('Failed to fetch user:', err);
-            }
-        };
-        fetchUser();
-    }, [token]);
-
     const handleRefresh = async () => {
         await Promise.all([refreshTransactions(), refreshBalance()]);
     };
@@ -58,7 +36,7 @@ export default function DashboardPage() {
                     transition={{ duration: 0.6 }}
                 >
                     <h1 className="text-4xl lg:text-5xl font-bold tracking-tight text-white mb-2">
-                        Good morning, <span className="text-white/40">{userName}</span>
+                        Good morning, <span className="text-white/40">{user?.first_name || 'User'}</span>
                     </h1>
                     <p className="text-white/40 font-medium">Your financial health is at its peak this month.</p>
                 </motion.div>
