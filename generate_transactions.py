@@ -7,6 +7,7 @@ Includes expenses, income (salary), and P2P transfers with proper balance update
 
 import random
 import uuid
+import os
 from datetime import datetime, timedelta
 from decimal import Decimal
 import psycopg2
@@ -15,18 +16,18 @@ import json
 
 # Database connections
 PG_CONN = psycopg2.connect(
-    host="localhost",
-    port=5432,
-    database="banking_db",
-    user="admin",
-    password="REDACTED"
+    host=os.getenv("POSTGRES_HOST"),
+    port=os.getenv("POSTGRES_PORT"),
+    database=os.getenv("POSTGRES_DB"),
+    user=os.getenv("POSTGRES_USER"),
+    password=os.getenv("POSTGRES_PASSWORD")
 )
 
 CH_CLIENT = clickhouse_connect.get_client(
-    host="localhost",
-    port=8123,
-    username="admin",
-    password="REDACTED"
+    host=os.getenv("CLICKHOUSE_HOST"),
+    port=os.getenv("CLICKHOUSE_PORT"),
+    username=os.getenv("CLICKHOUSE_USER"),
+    password=os.getenv("CLICKHOUSE_PASSWORD")
 )
 
 # User and account data
