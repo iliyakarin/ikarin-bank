@@ -117,12 +117,11 @@ interface UseBalanceResult {
 }
 
 export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const [balance, setBalance] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [refetching, setRefetching] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [userId, setUserId] = useState<number | null>(null);
     const mountedRef = useRef(true);
     const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -149,20 +148,7 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
                 throw new Error('No authentication token found');
             }
 
-            const userResponse = await fetch('http://localhost:8000/auth/me', {
-                headers: { 'Authorization': `Bearer ${authToken}` },
-                signal: controller.signal,
-            });
-
-            if (!userResponse.ok) {
-                throw new Error('Failed to fetch user info');
-            }
-
-            const user = await userResponse.json();
-
             if (mountedRef.current) {
-                setUserId(user.id);
-
                 const balanceResponse = await fetch(
                     `http://localhost:8000/accounts/${user.id}`,
                     {
@@ -193,7 +179,7 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
                 setRefetching(false);
             }
         }
-    }, [token]);
+    }, [token, user]);
 
     useEffect(() => {
         fetchBalance(false);

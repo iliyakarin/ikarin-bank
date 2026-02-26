@@ -70,7 +70,8 @@ export default function DashboardPage() {
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         onClick={handleRefresh}
-                        className="p-3 bg-white/5 rounded-2xl border border-white/10 text-white hover:bg-white/10 transition-all"
+                        disabled={refetching}
+                        className="p-3 bg-white/5 rounded-2xl border border-white/10 text-white hover:bg-white/10 transition-all disabled:opacity-50"
                         title="Refresh data"
                         aria-label="Refresh data"
                     >
