@@ -29,7 +29,7 @@ export default function GlassNavigation() {
                         const Icon = item.icon;
                         const isActive = pathname === item.href;
                         return (
-                            <Link key={item.href} href={item.href}>
+                            <Link key={item.href} href={item.href} aria-label={item.name}>
                                 <motion.div
                                     whileHover={{ scale: 1.1 }}
                                     whileTap={{ scale: 0.9 }}
@@ -56,7 +56,7 @@ export default function GlassNavigation() {
                     const Icon = item.icon;
                     const isActive = pathname === item.href;
                     return (
-                        <Link key={item.href} href={item.href}>
+                        <Link key={item.href} href={item.href} aria-label={item.name}>
                             <motion.div
                                 whileTap={{ scale: 0.8 }}
                                 className={`p-2 rounded-xl transition-all ${isActive ? "text-white bg-white/10" : "text-white/40"

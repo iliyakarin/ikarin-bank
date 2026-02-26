@@ -113,20 +113,26 @@ interface UseBalanceResult {
     error: string | null;
     refresh: () => Promise<void>;
     userId: number | null;
+    refetching: boolean;
 }
 
 export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
     const { token, user } = useAuth();
     const [balance, setBalance] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
+    const [refetching, setRefetching] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const mountedRef = useRef(true);
     const abortControllerRef = useRef<AbortController | null>(null);
 
-    const fetchBalance = useCallback(async () => {
-        if (!mountedRef.current || !user?.id) return;
+    const fetchBalance = useCallback(async (isRefresh: boolean = false) => {
+        if (!mountedRef.current) return;
 
-        setLoading(true);
+        if (isRefresh) {
+            setRefetching(true);
+        } else {
+            setLoading(true);
+        }
         setError(null);
 
         if (abortControllerRef.current) {
@@ -170,16 +176,17 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
         } finally {
             if (mountedRef.current) {
                 setLoading(false);
+                setRefetching(false);
             }
         }
     }, [token, user]);
 
     useEffect(() => {
-        fetchBalance();
+        fetchBalance(false);
 
         if (autoRefresh) {
             const interval = setInterval(() => {
-                fetchBalance();
+                fetchBalance(true);
             }, 60000); // Refresh every minute
 
             return () => clearInterval(interval);
@@ -196,7 +203,7 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
         };
     }, []);
 
-    return { balance, loading, error, refresh: fetchBalance, userId: user?.id || null };
+    return { balance, loading, error, refresh: () => fetchBalance(true), userId, refetching };
 }
 
 interface UseBalanceHistoryResult {
