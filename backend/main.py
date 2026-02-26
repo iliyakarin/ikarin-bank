@@ -4,7 +4,7 @@ import os
 import re
 import datetime
 import asyncio
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
@@ -506,6 +506,160 @@ async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_d
         raise HTTPException(status_code=500, detail=f"Transaction failed: {str(e)}")
 
 
+def _validate_p2p_transfer(
+    transfer: P2PTransferRequest,
+    current_user: User,
+    db: Session
+) -> User:
+    """Validates the transfer request and returns the recipient user."""
+    # Recipient Lookup
+    recipient = db.query(User).filter(User.email == transfer.recipient_email).first()
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+
+    if recipient.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot transfer to yourself")
+
+    return recipient
+
+def _execute_p2p_balances(
+    db: Session,
+    sender_id: int,
+    recipient_id: int,
+    amount: Decimal
+) -> Tuple[Account, Account]:
+    """Locks accounts and updates balances atomically."""
+    # Order by ID to prevent deadlocks.
+    # We query sequentially ensuring order based on ID to avoid deadlock if concurrent transfers happen in opposite directions.
+    # Ideally we should grab locks in ID order.
+
+    first_id, second_id = sorted([sender_id, recipient_id])
+
+    # We must fetch them in order.
+    # Note: original code fetched by user_id.
+    # Since account:user is 1:1, we can query Account where user_id is X.
+
+    # To properly lock, we need to find which account corresponds to which user ID first?
+    # Or just rely on the fact that we sort the user IDs and query accounts for those user IDs in that order.
+
+    acc1 = db.query(Account).filter(Account.user_id == first_id).with_for_update().first()
+    acc2 = db.query(Account).filter(Account.user_id == second_id).with_for_update().first()
+
+    if first_id == sender_id:
+        sender_account = acc1
+        recipient_account = acc2
+    else:
+        sender_account = acc2
+        recipient_account = acc1
+
+    if not sender_account or sender_account.balance < amount:
+        raise HTTPException(
+            status_code=400, detail="Insufficient funds for this transfer."
+        )
+
+    if not recipient_account:
+        raise HTTPException(status_code=404, detail="Recipient account not found")
+
+    sender_account.balance -= amount
+    recipient_account.balance += amount
+
+    return sender_account, recipient_account
+
+def _create_p2p_transactions(
+    db: Session,
+    sender_account_id: int,
+    recipient_account_id: int,
+    amount: Decimal,
+    recipient_email: str,
+    sender_email: str,
+    idempotency_key: Optional[str],
+    client_ip: str,
+    user_agent: str
+) -> Tuple[str, str, str]:
+    """Creates transaction records for sender and recipient."""
+    tx_id_parent = str(uuid.uuid4())
+    tx_id_sender = str(uuid.uuid4())
+    tx_id_recipient = str(uuid.uuid4())
+
+    sender_tx = Transaction(
+        id=tx_id_sender,
+        parent_id=tx_id_parent,
+        account_id=sender_account_id,
+        amount=-amount,
+        category="Transfer",
+        merchant=f"Transfer to {recipient_email}",
+        status="pending",
+        transaction_type="transfer",
+        transaction_side="DEBIT",
+        idempotency_key=idempotency_key,
+        ip_address=client_ip,
+        user_agent=user_agent
+    )
+
+    recipient_tx = Transaction(
+        id=tx_id_recipient,
+        parent_id=tx_id_parent,
+        account_id=recipient_account_id,
+        amount=amount,
+        category="Transfer",
+        merchant=f"Received from {sender_email}",
+        status="pending",
+        transaction_type="transfer",
+        transaction_side="CREDIT",
+        idempotency_key=idempotency_key,
+        ip_address=client_ip,
+        user_agent=user_agent
+    )
+
+    db.add(sender_tx)
+    db.add(recipient_tx)
+
+    return tx_id_parent, tx_id_sender, tx_id_recipient
+
+def _create_p2p_outbox_entries(
+    db: Session,
+    sender_account_id: int,
+    recipient_account_id: int,
+    amount: Decimal,
+    sender_email: str,
+    recipient_email: str,
+    tx_id_parent: str,
+    tx_id_sender: str,
+    tx_id_recipient: str
+):
+    """Creates outbox entries for Kafka processing."""
+    sender_payload = {
+        "transaction_id": tx_id_sender,
+        "parent_id": tx_id_parent,
+        "account_id": sender_account_id,
+        "sender_email": sender_email,
+        "recipient_email": recipient_email,
+        "amount": -float(amount),
+        "category": "Transfer",
+        "merchant": f"Transfer to {recipient_email}",
+        "transaction_type": "transfer",
+        "transaction_side": "DEBIT",
+        "status": "pending",
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+    }
+
+    recipient_payload = {
+        "transaction_id": tx_id_recipient,
+        "parent_id": tx_id_parent,
+        "account_id": recipient_account_id,
+        "sender_email": sender_email,
+        "recipient_email": recipient_email,
+        "amount": float(amount),
+        "category": "Transfer",
+        "merchant": f"Received from {sender_email}",
+        "transaction_type": "transfer",
+        "transaction_side": "CREDIT",
+        "status": "pending",
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+    }
+
+    db.add(Outbox(event_type="p2p.sender", payload=sender_payload))
+    db.add(Outbox(event_type="p2p.recipient", payload=recipient_payload))
 
 
 @app.post("/p2p-transfer")
@@ -527,111 +681,42 @@ async def create_p2p_transfer(
         if existing_key:
             return existing_key.response_body
 
-    # 2. Recipient Lookup
-    recipient = db.query(User).filter(User.email == transfer.recipient_email).first()
-    if not recipient:
-        raise HTTPException(status_code=404, detail="Recipient not found")
-
-    if recipient.id == current_user.id:
-        raise HTTPException(status_code=400, detail="Cannot transfer to yourself")
-
-    tx_id_parent = str(uuid.uuid4())
-    tx_id_sender = str(uuid.uuid4())
-    tx_id_recipient = str(uuid.uuid4())
+    # 2. Validation & Recipient Lookup
+    recipient = _validate_p2p_transfer(transfer, current_user, db)
     
     try:
         # 3. Atomic Locking & Balance Verification (ACID)
-        # We must lock BOTH accounts to prevent deadlocks and race conditions.
-        # Order by ID to prevent deadlocks.
-        account_ids = sorted([current_user.id, recipient.id])
-        
-        # This is a slightly naive way to lock by user_id but since we have 1:1 account:user for now it works.
-        # Ideally we fetch account IDs first, then lock them in ascending order.
-        
-        sender_account = db.query(Account).filter(Account.user_id == current_user.id).with_for_update().first()
-        recipient_account = db.query(Account).filter(Account.user_id == recipient.id).with_for_update().first()
-
-        if not sender_account or sender_account.balance < transfer.amount:
-            raise HTTPException(
-                status_code=400, detail="Insufficient funds for this transfer."
-            )
-
-        if not recipient_account:
-            raise HTTPException(status_code=404, detail="Recipient account not found")
-
-        # 4. Multi-sided Balance Mutation
-        sender_account.balance -= transfer.amount
-        recipient_account.balance += transfer.amount
-
-        # 5. Double Entry Ledger (Immutable records)
-        sender_tx = Transaction(
-            id=tx_id_sender,
-            parent_id=tx_id_parent,
-            account_id=sender_account.id,
-            amount=-transfer.amount,
-            category="Transfer",
-            merchant=f"Transfer to {recipient.email}",
-            status="pending",
-            transaction_type="transfer",
-            transaction_side="DEBIT",
-            idempotency_key=transfer.idempotency_key,
-            ip_address=client_ip,
-            user_agent=user_agent
+        sender_account, recipient_account = _execute_p2p_balances(
+            db, current_user.id, recipient.id, transfer.amount
         )
 
-        recipient_tx = Transaction(
-            id=tx_id_recipient,
-            parent_id=tx_id_parent,
-            account_id=recipient_account.id,
-            amount=transfer.amount,
-            category="Transfer",
-            merchant=f"Received from {current_user.email}",
-            status="pending",
-            transaction_type="transfer",
-            transaction_side="CREDIT",
-            idempotency_key=transfer.idempotency_key,
-            ip_address=client_ip,
-            user_agent=user_agent
+        # 4. Create Transaction Records
+        tx_id_parent, tx_id_sender, tx_id_recipient = _create_p2p_transactions(
+            db,
+            sender_account.id,
+            recipient_account.id,
+            transfer.amount,
+            recipient.email,
+            current_user.email,
+            transfer.idempotency_key,
+            client_ip,
+            user_agent
         )
 
-        db.add(sender_tx)
-        db.add(recipient_tx)
+        # 5. Create Outbox Entries
+        _create_p2p_outbox_entries(
+            db,
+            sender_account.id,
+            recipient_account.id,
+            transfer.amount,
+            current_user.email,
+            recipient.email,
+            tx_id_parent,
+            tx_id_sender,
+            tx_id_recipient
+        )
 
-        # 6. Outbox entries for both sides (ensures ClickHouse is also in sync)
-        sender_payload = {
-            "transaction_id": tx_id_sender,
-            "parent_id": tx_id_parent,
-            "account_id": sender_account.id,
-            "sender_email": current_user.email,
-            "recipient_email": recipient.email,
-            "amount": -float(transfer.amount),
-            "category": "Transfer",
-            "merchant": f"Transfer to {recipient.email}",
-            "transaction_type": "transfer",
-            "transaction_side": "DEBIT",
-            "status": "pending",
-            "timestamp": datetime.datetime.utcnow().isoformat(),
-        }
-
-        recipient_payload = {
-            "transaction_id": tx_id_recipient,
-            "parent_id": tx_id_parent,
-            "account_id": recipient_account.id,
-            "sender_email": current_user.email,
-            "recipient_email": recipient.email,
-            "amount": float(transfer.amount),
-            "category": "Transfer",
-            "merchant": f"Received from {current_user.email}",
-            "transaction_type": "transfer",
-            "transaction_side": "CREDIT",
-            "status": "pending",
-            "timestamp": datetime.datetime.utcnow().isoformat(),
-        }
-
-        db.add(Outbox(event_type="p2p.sender", payload=sender_payload))
-        db.add(Outbox(event_type="p2p.recipient", payload=recipient_payload))
-
-        # 7. Finalize Idempotency Key
+        # 6. Finalize Idempotency Key
         response_body = {"status": "success", "transaction_id": tx_id_parent}
         if transfer.idempotency_key:
             db.add(IdempotencyKey(
