@@ -44,6 +44,8 @@ export default function DashboardPage() {
         await Promise.all([refreshTransactions(), refreshBalance()]);
     };
 
+    const isRefreshing = transactionsLoading || balanceLoading || refetching;
+
     if (transactionsLoading && balanceLoading) {
         return <DashboardSkeleton />;
     }
@@ -68,12 +70,17 @@ export default function DashboardPage() {
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         onClick={handleRefresh}
-                        disabled={refetching}
                         className="p-3 bg-white/5 rounded-2xl border border-white/10 text-white hover:bg-white/10 transition-all disabled:opacity-50"
                         title="Refresh data"
                         aria-label="Refresh data"
+                        disabled={isRefreshing}
                     >
-                        <RefreshCw size={20} className={refetching || balanceRefetching ? "animate-spin" : ""} />
+                        <motion.div
+                            animate={isRefreshing ? { rotate: 360 } : { rotate: 0 }}
+                            transition={isRefreshing ? { repeat: Infinity, duration: 1, ease: "linear" } : { duration: 0.5 }}
+                        >
+                            <RefreshCw size={20} />
+                        </motion.div>
                     </motion.button>
                     <motion.div
                         initial={{ opacity: 0, scale: 0.8 }}
