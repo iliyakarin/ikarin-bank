@@ -2,6 +2,10 @@
 import sys
 import unittest
 from unittest.mock import MagicMock, patch
+import os
+
+# Set SECRET_KEY before importing main
+os.environ["SECRET_KEY"] = "test_secret_key"
 
 # Mock FastAPI and other dependencies
 sys.modules['fastapi'] = MagicMock()
@@ -101,7 +105,7 @@ class TestAdminRoutes(unittest.TestCase):
         mock_result.named_results.return_value = [{"event_time": "2023-01-01", "other": "data"}]
         mock_client.query.return_value = mock_result
 
-        with patch('clickhouse_connect.get_client', return_value=mock_client):
+        with patch('backend.main.clickhouse_connect.get_client', return_value=mock_client):
             logs = get_ch_logs(current_user=admin_user)
             self.assertEqual(len(logs), 1)
             self.assertEqual(logs[0]["status"], "cleared")
