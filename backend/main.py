@@ -325,6 +325,7 @@ class SimulationRequest(BaseModel):
 async def simulate_traffic(
     req: SimulationRequest,
     background_tasks: BackgroundTasks,
+    # Ensure this endpoint is protected by admin_only dependency
     current_user: User = Depends(admin_only),
 ):
     background_tasks.add_task(run_simulation, req.tps, req.count)
