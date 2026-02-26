@@ -46,14 +46,41 @@ with patch('fastapi.FastAPI', return_value=mock_fastapi_app), \
     import main
     main.HTTPException = MockHTTPException
     # We need to access get_ch_logs directly
-    from main import get_ch_logs, admin_only
+    from main import get_ch_logs, admin_only, get_kafka_status
 
 class MockUser:
-    def __init__(self, email, is_admin=False):
+    def __init__(self, email, is_admin=False, role="user"):
         self.email = email
         self.is_admin = is_admin
+        self.role = role
 
 class TestAdminRoutes(unittest.TestCase):
+    def test_get_kafka_status_requires_admin(self):
+        """Verify get_kafka_status requires admin privileges"""
+        import inspect
+
+        # 1. Verify function signature requires current_user dependency
+        sig = inspect.signature(get_kafka_status)
+        current_user_param = sig.parameters.get('current_user')
+        self.assertIsNotNone(current_user_param, "get_kafka_status missing current_user dependency")
+
+        # 2. Test successful admin access
+        admin_user = MockUser("admin@example.com", is_admin=True, role="admin")
+
+        # Setup mocks for AdminClient
+        mock_admin_cls = sys.modules['confluent_kafka.admin'].AdminClient
+        mock_admin_instance = mock_admin_cls.return_value
+        mock_metadata = MagicMock()
+        mock_metadata.topics = {"topic1": {}, "topic2": {}}
+        mock_admin_instance.list_topics.return_value = mock_metadata
+
+        # Execute
+        result = get_kafka_status(current_user=admin_user)
+
+        # Verify
+        self.assertEqual(result, {"topics": ["topic1", "topic2"]})
+        mock_admin_instance.list_topics.assert_called_with(timeout=10)
+
     def test_get_ch_logs_requires_admin(self):
         """Verify get_ch_logs calls admin_only dependency or enforces admin access"""
 
@@ -88,16 +115,20 @@ class TestAdminRoutes(unittest.TestCase):
         """Verify the admin_only dependency logic itself"""
 
         # 1. Admin user via flag
-        admin_user = MockUser("admin@example.com", is_admin=True)
+        admin_user = MockUser("admin@example.com", is_admin=True, role="user")
         self.assertEqual(admin_only(admin_user), admin_user)
 
+        # 1b. Admin user via role
+        admin_role_user = MockUser("admin2@example.com", is_admin=False, role="admin")
+        self.assertEqual(admin_only(admin_role_user), admin_role_user)
+
         # 2. Admin user via email list
-        regular_user_in_list = MockUser("admin@example.com", is_admin=False)
+        regular_user_in_list = MockUser("admin@example.com", is_admin=False, role="user")
         with patch('main.ADMIN_EMAILS', ["admin@example.com"]):
             self.assertEqual(admin_only(regular_user_in_list), regular_user_in_list)
 
         # 3. Non-admin user
-        regular_user = MockUser("user@example.com", is_admin=False)
+        regular_user = MockUser("user@example.com", is_admin=False, role="user")
         with patch('main.ADMIN_EMAILS', ["admin@example.com"]):
             with self.assertRaises(MockHTTPException) as cm:
                 admin_only(regular_user)
