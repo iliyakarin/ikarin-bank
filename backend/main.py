@@ -3,7 +3,7 @@ import uuid
 import os
 import datetime
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
@@ -13,8 +13,8 @@ from pydantic import BaseModel
 from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey
 
 from fastapi.middleware.cors import CORSMiddleware
-from confluent_kafka.admin import AdminClient, NewTopic
-from confluent_kafka import Consumer, KafkaException, TopicPartition
+from confluent_kafka.admin import AdminClient
+from confluent_kafka import Consumer
 import clickhouse_connect
 from passlib.context import CryptContext
 from jose import JWTError, jwt
