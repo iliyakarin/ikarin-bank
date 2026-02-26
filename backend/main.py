@@ -271,13 +271,6 @@ async def get_stats(
     }
 
 
-@app.get("/admin/metrics")
-async def get_metrics(
-    db: Session = Depends(get_db), current_user: User = Depends(admin_only)
-):
-    return await get_stats(db)
-
-
 @app.get("/admin/traces")
 async def get_traces(
     db: Session = Depends(get_db), current_user: User = Depends(admin_only)
