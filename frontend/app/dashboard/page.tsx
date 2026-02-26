@@ -16,7 +16,29 @@ export default function DashboardPage() {
     const [userName, setUserName] = useState<string>('User');
 
     const { transactions, loading: transactionsLoading, error: transactionsError, refresh: refreshTransactions, refetching } = useTransactions(24, true);
-    const { balance, loading: balanceLoading, refresh: refreshBalance } = useBalance(true);
+    const { balance, loading: balanceLoading, refresh: refreshBalance, refetching: balanceRefetching } = useBalance(true);
+
+    useEffect(() => {
+        const fetchUser = async () => {
+            if (typeof window === 'undefined') return;
+
+            const authToken = token || localStorage.getItem('bank_token');
+            if (!authToken) return;
+
+            try {
+                const userRes = await fetch('http://localhost:8000/auth/me', {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                if (userRes.ok) {
+                    const user = await userRes.json();
+                    setUserName(user.first_name);
+                }
+            } catch (err) {
+                console.error('Failed to fetch user:', err);
+            }
+        };
+        fetchUser();
+    }, [token]);
 
     const handleRefresh = async () => {
         await Promise.all([refreshTransactions(), refreshBalance()]);
@@ -51,7 +73,7 @@ export default function DashboardPage() {
                         title="Refresh data"
                         aria-label="Refresh data"
                     >
-                        <RefreshCw size={20} className={refetching ? "animate-spin" : ""} />
+                        <RefreshCw size={20} className={refetching || balanceRefetching ? "animate-spin" : ""} />
                     </motion.button>
                     <motion.div
                         initial={{ opacity: 0, scale: 0.8 }}
