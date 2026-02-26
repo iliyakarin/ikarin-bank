@@ -31,14 +31,22 @@ with patch('fastapi.FastAPI'), patch('fastapi.security.OAuth2PasswordBearer'), p
     from main import admin_only
 
 class MockUser:
-    def __init__(self, email, is_admin=None):
+    def __init__(self, email, is_admin=None, role="user"):
         self.email = email
+        self.role = role
         if is_admin is not None:
             self.is_admin = is_admin
 
 class TestSecurityFix(unittest.TestCase):
     def test_admin_only_with_authorized_email(self):
         user = MockUser("ikarin@admin.com")
+        with patch('main.ADMIN_EMAILS', ["ikarin@admin.com"]):
+            result = admin_only(user)
+            self.assertEqual(result, user)
+
+    def test_admin_only_with_role(self):
+        user = MockUser("newadmin@example.com", role="admin")
+        # Ensure email is not in list
         with patch('main.ADMIN_EMAILS', ["ikarin@admin.com"]):
             result = admin_only(user)
             self.assertEqual(result, user)
