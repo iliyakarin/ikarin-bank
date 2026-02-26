@@ -47,10 +47,17 @@ with patch('fastapi.FastAPI', return_value=mock_fastapi_app), \
      patch('fastapi.security.OAuth2PasswordBearer'), \
      patch('passlib.context.CryptContext'):
 
-    import backend.main as main
+    try:
+        import backend.main as main
+    except ImportError:
+        import main
+
     main.HTTPException = MockHTTPException
     # We need to access get_ch_logs directly
-    from backend.main import get_ch_logs, admin_only, get_kafka_status
+    try:
+        from backend.main import get_ch_logs, admin_only, get_kafka_status
+    except ImportError:
+        from main import get_ch_logs, admin_only, get_kafka_status
 
 class MockUser:
     def __init__(self, email, is_admin=False, role="user"):
