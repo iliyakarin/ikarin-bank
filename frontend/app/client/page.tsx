@@ -16,7 +16,7 @@ export default function DashboardPage() {
     const [dayFilter, setDayFilter] = useState(30);
 
     const { transactions, loading: transactionsLoading, error: transactionsError, refresh: refreshTransactions, refetching } = useTransactions(24, true);
-    const { balance, loading: balanceLoading, refresh: refreshBalance } = useBalance(true);
+    const { balance, loading: balanceLoading, refresh: refreshBalance, refetching: balanceRefetching } = useBalance(true);
 
     useEffect(() => {
         if (user) {
