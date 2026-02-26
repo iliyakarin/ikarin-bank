@@ -398,6 +398,7 @@ def get_postgres_logs(
 
 @app.get("/admin/clickhouse-logs")
 def get_ch_logs(current_user: User = Depends(admin_only)):
+    # Connect to ClickHouse
     client = clickhouse_connect.get_client(
         host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
     )
