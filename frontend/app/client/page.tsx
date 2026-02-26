@@ -16,7 +16,7 @@ export default function DashboardPage() {
     const [dayFilter, setDayFilter] = useState(30);
 
     const { transactions, loading: transactionsLoading, error: transactionsError, refresh: refreshTransactions, refetching } = useTransactions(24, true);
-    const { balance, loading: balanceLoading, refresh: refreshBalance } = useBalance(true);
+    const { balance, loading: balanceLoading, refresh: refreshBalance, refetching: balanceRefetching } = useBalance(true);
 
     useEffect(() => {
         if (user) {
@@ -75,7 +75,7 @@ export default function DashboardPage() {
                         title="Refresh data"
                         aria-label="Refresh data"
                     >
-                        <RefreshCw size={20} className={refetching ? "animate-spin" : ""} />
+                        <RefreshCw size={20} className={refetching || balanceRefetching ? "animate-spin" : ""} />
                     </motion.button>
                     <motion.div
                         initial={{ opacity: 0, scale: 0.8 }}
