@@ -15,8 +15,8 @@ export default function DashboardPage() {
     const { token } = useAuth();
     const [userName, setUserName] = useState<string>('User');
 
-    const { transactions, loading: transactionsLoading, error: transactionsError, refresh: refreshTransactions } = useTransactions(24, true);
-    const { balance, loading: balanceLoading } = useBalance(true);
+    const { transactions, loading: transactionsLoading, error: transactionsError, refresh: refreshTransactions, refetching } = useTransactions(24, true);
+    const { balance, loading: balanceLoading, refresh: refreshBalance, refetching: balanceRefetching } = useBalance(true);
 
     useEffect(() => {
         const fetchUser = async () => {
@@ -41,7 +41,7 @@ export default function DashboardPage() {
     }, [token]);
 
     const handleRefresh = async () => {
-        await refreshTransactions();
+        await Promise.all([refreshTransactions(), refreshBalance()]);
     };
 
     if (transactionsLoading && balanceLoading) {
@@ -70,8 +70,9 @@ export default function DashboardPage() {
                         onClick={handleRefresh}
                         className="p-3 bg-white/5 rounded-2xl border border-white/10 text-white hover:bg-white/10 transition-all"
                         title="Refresh data"
+                        aria-label="Refresh data"
                     >
-                        <RefreshCw size={20} />
+                        <RefreshCw size={20} className={refetching || balanceRefetching ? "animate-spin" : ""} />
                     </motion.button>
                     <motion.div
                         initial={{ opacity: 0, scale: 0.8 }}
