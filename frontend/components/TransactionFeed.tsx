@@ -1,23 +1,15 @@
 "use client";
 import { Transaction } from '@/lib/types';
+import { CATEGORY_ICONS, DEFAULT_CATEGORY_ICON } from '@/lib/constants';
 
 interface TransactionItemProps {
     transaction: Transaction;
 }
 
-const categoryIcons: Record<string, string> = {
-    'Food': '🍔',
-    'Utilities': '💡',
-    'Shopping': '🛍️',
-    'Transfer': '💸',
-    'Entertainment': '🎬',
-    'Health': '🏥',
-};
-
 function TransactionItem({ transaction }: TransactionItemProps) {
     const isPending = transaction.status === 'pending';
     const isProcessing = transaction.status === 'sent_to_kafka';
-    const icon = categoryIcons[transaction.category] || '💰';
+    const icon = CATEGORY_ICONS[transaction.category] || DEFAULT_CATEGORY_ICON;
     
     // Determine if this is a deduction (expense or transfer) or income
     const isIncome = transaction.transaction_type === 'income';
