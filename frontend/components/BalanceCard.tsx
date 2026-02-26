@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { TrendingUp, Eye, EyeOff } from "lucide-react";
+import { TrendingUp, Eye, EyeOff, Copy, Check } from "lucide-react";
 import { useState, useEffect } from "react";
 
 interface BalanceCardProps {
@@ -13,6 +13,13 @@ interface BalanceCardProps {
 export default function BalanceCard({ balance, growth, accountNumber }: BalanceCardProps) {
     const [showFullAccount, setShowFullAccount] = useState(false);
     const [mounted, setMounted] = useState(false);
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(accountNumber);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
 
     useEffect(() => {
         setMounted(true);
@@ -54,13 +61,23 @@ export default function BalanceCard({ balance, growth, accountNumber }: BalanceC
                             <span className="font-mono text-sm text-white/60">
                                 {showFullAccount ? accountNumber : `**** **** **** ${accountNumber.slice(-4)}`}
                             </span>
-                            <button
-                                onClick={() => setShowFullAccount(!showFullAccount)}
-                                className="text-white/40 hover:text-white/80 transition-colors"
-                                aria-label={showFullAccount ? "Hide account number" : "Show account number"}
-                            >
-                                {showFullAccount ? <EyeOff size={16} /> : <Eye size={16} />}
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setShowFullAccount(!showFullAccount)}
+                                    className="text-white/40 hover:text-white/80 transition-colors"
+                                    aria-label={showFullAccount ? "Hide account number" : "Show account number"}
+                                >
+                                    {showFullAccount ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                                <button
+                                    onClick={handleCopy}
+                                    className="text-white/40 hover:text-white/80 transition-colors flex items-center gap-1"
+                                    aria-label="Copy account number"
+                                >
+                                    {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                                    {copied && <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-tighter">Copied</span>}
+                                </button>
+                            </div>
                         </div>
                     </div>
 
