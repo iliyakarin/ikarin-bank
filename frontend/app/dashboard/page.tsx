@@ -58,7 +58,7 @@ export default function DashboardPage() {
                     transition={{ duration: 0.6 }}
                 >
                     <h1 className="text-4xl lg:text-5xl font-bold tracking-tight text-white mb-2">
-                        Good morning, <span className="text-white/40">{userName}</span>
+                        Good morning, <span className="text-white/40">{user?.first_name || 'User'}</span>
                     </h1>
                     <p className="text-white/40 font-medium">Your financial health is at its peak this month.</p>
                 </motion.div>
@@ -68,7 +68,8 @@ export default function DashboardPage() {
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         onClick={handleRefresh}
-                        className="p-3 bg-white/5 rounded-2xl border border-white/10 text-white hover:bg-white/10 transition-all"
+                        disabled={refetching}
+                        className="p-3 bg-white/5 rounded-2xl border border-white/10 text-white hover:bg-white/10 transition-all disabled:opacity-50"
                         title="Refresh data"
                         aria-label="Refresh data"
                     >
