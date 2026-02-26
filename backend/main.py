@@ -139,9 +139,12 @@ async def get_current_user(
 
 def admin_only(current_user: User = Depends(get_current_user)):
     """Check if current user is an admin"""
-    # Check for admin status via explicit list or potential database flag
+    # Check for admin status via explicit list or RBAC role
     is_admin_flag = getattr(current_user, "is_admin", False)
-    if not is_admin_flag and current_user.email not in ADMIN_EMAILS:
+
+    # Check if user has 'admin' role or is in the legacy admin email list
+    # We prioritize the database role for RBAC
+    if current_user.role != "admin" and not is_admin_flag and current_user.email not in ADMIN_EMAILS:
         raise HTTPException(
             status_code=403, detail="Admin privileges required for this operation"
         )
@@ -1147,7 +1150,7 @@ async def execute_admin_query(
 
 @app.get("/admin/banking-metrics")
 async def get_banking_metrics(
-    db: Session = Depends(get_db), current_user: User = Depends(admin_only)
+    current_user: User = Depends(admin_only), db: Session = Depends(get_db)
 ):
     """Get comprehensive banking metrics for admin dashboard"""
     try:

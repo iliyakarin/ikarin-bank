@@ -24,6 +24,8 @@ class User(Base):
     last_name = Column(String(50), nullable=False)
     email = Column(String(100), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
+    # Use server_default to ensure existing rows get a value during migration
+    role = Column(String(20), default="user", server_default="user", nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class Account(Base):
@@ -70,4 +72,3 @@ class Outbox(Base):
     status = Column(String(20), default="pending")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     processed_at = Column(DateTime, nullable=True)
-
