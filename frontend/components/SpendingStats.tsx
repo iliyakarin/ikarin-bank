@@ -2,6 +2,7 @@
 
 import { Transaction } from '@/lib/types';
 import { useMemo } from 'react';
+import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLOR } from '@/lib/constants';
 import { ArrowUpRight, ArrowDownLeft, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 
 interface SpendingStatsProps {
@@ -156,16 +157,6 @@ export function SpendingByCategory({ transactions, limit = 5 }: SpendingByCatego
         }).format(amount);
     };
 
-    const categoryColors: Record<string, string> = {
-        'Food': 'bg-orange-500',
-        'Utilities': 'bg-yellow-500',
-        'Shopping': 'bg-purple-500',
-        'Entertainment': 'bg-pink-500',
-        'Health': 'bg-green-500',
-        'Transport': 'bg-blue-500',
-        'Default': 'bg-gray-500',
-    };
-
     if (spendingData.length === 0) {
         return (
             <div className="glass-panel p-8 rounded-[2rem] text-center">
@@ -179,7 +170,7 @@ export function SpendingByCategory({ transactions, limit = 5 }: SpendingByCatego
             <h3 className="text-xl font-bold text-white">Spending by Category</h3>
             <div className="space-y-4">
                 {spendingData.map((item) => {
-                    const colorClass = categoryColors[item.category] || categoryColors.Default;
+                    const colorClass = CATEGORY_COLORS[item.category] || DEFAULT_CATEGORY_COLOR;
                     return (
                         <div key={item.category} className="space-y-2">
                             <div className="flex items-center justify-between">
