@@ -2,22 +2,14 @@
 import React from 'react';
 import { Transaction } from '@/lib/types';
 import { getTransactionStatus, getStatusLabel } from '@/lib/transactionUtils';
+import { CATEGORY_ICONS, DEFAULT_CATEGORY_ICON } from '@/lib/constants';
 import { motion } from 'framer-motion';
 import { Check, Clock, AlertCircle } from 'lucide-react';
-
-const categoryIcons: Record<string, string> = {
-    'Food': '🍔',
-    'Utilities': '💡',
-    'Shopping': '🛍️',
-    'Transfer': '💸',
-    'Entertainment': '🎬',
-    'Transport': '🚗',
-};
 
 function TransactionItem({ transaction, index }: { transaction: Transaction, index: number }) {
     const status = getTransactionStatus(transaction.status);
     const statusLabel = getStatusLabel(status);
-    const icon = categoryIcons[transaction.category] || '💰';
+    const icon = CATEGORY_ICONS[transaction.category] || DEFAULT_CATEGORY_ICON;
 
     // Determine if this is a deduction (expense or transfer) or income
     const isIncome = transaction.amount > 0;
