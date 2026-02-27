@@ -4,7 +4,7 @@ import os
 import re
 import datetime
 import asyncio
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
@@ -1035,6 +1035,180 @@ class QueryRequest(BaseModel):
     params: Dict[str, Any] = {}
 
 
+def _validate_sql_query(query: str):
+    """Validates SQL query for safety."""
+    query_upper = query.strip().upper()
+    if not query_upper.startswith("SELECT"):
+        raise HTTPException(
+            status_code=400, detail="Only SELECT queries are allowed"
+        )
+
+    # Block forbidden keywords that could be used for injection or destructive actions
+    forbidden = [
+        "DROP",
+        "DELETE",
+        "UPDATE",
+        "INSERT",
+        "TRUNCATE",
+        "ALTER",
+        "CREATE",
+        "GRANT",
+        "REVOKE",
+        "RENAME",
+    ]
+    for word in forbidden:
+        if re.search(r"\b" + word + r"\b", query_upper):
+            raise HTTPException(
+                status_code=400, detail=f"Forbidden keyword '{word}' detected"
+            )
+
+
+def _execute_clickhouse_query(request: QueryRequest) -> Tuple[List, List]:
+    """Executes a query against ClickHouse."""
+    _validate_sql_query(request.query)
+
+    # Connect to ClickHouse using readonly credentials for safety
+    ch_client = clickhouse_connect.get_client(
+        host=CH_HOST,
+        port=CH_PORT,
+        username=os.getenv("CLICKHOUSE_READONLY_USER"),
+        password=os.getenv("CLICKHOUSE_READONLY_PASSWORD"),
+    )
+
+    # Corrected query execution with parameter support
+    # Only allow params that are used in actual placeholder syntax {param}
+    # Note: clickhouse_connect supports parameter binding
+    result = ch_client.query(request.query, parameters=request.params)
+    return result.result_rows, result.column_names
+
+
+def _execute_postgres_query(request: QueryRequest, db: Session) -> Tuple[List, List]:
+    """Executes a query against PostgreSQL."""
+    _validate_sql_query(request.query)
+
+    # Execute PostgreSQL query with parameter binding to prevent SQL injection
+    result = db.execute(text(request.query), request.params)
+    data = [dict(row._mapping) for row in result]
+    columns = list(data[0].keys()) if data else []
+    return data, columns
+
+
+def _execute_kafka_query(request: QueryRequest) -> Tuple[List, List]:
+    """Executes a query against Kafka."""
+    if request.query == "get_recent_messages":
+        return _get_kafka_recent_messages()
+    elif request.query == "get_topic_stats":
+        return _get_kafka_topic_stats()
+    else:
+        raise HTTPException(status_code=400, detail="Unknown Kafka query type")
+
+
+def _get_kafka_recent_messages() -> Tuple[List, List]:
+    """Retrieves recent messages from Kafka."""
+    consumer_conf = {
+        "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
+        "group.id": "admin_query_group",
+        "auto.offset.reset": "latest",
+        "enable.auto.commit": False,
+    }
+
+    if KAFKA_USER and KAFKA_PASSWORD:
+        consumer_conf["sasl.mechanisms"] = "PLAIN"
+        consumer_conf["security.protocol"] = "SASL_PLAINTEXT"
+        consumer_conf["sasl.username"] = KAFKA_USER
+        consumer_conf["sasl.password"] = KAFKA_PASSWORD
+
+    consumer = Consumer(consumer_conf)
+    messages = []
+
+    try:
+        consumer.subscribe([KAFKA_TOPIC])
+        # Read last 100 messages
+        for i in range(100):
+            msg = consumer.poll(1.0)
+            if msg is None:
+                continue
+            if msg.error():
+                break
+
+            try:
+                data = json.loads(msg.value().decode("utf-8"))
+                messages.append(
+                    {
+                        "key": msg.key().decode("utf-8")
+                        if msg.key()
+                        else None,
+                        "value": data,
+                        "partition": msg.partition(),
+                        "offset": msg.offset(),
+                        "timestamp": msg.timestamp()[1]
+                        if msg.timestamp()[0]
+                        else None,
+                    }
+                )
+            except:
+                pass
+
+        consumer.close()
+        columns = ["key", "value", "partition", "offset", "timestamp"]
+        return messages, columns
+
+    except Exception as e:
+        consumer.close()
+        raise HTTPException(
+            status_code=500, detail=f"Kafka error: {str(e)}"
+        )
+
+
+def _get_kafka_topic_stats() -> Tuple[List, List]:
+    """Retrieves Kafka topic statistics."""
+    admin_client = AdminClient(
+        {"bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS}
+    )
+
+    if KAFKA_USER and KAFKA_PASSWORD:
+        admin_client = AdminClient(
+            {
+                "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
+                "sasl.mechanisms": "PLAIN",
+                "security.protocol": "SASL_PLAINTEXT",
+                "sasl.username": KAFKA_USER,
+                "sasl.password": KAFKA_PASSWORD,
+            }
+        )
+
+    try:
+        metadata = admin_client.list_topics(timeout=10)
+        topic_metadata = metadata.topics.get(KAFKA_TOPIC)
+
+        if topic_metadata:
+            partitions = topic_metadata.partitions
+            total_messages = sum(
+                p.high_watermark
+                for p in partitions.values()
+                if p.high_watermark
+            )
+
+            data = [
+                {
+                    "topic": KAFKA_TOPIC,
+                    "partitions": len(partitions),
+                    "total_messages": total_messages,
+                    "status": "active",
+                }
+            ]
+            columns = ["topic", "partitions", "total_messages", "status"]
+        else:
+            data = []
+            columns = []
+        return data, columns
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get topic stats: {str(e)}"
+        )
+
+
 @app.post("/admin/query")
 async def execute_admin_query(
     request: QueryRequest,
@@ -1046,167 +1220,12 @@ async def execute_admin_query(
         source = request.params.get("source", "clickhouse")
         start_time = datetime.datetime.now()
 
-        # SQL Validation for relational/analytical sources
-        if source in ["clickhouse", "postgres"]:
-            query_upper = request.query.strip().upper()
-            if not query_upper.startswith("SELECT"):
-                raise HTTPException(
-                    status_code=400, detail="Only SELECT queries are allowed"
-                )
-
-            # Block forbidden keywords that could be used for injection or destructive actions
-            forbidden = [
-                "DROP",
-                "DELETE",
-                "UPDATE",
-                "INSERT",
-                "TRUNCATE",
-                "ALTER",
-                "CREATE",
-                "GRANT",
-                "REVOKE",
-                "RENAME",
-            ]
-            for word in forbidden:
-                if re.search(r"\b" + word + r"\b", query_upper):
-                    raise HTTPException(
-                        status_code=400, detail=f"Forbidden keyword '{word}' detected"
-                    )
-
         if source == "clickhouse":
-            # Connect to ClickHouse using readonly credentials for safety
-            ch_client = clickhouse_connect.get_client(
-                host=CH_HOST,
-                port=CH_PORT,
-                username=os.getenv("CLICKHOUSE_READONLY_USER"),
-                password=os.getenv("CLICKHOUSE_READONLY_PASSWORD"),
-            )
-
-            # Corrected query execution with parameter support
-            query = request.query
-            # Only allow params that are used in actual placeholder syntax {param}
-            # Note: clickhouse_connect supports parameter binding
-            result = ch_client.query(query, parameters=request.params)
-            data = result.result_rows
-            columns = result.column_names
-
-
+            data, columns = _execute_clickhouse_query(request)
         elif source == "postgres":
-            # Execute PostgreSQL query with parameter binding to prevent SQL injection
-            result = db.execute(text(request.query), request.params)
-            data = [dict(row._mapping) for row in result]
-            columns = list(data[0].keys()) if data else []
-
-
+            data, columns = _execute_postgres_query(request, db)
         elif source == "kafka":
-            # Handle Kafka-specific queries
-            if request.query == "get_recent_messages":
-                # Get recent messages from Kafka topic
-                consumer_conf = {
-                    "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
-                    "group.id": "admin_query_group",
-                    "auto.offset.reset": "latest",
-                    "enable.auto.commit": False,
-                }
-
-                if KAFKA_USER and KAFKA_PASSWORD:
-                    consumer_conf["sasl.mechanisms"] = "PLAIN"
-                    consumer_conf["security.protocol"] = "SASL_PLAINTEXT"
-                    consumer_conf["sasl.username"] = KAFKA_USER
-                    consumer_conf["sasl.password"] = KAFKA_PASSWORD
-
-                consumer = Consumer(consumer_conf)
-                messages = []
-
-                try:
-                    consumer.subscribe([KAFKA_TOPIC])
-                    # Read last 100 messages
-                    for i in range(100):
-                        msg = consumer.poll(1.0)
-                        if msg is None:
-                            continue
-                        if msg.error():
-                            break
-
-                        try:
-                            data = json.loads(msg.value().decode("utf-8"))
-                            messages.append(
-                                {
-                                    "key": msg.key().decode("utf-8")
-                                    if msg.key()
-                                    else None,
-                                    "value": data,
-                                    "partition": msg.partition(),
-                                    "offset": msg.offset(),
-                                    "timestamp": msg.timestamp()[1]
-                                    if msg.timestamp()[0]
-                                    else None,
-                                }
-                            )
-                        except:
-                            pass
-
-                    consumer.close()
-
-                    columns = ["key", "value", "partition", "offset", "timestamp"]
-                    data = messages
-
-                except Exception as e:
-                    consumer.close()
-                    raise HTTPException(
-                        status_code=500, detail=f"Kafka error: {str(e)}"
-                    )
-
-            elif request.query == "get_topic_stats":
-                # Get topic statistics
-                admin_client = AdminClient(
-                    {"bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS}
-                )
-
-                if KAFKA_USER and KAFKA_PASSWORD:
-                    admin_client = AdminClient(
-                        {
-                            "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
-                            "sasl.mechanisms": "PLAIN",
-                            "security.protocol": "SASL_PLAINTEXT",
-                            "sasl.username": KAFKA_USER,
-                            "sasl.password": KAFKA_PASSWORD,
-                        }
-                    )
-
-                try:
-                    metadata = admin_client.list_topics(timeout=10)
-                    topic_metadata = metadata.topics.get(KAFKA_TOPIC)
-
-                    if topic_metadata:
-                        partitions = topic_metadata.partitions
-                        total_messages = sum(
-                            p.high_watermark
-                            for p in partitions.values()
-                            if p.high_watermark
-                        )
-
-                        data = [
-                            {
-                                "topic": KAFKA_TOPIC,
-                                "partitions": len(partitions),
-                                "total_messages": total_messages,
-                                "status": "active",
-                            }
-                        ]
-                        columns = ["topic", "partitions", "total_messages", "status"]
-                    else:
-                        data = []
-                        columns = []
-
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=500, detail=f"Failed to get topic stats: {str(e)}"
-                    )
-
-            else:
-                raise HTTPException(status_code=400, detail="Unknown Kafka query type")
-
+            data, columns = _execute_kafka_query(request)
         else:
             raise HTTPException(status_code=400, detail="Invalid data source specified")
 
@@ -1219,6 +1238,8 @@ async def execute_admin_query(
             "executionTime": round(execution_time, 2),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Admin query error: {e}")
         import traceback
