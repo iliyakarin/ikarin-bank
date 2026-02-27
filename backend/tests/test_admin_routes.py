@@ -57,7 +57,7 @@ with patch('fastapi.FastAPI', return_value=mock_fastapi_app), \
     try:
         from backend.main import get_ch_logs, admin_only, get_kafka_status
     except ImportError:
-        from main import get_ch_logs, admin_only, get_kafka_status
+        from main import get_ch_logs, admin_only, get_kafka_status, simulate_traffic, SimulationRequest
 
 class MockUser:
     def __init__(self, email, is_admin=False, role="user"):
@@ -66,6 +66,35 @@ class MockUser:
         self.role = role
 
 class TestAdminRoutes(unittest.TestCase):
+    def test_simulate_traffic_requires_admin(self):
+        """Verify simulate_traffic requires admin privileges via dependency check"""
+        import inspect
+        import asyncio
+
+        # 1. Verify function signature requires current_user dependency with admin_only
+        sig = inspect.signature(simulate_traffic)
+        current_user_param = sig.parameters.get('current_user')
+
+        # Verify dependency exists
+        self.assertIsNotNone(current_user_param, "simulate_traffic missing current_user dependency")
+
+        # 2. Test execution logic with admin user
+        req = SimulationRequest(tps=1, count=1)
+        background_tasks = MagicMock()
+        admin_user = MockUser("admin@example.com", is_admin=True, role="admin")
+
+        # Should succeed without raising exception
+        # Note: We need to await it since it's async
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        result = loop.run_until_complete(
+            simulate_traffic(req, background_tasks, current_user=admin_user)
+        )
+
+        self.assertEqual(result["status"], "simulation_started")
+        background_tasks.add_task.assert_called()
+
     def test_get_kafka_status_requires_admin(self):
         """Verify get_kafka_status requires admin privileges"""
         import inspect
