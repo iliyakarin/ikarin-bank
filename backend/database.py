@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import create_engine, Column, Integer, String, Numeric, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import datetime
@@ -23,6 +23,7 @@ class User(Base):
     first_name = Column(String(50), nullable=False)
     last_name = Column(String(50), nullable=False)
     email = Column(String(100), unique=True, index=True, nullable=False)
+    backup_email = Column(String(100), unique=True, index=True, nullable=True)
     password_hash = Column(String(255), nullable=False)
     # Use server_default to ensure existing rows get a value during migration
     role = Column(String(20), default="user", server_default="user", nullable=False)
@@ -33,6 +34,44 @@ class Account(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     balance = Column(Numeric(15, 2), default=0.00)
+    reserved_balance = Column(Numeric(15, 2), default=0.00)
+
+class ScheduledPayment(Base):
+    __tablename__ = "scheduled_payments"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    recipient_email = Column(String(100), nullable=False)
+    amount = Column(Numeric(15, 2), nullable=False)
+    frequency = Column(String(50), nullable=False)
+    frequency_interval = Column(String(50), nullable=True)
+    start_date = Column(DateTime, nullable=False)
+    end_condition = Column(String(50), nullable=False)
+    end_date = Column(DateTime, nullable=True)
+    target_payments = Column(Integer, nullable=True)
+    payments_made = Column(Integer, default=0, nullable=False)
+    next_run_at = Column(DateTime, index=True, nullable=True)
+    status = Column(String(20), default="Active", nullable=False)
+    idempotency_key = Column(String(100), unique=True, index=True, nullable=False)
+    reserve_amount = Column(Boolean, default=False, nullable=False)
+
+class PaymentRequest(Base):
+    __tablename__ = "payment_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    requester_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    target_email = Column(String(100), index=True, nullable=False)
+    amount = Column(Numeric(15, 2), nullable=False)
+    purpose = Column(String, nullable=True)
+    status = Column(String(50), default="pending_target", nullable=False) # pending_target, pending_requester, paid, declined, cancelled
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+class Contact(Base):
+    __tablename__ = "contacts"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    contact_name = Column(String(100), nullable=False)
+    contact_email = Column(String(100), nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -49,6 +88,8 @@ class Transaction(Base):
     ip_address = Column(String(45))
     user_agent = Column(String(255))
     failure_reason = Column(String(255))
+    commentary = Column(String, nullable=True)
+    payment_request_id = Column(Integer, ForeignKey("payment_requests.id"), index=True, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
