@@ -63,3 +63,11 @@ Thumbs.db
 htmlcov/
 .nyc_output/
 .tox/
+
+# AI & Internal Tooling
+.Jules/
+.antigravity/
+
+# Local Database Configuration (Generated or Mocked)
+init-db/*.conf
+init-db/*.xml
