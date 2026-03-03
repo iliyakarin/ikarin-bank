@@ -1078,7 +1078,7 @@ def _execute_clickhouse_query(request: QueryRequest) -> Tuple[List, List]:
         port=CH_PORT,
         username=os.getenv("CLICKHOUSE_READONLY_USER", "readonly_admin"),
         password=os.getenv(
-            "CLICKHOUSE_READONLY_PASSWORD", "readonly_secure_2025"
+            "CLICKHOUSE_READONLY_PASSWORD", ""
         ),
     )
 
