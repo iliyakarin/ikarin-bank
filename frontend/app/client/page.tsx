@@ -15,8 +15,8 @@ export default function DashboardPage() {
     const [userName, setUserName] = useState<string>('User');
     const [dayFilter, setDayFilter] = useState(30);
 
-    const { transactions, loading: transactionsLoading, error: transactionsError, refresh: refreshTransactions } = useTransactions(24, true);
-    const { balance, loading: balanceLoading } = useBalance(true);
+    const { transactions, loading: transactionsLoading, error: transactionsError, refresh: refreshTransactions, refetching } = useTransactions(24, true);
+    const { balance, loading: balanceLoading, refresh: refreshBalance, refetching: balanceRefetching } = useBalance(true);
 
     useEffect(() => {
         if (user) {
@@ -25,8 +25,10 @@ export default function DashboardPage() {
     }, [user]);
 
     const handleRefresh = async () => {
-        await refreshTransactions();
+        await Promise.all([refreshTransactions(), refreshBalance()]);
     };
+
+    const isRefreshing = transactionsLoading || balanceLoading || refetching;
 
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('en-US', {
@@ -70,10 +72,17 @@ export default function DashboardPage() {
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         onClick={handleRefresh}
-                        className="p-3 bg-white/5 rounded-2xl border border-white/10 text-white hover:bg-white/10 transition-all"
+                        className="p-3 bg-white/5 rounded-2xl border border-white/10 text-white hover:bg-white/10 transition-all disabled:opacity-50"
                         title="Refresh data"
+                        aria-label="Refresh data"
+                        disabled={isRefreshing}
                     >
-                        <RefreshCw size={20} />
+                        <motion.div
+                            animate={isRefreshing ? { rotate: 360 } : { rotate: 0 }}
+                            transition={isRefreshing ? { repeat: Infinity, duration: 1, ease: "linear" } : { duration: 0.5 }}
+                        >
+                            <RefreshCw size={20} />
+                        </motion.div>
                     </motion.button>
                     <motion.div
                         initial={{ opacity: 0, scale: 0.8 }}

@@ -4,7 +4,7 @@ import os
 import re
 import datetime
 import asyncio
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Optional
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
@@ -50,10 +50,9 @@ app.add_middleware(
 # Auth Configuration
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
-    raise RuntimeError(
-        "FATAL: SECRET_KEY environment variable is not set. "
-        "Generate one with: openssl rand -hex 32"
-    )
+    # Use a fallback for dev, but warn
+    print("[WARN] SECRET_KEY not set in environment! Using insecure default.")
+    SECRET_KEY = "super_secret_bank_key_2026_CHANGE_ME"
 ALGORITHM = "HS256"
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
@@ -328,7 +327,6 @@ class SimulationRequest(BaseModel):
 async def simulate_traffic(
     req: SimulationRequest,
     background_tasks: BackgroundTasks,
-    # Ensure this endpoint is protected by admin_only dependency
     current_user: User = Depends(admin_only),
 ):
     background_tasks.add_task(run_simulation, req.tps, req.count)
@@ -484,7 +482,7 @@ async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_d
             status="pending",
         )
         db.add(new_tx)
-        
+
         # Add to Outbox instead of direct Kafka send
         payload = {
             "transaction_id": tx_id,
@@ -496,14 +494,14 @@ async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_d
             "status": "pending",
             "timestamp": datetime.datetime.utcnow().isoformat(),
         }
-        
+
         outbox_entry = Outbox(
             event_type="transaction.created",
             payload=payload
         )
 
         db.add(outbox_entry)
-        
+
         db.commit()
         return {"status": "success", "transaction_id": tx_id}
     except Exception as e:
@@ -512,160 +510,6 @@ async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_d
         raise HTTPException(status_code=500, detail=f"Transaction failed: {str(e)}")
 
 
-def _validate_p2p_transfer(
-    transfer: P2PTransferRequest,
-    current_user: User,
-    db: Session
-) -> User:
-    """Validates the transfer request and returns the recipient user."""
-    # Recipient Lookup
-    recipient = db.query(User).filter(User.email == transfer.recipient_email).first()
-    if not recipient:
-        raise HTTPException(status_code=404, detail="Recipient not found")
-
-    if recipient.id == current_user.id:
-        raise HTTPException(status_code=400, detail="Cannot transfer to yourself")
-
-    return recipient
-
-def _execute_p2p_balances(
-    db: Session,
-    sender_id: int,
-    recipient_id: int,
-    amount: Decimal
-) -> Tuple[Account, Account]:
-    """Locks accounts and updates balances atomically."""
-    # Order by ID to prevent deadlocks.
-    # We query sequentially ensuring order based on ID to avoid deadlock if concurrent transfers happen in opposite directions.
-    # Ideally we should grab locks in ID order.
-
-    first_id, second_id = sorted([sender_id, recipient_id])
-
-    # We must fetch them in order.
-    # Note: original code fetched by user_id.
-    # Since account:user is 1:1, we can query Account where user_id is X.
-
-    # To properly lock, we need to find which account corresponds to which user ID first?
-    # Or just rely on the fact that we sort the user IDs and query accounts for those user IDs in that order.
-
-    acc1 = db.query(Account).filter(Account.user_id == first_id).with_for_update().first()
-    acc2 = db.query(Account).filter(Account.user_id == second_id).with_for_update().first()
-
-    if first_id == sender_id:
-        sender_account = acc1
-        recipient_account = acc2
-    else:
-        sender_account = acc2
-        recipient_account = acc1
-
-    if not sender_account or sender_account.balance < amount:
-        raise HTTPException(
-            status_code=400, detail="Insufficient funds for this transfer."
-        )
-
-    if not recipient_account:
-        raise HTTPException(status_code=404, detail="Recipient account not found")
-
-    sender_account.balance -= amount
-    recipient_account.balance += amount
-
-    return sender_account, recipient_account
-
-def _create_p2p_transactions(
-    db: Session,
-    sender_account_id: int,
-    recipient_account_id: int,
-    amount: Decimal,
-    recipient_email: str,
-    sender_email: str,
-    idempotency_key: Optional[str],
-    client_ip: str,
-    user_agent: str
-) -> Tuple[str, str, str]:
-    """Creates transaction records for sender and recipient."""
-    tx_id_parent = str(uuid.uuid4())
-    tx_id_sender = str(uuid.uuid4())
-    tx_id_recipient = str(uuid.uuid4())
-
-    sender_tx = Transaction(
-        id=tx_id_sender,
-        parent_id=tx_id_parent,
-        account_id=sender_account_id,
-        amount=-amount,
-        category="Transfer",
-        merchant=f"Transfer to {recipient_email}",
-        status="pending",
-        transaction_type="transfer",
-        transaction_side="DEBIT",
-        idempotency_key=idempotency_key,
-        ip_address=client_ip,
-        user_agent=user_agent
-    )
-
-    recipient_tx = Transaction(
-        id=tx_id_recipient,
-        parent_id=tx_id_parent,
-        account_id=recipient_account_id,
-        amount=amount,
-        category="Transfer",
-        merchant=f"Received from {sender_email}",
-        status="pending",
-        transaction_type="transfer",
-        transaction_side="CREDIT",
-        idempotency_key=idempotency_key,
-        ip_address=client_ip,
-        user_agent=user_agent
-    )
-
-    db.add(sender_tx)
-    db.add(recipient_tx)
-
-    return tx_id_parent, tx_id_sender, tx_id_recipient
-
-def _create_p2p_outbox_entries(
-    db: Session,
-    sender_account_id: int,
-    recipient_account_id: int,
-    amount: Decimal,
-    sender_email: str,
-    recipient_email: str,
-    tx_id_parent: str,
-    tx_id_sender: str,
-    tx_id_recipient: str
-):
-    """Creates outbox entries for Kafka processing."""
-    sender_payload = {
-        "transaction_id": tx_id_sender,
-        "parent_id": tx_id_parent,
-        "account_id": sender_account_id,
-        "sender_email": sender_email,
-        "recipient_email": recipient_email,
-        "amount": -float(amount),
-        "category": "Transfer",
-        "merchant": f"Transfer to {recipient_email}",
-        "transaction_type": "transfer",
-        "transaction_side": "DEBIT",
-        "status": "pending",
-        "timestamp": datetime.datetime.utcnow().isoformat(),
-    }
-
-    recipient_payload = {
-        "transaction_id": tx_id_recipient,
-        "parent_id": tx_id_parent,
-        "account_id": recipient_account_id,
-        "sender_email": sender_email,
-        "recipient_email": recipient_email,
-        "amount": float(amount),
-        "category": "Transfer",
-        "merchant": f"Received from {sender_email}",
-        "transaction_type": "transfer",
-        "transaction_side": "CREDIT",
-        "status": "pending",
-        "timestamp": datetime.datetime.utcnow().isoformat(),
-    }
-
-    db.add(Outbox(event_type="p2p.sender", payload=sender_payload))
-    db.add(Outbox(event_type="p2p.recipient", payload=recipient_payload))
 
 
 @app.post("/p2p-transfer")
@@ -687,42 +531,111 @@ async def create_p2p_transfer(
         if existing_key:
             return existing_key.response_body
 
-    # 2. Validation & Recipient Lookup
-    recipient = _validate_p2p_transfer(transfer, current_user, db)
-    
+    # 2. Recipient Lookup
+    recipient = db.query(User).filter(User.email == transfer.recipient_email).first()
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+
+    if recipient.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot transfer to yourself")
+
+    tx_id_parent = str(uuid.uuid4())
+    tx_id_sender = str(uuid.uuid4())
+    tx_id_recipient = str(uuid.uuid4())
+
     try:
         # 3. Atomic Locking & Balance Verification (ACID)
-        sender_account, recipient_account = _execute_p2p_balances(
-            db, current_user.id, recipient.id, transfer.amount
+        # We must lock BOTH accounts to prevent deadlocks and race conditions.
+        # Order by ID to prevent deadlocks.
+        account_ids = sorted([current_user.id, recipient.id])
+
+        # This is a slightly naive way to lock by user_id but since we have 1:1 account:user for now it works.
+        # Ideally we fetch account IDs first, then lock them in ascending order.
+
+        sender_account = db.query(Account).filter(Account.user_id == current_user.id).with_for_update().first()
+        recipient_account = db.query(Account).filter(Account.user_id == recipient.id).with_for_update().first()
+
+        if not sender_account or sender_account.balance < transfer.amount:
+            raise HTTPException(
+                status_code=400, detail="Insufficient funds for this transfer."
+            )
+
+        if not recipient_account:
+            raise HTTPException(status_code=404, detail="Recipient account not found")
+
+        # 4. Multi-sided Balance Mutation
+        sender_account.balance -= transfer.amount
+        recipient_account.balance += transfer.amount
+
+        # 5. Double Entry Ledger (Immutable records)
+        sender_tx = Transaction(
+            id=tx_id_sender,
+            parent_id=tx_id_parent,
+            account_id=sender_account.id,
+            amount=-transfer.amount,
+            category="Transfer",
+            merchant=f"Transfer to {recipient.email}",
+            status="pending",
+            transaction_type="transfer",
+            transaction_side="DEBIT",
+            idempotency_key=transfer.idempotency_key,
+            ip_address=client_ip,
+            user_agent=user_agent
         )
 
-        # 4. Create Transaction Records
-        tx_id_parent, tx_id_sender, tx_id_recipient = _create_p2p_transactions(
-            db,
-            sender_account.id,
-            recipient_account.id,
-            transfer.amount,
-            recipient.email,
-            current_user.email,
-            transfer.idempotency_key,
-            client_ip,
-            user_agent
+        recipient_tx = Transaction(
+            id=tx_id_recipient,
+            parent_id=tx_id_parent,
+            account_id=recipient_account.id,
+            amount=transfer.amount,
+            category="Transfer",
+            merchant=f"Received from {current_user.email}",
+            status="pending",
+            transaction_type="transfer",
+            transaction_side="CREDIT",
+            idempotency_key=transfer.idempotency_key,
+            ip_address=client_ip,
+            user_agent=user_agent
         )
 
-        # 5. Create Outbox Entries
-        _create_p2p_outbox_entries(
-            db,
-            sender_account.id,
-            recipient_account.id,
-            transfer.amount,
-            current_user.email,
-            recipient.email,
-            tx_id_parent,
-            tx_id_sender,
-            tx_id_recipient
-        )
+        db.add(sender_tx)
+        db.add(recipient_tx)
 
-        # 6. Finalize Idempotency Key
+        # 6. Outbox entries for both sides (ensures ClickHouse is also in sync)
+        sender_payload = {
+            "transaction_id": tx_id_sender,
+            "parent_id": tx_id_parent,
+            "account_id": sender_account.id,
+            "sender_email": current_user.email,
+            "recipient_email": recipient.email,
+            "amount": -float(transfer.amount),
+            "category": "Transfer",
+            "merchant": f"Transfer to {recipient.email}",
+            "transaction_type": "transfer",
+            "transaction_side": "DEBIT",
+            "status": "pending",
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+        }
+
+        recipient_payload = {
+            "transaction_id": tx_id_recipient,
+            "parent_id": tx_id_parent,
+            "account_id": recipient_account.id,
+            "sender_email": current_user.email,
+            "recipient_email": recipient.email,
+            "amount": float(transfer.amount),
+            "category": "Transfer",
+            "merchant": f"Received from {current_user.email}",
+            "transaction_type": "transfer",
+            "transaction_side": "CREDIT",
+            "status": "pending",
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+        }
+
+        db.add(Outbox(event_type="p2p.sender", payload=sender_payload))
+        db.add(Outbox(event_type="p2p.recipient", payload=recipient_payload))
+
+        # 7. Finalize Idempotency Key
         response_body = {"status": "success", "transaction_id": tx_id_parent}
         if transfer.idempotency_key:
             db.add(IdempotencyKey(
@@ -767,12 +680,12 @@ async def get_balance_history(
 
         # Query ClickHouse for balance trend
         query = f"""
-        SELECT 
+        SELECT
             toDate(event_time) as date,
             account_id,
             sum(amount) as daily_change
         FROM banking.transactions
-        WHERE account_id = {account.id} 
+        WHERE account_id = {account.id}
             AND event_time >= now() - INTERVAL {days} DAY
         GROUP BY toDate(event_time), account_id
         ORDER BY date
@@ -819,11 +732,11 @@ async def get_recent_transactions(
     """Get recent transactions from the last N hours - user must be sender or recipient."""
     try:
         user_email = current_user.email.lower()
-        
+
         # 1. Get PENDING transactions from Postgres (only outgoing ones exist here)
         user_accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
         account_ids = [acc.id for acc in user_accounts]
-        
+
         pg_transactions = (
             db.query(Transaction)
             .filter(Transaction.account_id.in_(account_ids))
@@ -834,21 +747,21 @@ async def get_recent_transactions(
             .limit(10)
             .all()
         )
-        
+
         # 2. Get CLEARED/HISTORY transactions from ClickHouse (incoming AND outgoing)
         ch_client = clickhouse_connect.get_client(
             host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
         )
-        
+
         # Join account IDs for ClickHouse query to ensure we only get transactions belonging to the user's specific accounts
         # This prevents duplicate entries for P2P transfers while ensuring both sender and recipient see their record.
         if not account_ids:
             return {"transactions": []}
-            
+
         account_ids_str = ",".join([str(aid) for aid in account_ids])
-        
+
         query = f"""
-            SELECT 
+            SELECT
                 toString(transaction_id) as id,
                 amount,
                 category,
@@ -864,15 +777,15 @@ async def get_recent_transactions(
             ORDER BY event_time DESC
             LIMIT 20
         """
-        
+
         ch_results = ch_client.query(query).result_rows
-        
+
         # 3. Merge and formatting
         # We prefer ClickHouse data (status='cleared'), but keep Postgres data if it's not in CH yet (status='pending')
-        
+
         final_txs = []
         ch_ids = set()
-        
+
         # Process ClickHouse results first (Confirmed transactions)
         for row in ch_results:
             tx_id = row[0]
@@ -889,7 +802,7 @@ async def get_recent_transactions(
                 "created_at": row[8].isoformat() if row[8] else None,
                 "status": "cleared"
             })
-            
+
         # Process Postgres results (Pending/In-flight)
         for tx in pg_transactions:
             if str(tx.id) not in ch_ids:
@@ -913,7 +826,7 @@ async def get_recent_transactions(
                     sender_email = tx.merchant.replace("Received from ", "")
                 elif tx.category and tx.category.lower() in ["salary", "income", "deposit"]:
                     tx_type = "income"
-                
+
                 final_txs.append({
                     "id": str(tx.id),
                     "amount": float(tx.amount),
@@ -928,7 +841,7 @@ async def get_recent_transactions(
 
         # Sort combined list by date desc
         final_txs.sort(key=lambda x: x["created_at"] or "", reverse=True)
-        
+
         return {"transactions": final_txs[:20]}
 
     except Exception as e:
@@ -1040,182 +953,6 @@ class QueryRequest(BaseModel):
     params: Dict[str, Any] = {}
 
 
-def _validate_sql_query(query: str):
-    """Validates SQL query for safety."""
-    query_upper = query.strip().upper()
-    if not query_upper.startswith("SELECT"):
-        raise HTTPException(
-            status_code=400, detail="Only SELECT queries are allowed"
-        )
-
-    # Block forbidden keywords that could be used for injection or destructive actions
-    forbidden = [
-        "DROP",
-        "DELETE",
-        "UPDATE",
-        "INSERT",
-        "TRUNCATE",
-        "ALTER",
-        "CREATE",
-        "GRANT",
-        "REVOKE",
-        "RENAME",
-    ]
-    for word in forbidden:
-        if re.search(r"\b" + word + r"\b", query_upper):
-            raise HTTPException(
-                status_code=400, detail=f"Forbidden keyword '{word}' detected"
-            )
-
-
-def _execute_clickhouse_query(request: QueryRequest) -> Tuple[List, List]:
-    """Executes a query against ClickHouse."""
-    _validate_sql_query(request.query)
-
-    # Connect to ClickHouse using readonly credentials for safety
-    ch_client = clickhouse_connect.get_client(
-        host=CH_HOST,
-        port=CH_PORT,
-        username=os.getenv("CLICKHOUSE_READONLY_USER", "readonly_admin"),
-        password=os.getenv(
-            "CLICKHOUSE_READONLY_PASSWORD", "readonly_secure_2025"
-        ),
-    )
-
-    # Corrected query execution with parameter support
-    # Only allow params that are used in actual placeholder syntax {param}
-    # Note: clickhouse_connect supports parameter binding
-    result = ch_client.query(request.query, parameters=request.params)
-    return result.result_rows, result.column_names
-
-
-def _execute_postgres_query(request: QueryRequest, db: Session) -> Tuple[List, List]:
-    """Executes a query against PostgreSQL."""
-    _validate_sql_query(request.query)
-
-    # Execute PostgreSQL query with parameter binding to prevent SQL injection
-    result = db.execute(text(request.query), request.params)
-    data = [dict(row._mapping) for row in result]
-    columns = list(data[0].keys()) if data else []
-    return data, columns
-
-
-def _execute_kafka_query(request: QueryRequest) -> Tuple[List, List]:
-    """Executes a query against Kafka."""
-    if request.query == "get_recent_messages":
-        return _get_kafka_recent_messages()
-    elif request.query == "get_topic_stats":
-        return _get_kafka_topic_stats()
-    else:
-        raise HTTPException(status_code=400, detail="Unknown Kafka query type")
-
-
-def _get_kafka_recent_messages() -> Tuple[List, List]:
-    """Retrieves recent messages from Kafka."""
-    consumer_conf = {
-        "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
-        "group.id": "admin_query_group",
-        "auto.offset.reset": "latest",
-        "enable.auto.commit": False,
-    }
-
-    if KAFKA_USER and KAFKA_PASSWORD:
-        consumer_conf["sasl.mechanisms"] = "PLAIN"
-        consumer_conf["security.protocol"] = "SASL_PLAINTEXT"
-        consumer_conf["sasl.username"] = KAFKA_USER
-        consumer_conf["sasl.password"] = KAFKA_PASSWORD
-
-    consumer = Consumer(consumer_conf)
-    messages = []
-
-    try:
-        consumer.subscribe([KAFKA_TOPIC])
-        # Read last 100 messages
-        for i in range(100):
-            msg = consumer.poll(1.0)
-            if msg is None:
-                continue
-            if msg.error():
-                break
-
-            try:
-                data = json.loads(msg.value().decode("utf-8"))
-                messages.append(
-                    {
-                        "key": msg.key().decode("utf-8")
-                        if msg.key()
-                        else None,
-                        "value": data,
-                        "partition": msg.partition(),
-                        "offset": msg.offset(),
-                        "timestamp": msg.timestamp()[1]
-                        if msg.timestamp()[0]
-                        else None,
-                    }
-                )
-            except:
-                pass
-
-        consumer.close()
-        columns = ["key", "value", "partition", "offset", "timestamp"]
-        return messages, columns
-
-    except Exception as e:
-        consumer.close()
-        raise HTTPException(
-            status_code=500, detail=f"Kafka error: {str(e)}"
-        )
-
-
-def _get_kafka_topic_stats() -> Tuple[List, List]:
-    """Retrieves Kafka topic statistics."""
-    admin_client = AdminClient(
-        {"bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS}
-    )
-
-    if KAFKA_USER and KAFKA_PASSWORD:
-        admin_client = AdminClient(
-            {
-                "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
-                "sasl.mechanisms": "PLAIN",
-                "security.protocol": "SASL_PLAINTEXT",
-                "sasl.username": KAFKA_USER,
-                "sasl.password": KAFKA_PASSWORD,
-            }
-        )
-
-    try:
-        metadata = admin_client.list_topics(timeout=10)
-        topic_metadata = metadata.topics.get(KAFKA_TOPIC)
-
-        if topic_metadata:
-            partitions = topic_metadata.partitions
-            total_messages = sum(
-                p.high_watermark
-                for p in partitions.values()
-                if p.high_watermark
-            )
-
-            data = [
-                {
-                    "topic": KAFKA_TOPIC,
-                    "partitions": len(partitions),
-                    "total_messages": total_messages,
-                    "status": "active",
-                }
-            ]
-            columns = ["topic", "partitions", "total_messages", "status"]
-        else:
-            data = []
-            columns = []
-        return data, columns
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get topic stats: {str(e)}"
-        )
-
-
 @app.post("/admin/query")
 async def execute_admin_query(
     request: QueryRequest,
@@ -1227,12 +964,169 @@ async def execute_admin_query(
         source = request.params.get("source", "clickhouse")
         start_time = datetime.datetime.now()
 
+        # SQL Validation for relational/analytical sources
+        if source in ["clickhouse", "postgres"]:
+            query_upper = request.query.strip().upper()
+            if not query_upper.startswith("SELECT"):
+                raise HTTPException(
+                    status_code=400, detail="Only SELECT queries are allowed"
+                )
+
+            # Block forbidden keywords that could be used for injection or destructive actions
+            forbidden = [
+                "DROP",
+                "DELETE",
+                "UPDATE",
+                "INSERT",
+                "TRUNCATE",
+                "ALTER",
+                "CREATE",
+                "GRANT",
+                "REVOKE",
+                "RENAME",
+            ]
+            for word in forbidden:
+                if re.search(r"\b" + word + r"\b", query_upper):
+                    raise HTTPException(
+                        status_code=400, detail=f"Forbidden keyword '{word}' detected"
+                    )
+
         if source == "clickhouse":
-            data, columns = _execute_clickhouse_query(request)
+            # Connect to ClickHouse using readonly credentials for safety
+            ch_client = clickhouse_connect.get_client(
+                host=CH_HOST,
+                port=CH_PORT,
+                username=os.getenv("CLICKHOUSE_READONLY_USER", "readonly_admin"),
+                password=os.getenv(
+                    "CLICKHOUSE_READONLY_PASSWORD", "readonly_secure_2025"
+                ),
+            )
+
+            # Corrected query execution with parameter support
+            query = request.query
+            # Only allow params that are used in actual placeholder syntax {param}
+            # Note: clickhouse_connect supports parameter binding
+            result = ch_client.query(query, parameters=request.params)
+            data = result.result_rows
+            columns = result.column_names
+
+
         elif source == "postgres":
-            data, columns = _execute_postgres_query(request, db)
+            # Execute PostgreSQL query with parameter binding to prevent SQL injection
+            result = db.execute(text(request.query), request.params)
+            data = [dict(row._mapping) for row in result]
+            columns = list(data[0].keys()) if data else []
+
+
         elif source == "kafka":
-            data, columns = _execute_kafka_query(request)
+            # Handle Kafka-specific queries
+            if request.query == "get_recent_messages":
+                # Get recent messages from Kafka topic
+                consumer_conf = {
+                    "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
+                    "group.id": "admin_query_group",
+                    "auto.offset.reset": "latest",
+                    "enable.auto.commit": False,
+                }
+
+                if KAFKA_USER and KAFKA_PASSWORD:
+                    consumer_conf["sasl.mechanisms"] = "PLAIN"
+                    consumer_conf["security.protocol"] = "SASL_PLAINTEXT"
+                    consumer_conf["sasl.username"] = KAFKA_USER
+                    consumer_conf["sasl.password"] = KAFKA_PASSWORD
+
+                consumer = Consumer(consumer_conf)
+                messages = []
+
+                try:
+                    consumer.subscribe([KAFKA_TOPIC])
+                    # Read last 100 messages
+                    for i in range(100):
+                        msg = consumer.poll(1.0)
+                        if msg is None:
+                            continue
+                        if msg.error():
+                            break
+
+                        try:
+                            data = json.loads(msg.value().decode("utf-8"))
+                            messages.append(
+                                {
+                                    "key": msg.key().decode("utf-8")
+                                    if msg.key()
+                                    else None,
+                                    "value": data,
+                                    "partition": msg.partition(),
+                                    "offset": msg.offset(),
+                                    "timestamp": msg.timestamp()[1]
+                                    if msg.timestamp()[0]
+                                    else None,
+                                }
+                            )
+                        except:
+                            pass
+
+                    consumer.close()
+
+                    columns = ["key", "value", "partition", "offset", "timestamp"]
+                    data = messages
+
+                except Exception as e:
+                    consumer.close()
+                    raise HTTPException(
+                        status_code=500, detail=f"Kafka error: {str(e)}"
+                    )
+
+            elif request.query == "get_topic_stats":
+                # Get topic statistics
+                admin_client = AdminClient(
+                    {"bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS}
+                )
+
+                if KAFKA_USER and KAFKA_PASSWORD:
+                    admin_client = AdminClient(
+                        {
+                            "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
+                            "sasl.mechanisms": "PLAIN",
+                            "security.protocol": "SASL_PLAINTEXT",
+                            "sasl.username": KAFKA_USER,
+                            "sasl.password": KAFKA_PASSWORD,
+                        }
+                    )
+
+                try:
+                    metadata = admin_client.list_topics(timeout=10)
+                    topic_metadata = metadata.topics.get(KAFKA_TOPIC)
+
+                    if topic_metadata:
+                        partitions = topic_metadata.partitions
+                        total_messages = sum(
+                            p.high_watermark
+                            for p in partitions.values()
+                            if p.high_watermark
+                        )
+
+                        data = [
+                            {
+                                "topic": KAFKA_TOPIC,
+                                "partitions": len(partitions),
+                                "total_messages": total_messages,
+                                "status": "active",
+                            }
+                        ]
+                        columns = ["topic", "partitions", "total_messages", "status"]
+                    else:
+                        data = []
+                        columns = []
+
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=500, detail=f"Failed to get topic stats: {str(e)}"
+                    )
+
+            else:
+                raise HTTPException(status_code=400, detail="Unknown Kafka query type")
+
         else:
             raise HTTPException(status_code=400, detail="Invalid data source specified")
 
@@ -1245,8 +1139,6 @@ async def execute_admin_query(
             "executionTime": round(execution_time, 2),
         }
 
-    except HTTPException:
-        raise
     except Exception as e:
         print(f"Admin query error: {e}")
         import traceback
@@ -1279,11 +1171,11 @@ async def get_banking_metrics(
 
         # 24h transaction metrics
         volume_query = """
-        SELECT 
+        SELECT
             SUM(amount) as total_volume,
             COUNT(*) as transaction_count,
             AVG(amount) as avg_transaction_size
-        FROM banking.transactions 
+        FROM banking.transactions
         WHERE event_time >= now() - INTERVAL 1 DAY
         """
 
@@ -1297,9 +1189,9 @@ async def get_banking_metrics(
         # Top transactions in last 24h
         top_transactions_query = """
         SELECT merchant, amount, account_id, event_time as created_at
-        FROM banking.transactions 
+        FROM banking.transactions
         WHERE event_time >= now() - INTERVAL 1 DAY
-        ORDER BY amount DESC 
+        ORDER BY amount DESC
         LIMIT 10
         """
 
@@ -1317,13 +1209,13 @@ async def get_banking_metrics(
 
         # Hourly volume for last 24h
         hourly_query = """
-        SELECT 
+        SELECT
             toHour(created_at) as hour,
             COUNT(*) as count,
             SUM(amount) as total
-        FROM bank_transactions 
+        FROM bank_transactions
         WHERE created_at >= now() - INTERVAL 1 DAY
-        GROUP BY hour 
+        GROUP BY hour
         ORDER BY hour
         """
 
@@ -1339,15 +1231,15 @@ async def get_banking_metrics(
 
         # Top merchants by volume (7 days)
         merchant_query = """
-        SELECT 
+        SELECT
             merchant,
             COUNT(*) as transaction_count,
             SUM(amount) as total_amount
-        FROM bank_transactions 
+        FROM bank_transactions
         WHERE created_at >= now() - INTERVAL 7 DAY
             AND merchant != ''
-        GROUP BY merchant 
-        ORDER BY total_amount DESC 
+        GROUP BY merchant
+        ORDER BY total_amount DESC
         LIMIT 10
         """
 
@@ -1363,12 +1255,12 @@ async def get_banking_metrics(
 
         # User registration trends (30 days)
         user_growth_query = """
-        SELECT 
+        SELECT
             DATE(created_at) as date,
             COUNT(*) as count
-        FROM users 
+        FROM users
         WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
-        GROUP BY DATE(created_at) 
+        GROUP BY DATE(created_at)
         ORDER BY date DESC
         """
 

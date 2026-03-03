@@ -1,7 +1,7 @@
 // Production-ready error logging service
 // Integrates with monitoring services like Sentry, LogRocket, Datadog, etc.
 
-interface ErrorLogData {
+export interface ErrorLogData {
   message: string;
   stack?: string;
   componentStack?: string;
@@ -92,30 +92,7 @@ class ErrorLogger {
   };
 
   private determineSeverity = (error: Error): ErrorLogData['severity'] => {
-    // Check for critical error patterns
-    const criticalPatterns = [
-      /network.*error/i,
-      /authentication.*failed/i,
-      /permission.*denied/i,
-      /quota.*exceeded/i,
-      /security.*violation/i
-    ];
-
-    const mediumPatterns = [
-      /failed.*to.*fetch/i,
-      /timeout/i,
-      /connection/i
-    ];
-
-    if (criticalPatterns.some(pattern => pattern.test(error.message))) {
-      return 'critical';
-    }
-
-    if (mediumPatterns.some(pattern => pattern.test(error.message))) {
-      return 'medium';
-    }
-
-    return 'low';
+    return determineErrorSeverity(error);
   };
 
   private async sendToRemote(data: ErrorLogData): Promise<void> {
@@ -283,6 +260,53 @@ class ErrorLogger {
     });
   };
 }
+
+/**
+ * Determines the severity of an error based on its message.
+ * Pure function, easy to test.
+ */
+export const determineErrorSeverity = (error: Error): ErrorLogData['severity'] => {
+  const message = error.message || '';
+
+  // Check for critical error patterns
+  const criticalPatterns = [
+    /network.*error/i,
+    /authentication.*failed/i,
+    /permission.*denied/i,
+    /quota.*exceeded/i,
+    /security.*violation/i
+  ];
+
+  // Check for high error patterns
+  const highPatterns = [
+    /database/i,
+    /api.*error/i,
+    /validation.*failed/i,
+    /unauthorized/i
+  ];
+
+  // Check for medium error patterns
+  const mediumPatterns = [
+    /failed.*to.*fetch/i,
+    /timeout/i,
+    /connection/i,
+    /bad.*request/i
+  ];
+
+  if (criticalPatterns.some(pattern => pattern.test(message))) {
+    return 'critical';
+  }
+
+  if (highPatterns.some(pattern => pattern.test(message))) {
+    return 'high';
+  }
+
+  if (mediumPatterns.some(pattern => pattern.test(message))) {
+    return 'medium';
+  }
+
+  return 'low';
+};
 
 // Create singleton instance
 export const errorLogger = new ErrorLogger();

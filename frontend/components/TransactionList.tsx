@@ -1,21 +1,15 @@
 "use client";
 import React from 'react';
 import { Transaction } from '@/lib/types';
+import { getTransactionStatus, getStatusLabel } from '@/lib/transactionUtils';
+import { CATEGORY_ICONS, DEFAULT_CATEGORY_ICON } from '@/lib/constants';
 import { motion } from 'framer-motion';
-import { Check, Clock } from 'lucide-react';
-
-const categoryIcons: Record<string, string> = {
-    'Food': '🍔',
-    'Utilities': '💡',
-    'Shopping': '🛍️',
-    'Transfer': '💸',
-    'Entertainment': '🎬',
-    'Transport': '🚗',
-};
+import { Check, Clock, AlertCircle } from 'lucide-react';
 
 function TransactionItem({ transaction, index }: { transaction: Transaction, index: number }) {
-    const isPending = transaction.status === 'pending' || transaction.status === 'sent_to_kafka';
-    const icon = categoryIcons[transaction.category] || '💰';
+    const status = getTransactionStatus(transaction.status);
+    const statusLabel = getStatusLabel(status);
+    const icon = CATEGORY_ICONS[transaction.category] || DEFAULT_CATEGORY_ICON;
 
     // Determine if this is a deduction (expense or transfer) or income
     const isIncome = transaction.amount > 0;
@@ -42,15 +36,25 @@ function TransactionItem({ transaction, index }: { transaction: Transaction, ind
                     <p className="font-bold text-gray-900 text-lg">{transaction.merchant}</p>
                     <div className="flex items-center gap-3">
                         <p className="text-xs text-gray-400 font-medium">{transaction.category}</p>
-                        {isPending ? (
+
+                        {status === 'pending' && (
                             <span className="flex items-center gap-1 text-[11px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
                                 <Clock className="w-3 h-3" />
-                                Pending
+                                {statusLabel}
                             </span>
-                        ) : (
+                        )}
+
+                        {status === 'cleared' && (
                             <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
                                 <Check className="w-3 h-3" />
-                                Cleared
+                                {statusLabel}
+                            </span>
+                        )}
+
+                        {status === 'unknown' && (
+                             <span className="flex items-center gap-1 text-[11px] font-bold text-gray-600 bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">
+                                <AlertCircle className="w-3 h-3" />
+                                {statusLabel}
                             </span>
                         )}
 
