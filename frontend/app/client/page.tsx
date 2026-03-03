@@ -16,7 +16,7 @@ export default function DashboardPage() {
     const [dayFilter, setDayFilter] = useState(30);
 
     const { transactions, loading: transactionsLoading, error: transactionsError, refresh: refreshTransactions, refetching } = useTransactions(24, true);
-    const { balance, loading: balanceLoading, refresh: refreshBalance, refetching: balanceRefetching } = useBalance(true);
+    const { balance, reservedBalance, loading: balanceLoading, refresh: refreshBalance, refetching: balanceRefetching } = useBalance(true);
 
     useEffect(() => {
         if (user) {
@@ -128,6 +128,14 @@ export default function DashboardPage() {
                                 formatCurrency(balance || 0)
                             )}
                         </h1>
+                        {!balanceLoading && reservedBalance != null && reservedBalance > 0 && (
+                            <div className="flex items-center gap-2 mt-2">
+                                <span className="px-3 py-1 bg-indigo-500/20 text-indigo-300 font-semibold text-sm rounded-full border border-indigo-500/30">
+                                    + {formatCurrency(reservedBalance)} reserved
+                                </span>
+                                <span className="text-sm text-white/50">waiting for transfer</span>
+                            </div>
+                        )}
                         {!balanceLoading && (
                             <div className="flex items-center gap-2 text-emerald-400">
                                 <TrendingUp size={20} />

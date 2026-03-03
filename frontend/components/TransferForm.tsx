@@ -25,7 +25,7 @@ export default function TransferForm() {
 
     return (
         <div className="p-6 bg-white rounded-xl shadow-md">
-            <h2 className="text-xl font-bold mb-4">Send Money</h2>
+            <h2 className="text-xl font-bold mb-4">Payments</h2>
             <button
                 onClick={handleTransfer}
                 disabled={loading}

@@ -116,6 +116,13 @@ services:
 
 
 
+  vendor-simulator:
+    build: ./vendor-simulator
+    container_name: bank-vendor-simulator
+    ports:
+      - "8001:8001"
+    env_file: .env
+
   frontend:
     build: ./frontend
     container_name: bank-frontend
