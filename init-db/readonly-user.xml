@@ -1,20 +1,17 @@
 <clickhouse>
     <users>
         <readonly_admin>
-            <password_sha256_hex>891d873beeb13b5d53d5b55185e7d3f9ffe74dd75c76c1d7267ed39d432a3d53</password_sha256_hex>
+            <password_sha256_hex from_env="CLICKHOUSE_READONLY_PASSWORD_SHA256" />
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            <profile>default</profile>
+            <quota>default</quota>
+            <access_rights>
+                <grant>SELECT ON banking.transactions</grant>
+                <grant>SELECT ON system.tables</grant>
+                <grant>SELECT ON system.databases</grant>
+            </access_rights>
         </readonly_admin>
     </users>
-    <quotas>
-        <default>
-            <interval>
-                <duration>3600</duration>
-                <queries>0</queries>
-                <errors>0</errors>
-                <result_rows>0</result_rows>
-                <read_rows>0</read_rows>
-                <execution_time>0</execution_time>
-            </interval>
-        </default>
-    </quotas>
 </clickhouse>
-

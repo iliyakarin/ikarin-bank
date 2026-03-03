@@ -5,6 +5,7 @@ and ingest into PostgreSQL and ClickHouse
 Includes expenses, income (salary), and P2P transfers with proper balance updates
 """
 
+import os
 import random
 import uuid
 from datetime import datetime, timedelta
@@ -13,20 +14,20 @@ import psycopg2
 import clickhouse_connect
 import json
 
-# Database connections
+# Database connections — credentials loaded from .env
 PG_CONN = psycopg2.connect(
-    host="localhost",
-    port=5432,
-    database="banking_db",
-    user="admin",
-    password="password123"
+    host=os.getenv("POSTGRES_HOST", "localhost"),
+    port=int(os.getenv("POSTGRES_PORT", 5432)),
+    database=os.getenv("POSTGRES_DB", "banking_db"),
+    user=os.getenv("POSTGRES_USER", "admin"),
+    password=os.getenv("POSTGRES_PASSWORD", "")
 )
 
 CH_CLIENT = clickhouse_connect.get_client(
-    host="localhost",
-    port=8123,
-    username="admin",
-    password="bank_secure_pass_2025"
+    host=os.getenv("CLICKHOUSE_HOST", "localhost"),
+    port=int(os.getenv("CLICKHOUSE_PORT", 8123)),
+    username=os.getenv("CLICKHOUSE_USER", "readonly_admin"),
+    password=os.getenv("CLICKHOUSE_PASSWORD", "")
 )
 
 # User and account data

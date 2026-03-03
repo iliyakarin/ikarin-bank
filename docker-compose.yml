@@ -18,14 +18,16 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:latest
     container_name: bank-clickhouse
+    env_file: .env
     environment:
       - CLICKHOUSE_DB=banking_log
-
+      - CLICKHOUSE_USER=
+      - CLICKHOUSE_PASSWORD=
     ports:
       - "8123:8123"
     volumes:
-      - ./init-db/clickhouse_init.sql:/docker-entrypoint-initdb.d/init.sql
-      - ./init-db/readonly-user.xml:/etc/clickhouse-server/users.d/readonly-user.xml
+      - ./init-db/clickhouse_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./init-db/readonly-user.xml:/etc/clickhouse-server/users.d/readonly-user.xml:ro
       - ./data/clickhouse:/var/lib/clickhouse
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "localhost:8123/ping"]
@@ -36,6 +38,8 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.6.1
     container_name: bank-kafka
+    env_file: .env
+    entrypoint: ["/kafka-entrypoint.sh"]
     ports:
       - "9092:9092"
     environment:
@@ -49,7 +53,7 @@ services:
       - KAFKA_INTER_BROKER_LISTENER_NAME=SASL_PLAINTEXT
       - KAFKA_SASL_ENABLED_MECHANISMS=PLAIN
       - KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL=PLAIN
-      - KAFKA_LISTENER_NAME_SASL_PLAINTEXT_SASL_JAAS_CONFIG=org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="admin123" user_admin="admin123" user_kafka="admin123";
+      - KAFKA_LISTENER_NAME_SASL_PLAINTEXT_SASL_JAAS_CONFIG=org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_USER}" password="${KAFKA_PASSWORD}" user_admin="${KAFKA_PASSWORD}" user_kafka="${KAFKA_PASSWORD}";
       - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
@@ -57,7 +61,8 @@ services:
       - KAFKA_OPTS=-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf
     volumes:
       - ./data/kafka:/var/lib/kafka/data
-      - ./init-db/kafka-server-jaas.conf:/etc/kafka/kafka_server_jaas.conf:ro
+      - ./init-db/kafka-server-jaas.conf.tpl:/etc/kafka/kafka_server_jaas.conf.tpl:ro
+      - ./init-db/kafka-entrypoint.sh:/kafka-entrypoint.sh:ro
 
 
   api:

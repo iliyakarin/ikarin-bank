@@ -2,13 +2,13 @@ from confluent_kafka import Consumer
 import os
 
 conf = {
-    'bootstrap.servers': 'kafka:9092',
+    'bootstrap.servers': os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'kafka:9092'),
     'group.id': 'dumper',
     'auto.offset.reset': 'earliest',
     'sasl.mechanisms': 'PLAIN',
     'security.protocol': 'SASL_PLAINTEXT',
-    'sasl.username': 'admin',
-    'sasl.password': 'admin123'
+    'sasl.username': os.getenv('KAFKA_USER', 'admin'),
+    'sasl.password': os.getenv('KAFKA_PASSWORD', '')
 }
 
 consumer = Consumer(conf)

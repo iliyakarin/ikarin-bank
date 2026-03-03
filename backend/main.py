@@ -46,9 +46,10 @@ app.add_middleware(
 # Auth Configuration
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
-    # Use a fallback for dev, but warn
-    print("[WARN] SECRET_KEY not set in environment! Using insecure default.")
-    SECRET_KEY = "super_secret_bank_key_2026_CHANGE_ME"
+    raise RuntimeError(
+        "FATAL: SECRET_KEY environment variable is not set. "
+        "Generate one with: openssl rand -hex 32"
+    )
 ALGORITHM = "HS256"
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 60

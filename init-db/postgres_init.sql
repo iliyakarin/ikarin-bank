@@ -42,9 +42,9 @@ CREATE INDEX idx_outbox_status ON outbox(status);
 
 -- Seed data
 INSERT INTO users (first_name, last_name, email, password_hash) VALUES 
-('Iliya', 'Karin', 'ikarin@example.com', '$2b$12$/VohZlBcVbRcK1VHOXr5.eQMIwvO80BvojvneaWq9UOiLkOjnKNGG'), -- password123
-('Admin', 'User', 'ikarin@admin.com', '$2b$12$/VohZlBcVbRcK1VHOXr5.eQMIwvO80BvojvneaWq9UOiLkOjnKNGG'),   -- password123
-('Admin', 'User2', 'ikarin2@admin.com', '$2b$12$6PGHyME92AS7UE4m/KJsr.NCK772r5tFd7xDwT/ODAy3MveSeaxEW'); -- password321
+('Iliya', 'Karin', 'ikarin@example.com', '$2b$12$/VohZlBcVbRcK1VHOXr5.eQMIwvO80BvojvneaWq9UOiLkOjnKNGG'),
+('Admin', 'User', 'ikarin@admin.com', '$2b$12$/VohZlBcVbRcK1VHOXr5.eQMIwvO80BvojvneaWq9UOiLkOjnKNGG'),
+('Admin', 'User2', 'ikarin2@admin.com', '$2b$12$6PGHyME92AS7UE4m/KJsr.NCK772r5tFd7xDwT/ODAy3MveSeaxEW');
 
 INSERT INTO accounts (user_id, balance) VALUES 
 (1, 64230.15),
