@@ -1,7 +1,7 @@
 "use client";
 
 const actions = [
-    { label: 'Send Money', icon: '📤', color: 'bg-blue-50 text-blue-600' },
+    { label: 'Payments', icon: '📤', color: 'bg-blue-50 text-blue-600' },
     { label: 'Request', icon: '📥', color: 'bg-indigo-50 text-indigo-600' },
     { label: 'Pay Bills', icon: '📄', color: 'bg-purple-50 text-purple-600' },
 ];
