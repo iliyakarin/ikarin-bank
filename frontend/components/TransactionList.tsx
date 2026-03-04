@@ -5,6 +5,7 @@ import { getTransactionStatus, getStatusLabel } from '@/lib/transactionUtils';
 import { CATEGORY_ICONS, DEFAULT_CATEGORY_ICON } from '@/lib/constants';
 import { motion } from 'framer-motion';
 import { Check, Clock, AlertCircle } from 'lucide-react';
+import Link from 'next/link';
 
 function TransactionItem({ transaction, index }: { transaction: Transaction, index: number }) {
     const status = getTransactionStatus(transaction.status);
@@ -52,7 +53,7 @@ function TransactionItem({ transaction, index }: { transaction: Transaction, ind
                         )}
 
                         {status === 'unknown' && (
-                             <span className="flex items-center gap-1 text-[11px] font-bold text-gray-600 bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">
+                            <span className="flex items-center gap-1 text-[11px] font-bold text-gray-600 bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">
                                 <AlertCircle className="w-3 h-3" />
                                 {statusLabel}
                             </span>
@@ -75,7 +76,7 @@ function TransactionItem({ transaction, index }: { transaction: Transaction, ind
                     {amountPrefix}${Math.abs(transaction.amount).toFixed(2)}
                 </p>
                 <p className="text-xs text-gray-400 font-medium">
-                    {new Date(transaction.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    {new Date(transaction.created_at + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                 </p>
             </div>
         </motion.div>
@@ -87,7 +88,7 @@ export default function TransactionList({ transactions, loading }: { transaction
         <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden p-2">
             <div className="p-6 flex justify-between items-center">
                 <h3 className="font-bold text-xl text-gray-900">Recent Transactions</h3>
-                <button className="text-black text-sm font-bold hover:underline underline-offset-4">View All</button>
+                <Link href="/client/transactions" className="text-black text-sm font-bold hover:underline underline-offset-4">View All</Link>
             </div>
             <div className="space-y-1">
                 {loading ? (

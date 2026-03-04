@@ -2,13 +2,14 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Send, CreditCard, Wallet, LogOut, History } from 'lucide-react';
+import { LayoutDashboard, Send, CreditCard, Wallet, LogOut, History, Users } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
 
 const navItems = [
     { name: 'Dashboard', href: '/client', icon: LayoutDashboard },
-    { name: 'Send Money', href: '/client/send', icon: Send },
+    { name: 'Payments', href: '/client/send', icon: Send },
+    { name: 'My Contacts', href: '/client/contacts', icon: Users },
     { name: 'My Cards', href: '/client/cards', icon: CreditCard },
     { name: 'Transactions', href: '/client/transactions', icon: History },
 ];
@@ -34,9 +35,8 @@ export default function Sidebar() {
                     const Icon = item.icon;
                     return (
                         <Link key={item.name} href={item.href}>
-                            <div className={`relative flex items-center gap-4 px-4 py-3 rounded-xl transition-all group ${
-                                isActive ? 'text-white font-semibold' : 'text-white/60 hover:text-white hover:bg-white/10'
-                            }`}>
+                            <div className={`relative flex items-center gap-4 px-4 py-3 rounded-xl transition-all group ${isActive ? 'text-white font-semibold' : 'text-white/60 hover:text-white hover:bg-white/10'
+                                }`}>
                                 {isActive && (
                                     <motion.div
                                         layoutId="activeNav"
@@ -44,9 +44,8 @@ export default function Sidebar() {
                                         transition={{ type: "spring", stiffness: 380, damping: 30 }}
                                     />
                                 )}
-                                <Icon className={`relative z-10 w-6 h-6 ${
-                                    isActive ? 'text-white' : 'group-hover:text-white'
-                                }`} />
+                                <Icon className={`relative z-10 w-6 h-6 ${isActive ? 'text-white' : 'group-hover:text-white'
+                                    }`} />
                                 <span className="relative z-10 hidden md:block">{item.name}</span>
                             </div>
                         </Link>
