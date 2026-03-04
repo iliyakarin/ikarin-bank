@@ -135,7 +135,7 @@ export default function ProfilePage() {
                                 <p className="text-white/50 text-sm font-medium mb-1">Account Role</p>
                                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold leading-none bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                                     <Shield className="w-3 h-3 mr-1" />
-                                    {user.role.toUpperCase()}
+                                    {user.role === 'user' ? 'PREMIUM MEMBER' : user.role.toUpperCase()}
                                 </span>
                             </div>
                             <div>

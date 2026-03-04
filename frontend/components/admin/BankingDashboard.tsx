@@ -157,7 +157,7 @@ export default function BankingDashboard({ metrics, loading }: BankingDashboardP
                   <div>
                     <p className="text-white text-sm font-medium">{transaction.merchant}</p>
                     <p className="text-white/40 text-xs">
-                      {new Date(transaction.created_at).toLocaleTimeString()}
+                      {new Date(transaction.created_at + 'Z').toLocaleTimeString()}
                     </p>
                   </div>
                 </div>
@@ -188,7 +188,7 @@ export default function BankingDashboard({ metrics, loading }: BankingDashboardP
                   {hour.hour}:00
                 </span>
                 <div className="flex-1 h-8 bg-black/20 rounded-lg overflow-hidden">
-                  <div 
+                  <div
                     className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg transition-all"
                     style={{ width: `${(hour.count / Math.max(...metrics.hourlyVolume.map(h => h.count))) * 100}%` }}
                   />
@@ -238,7 +238,7 @@ export default function BankingDashboard({ metrics, loading }: BankingDashboardP
         >
           <h4 className="text-white/60 text-sm font-medium mb-2">New Users Today</h4>
           <p className="text-3xl font-bold text-white">
-            {metrics.userGrowth.filter(u => 
+            {metrics.userGrowth.filter(u =>
               new Date(u.date).toDateString() === new Date().toDateString()
             )[0]?.count || 0}
           </p>

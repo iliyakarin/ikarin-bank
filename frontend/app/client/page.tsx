@@ -15,7 +15,7 @@ export default function DashboardPage() {
     const [userName, setUserName] = useState<string>('User');
     const [dayFilter, setDayFilter] = useState(30);
 
-    const { transactions, loading: transactionsLoading, error: transactionsError, refresh: refreshTransactions, refetching } = useTransactions(24, true);
+    const { transactions, loading: transactionsLoading, error: transactionsError, refresh: refreshTransactions, refetching } = useTransactions(720, true);
     const { balance, reservedBalance, loading: balanceLoading, refresh: refreshBalance, refetching: balanceRefetching } = useBalance(true);
 
     useEffect(() => {
@@ -45,7 +45,7 @@ export default function DashboardPage() {
 
     const balanceHistoryData = transactions
         .map(t => ({
-            date: new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            date: new Date(t.created_at + 'Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
             balance: t.amount,
         }))
         .reverse();
