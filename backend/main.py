@@ -20,6 +20,7 @@ import clickhouse_connect
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from sync_checker import run_sync_check
 
 app = FastAPI(title="Simple Bank API")
 
@@ -163,6 +164,10 @@ class ContactResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class ContactUpdate(BaseModel):
+    contact_name: str
+    contact_email: str
 
 # Helper Functions
 def verify_password(plain_password, hashed_password):
@@ -599,6 +604,15 @@ def get_ch_logs(current_user: User = Depends(admin_only)):
         log["status"] = "cleared"
         log["created_at"] = log["event_time"]  # For frontend consistency
     return logs
+
+
+@app.post("/admin/sync-clickhouse")
+def manual_sync_clickhouse(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(admin_only)
+):
+    background_tasks.add_task(run_sync_check)
+    return {"status": "success", "message": "Manual ClickHouse sync started in the background."}
 
 
 # Kafka Producer state
@@ -1526,6 +1540,42 @@ async def create_contact(
     db.refresh(new_contact)
     
     return new_contact
+
+@app.put("/api/v1/contacts/{contact_id}", response_model=ContactResponse)
+async def update_contact(
+    contact_id: int,
+    contact_data: ContactUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    contact = db.query(Contact).filter(
+        Contact.id == contact_id, 
+        Contact.user_id == current_user.id
+    ).first()
+    
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+        
+    if not contact_data.contact_name.strip() or not contact_data.contact_email.strip():
+        raise HTTPException(status_code=400, detail="Name and Email are required")
+        
+    # Check if duplicate email exists for user (excluding self)
+    existing = db.query(Contact).filter(
+        Contact.user_id == current_user.id, 
+        Contact.contact_email == contact_data.contact_email,
+        Contact.id != contact_id
+    ).first()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Another contact with this email already exists")
+
+    contact.contact_name = contact_data.contact_name
+    contact.contact_email = contact_data.contact_email
+    
+    db.commit()
+    db.refresh(contact)
+    
+    return contact
 
 @app.delete("/api/v1/contacts/{contact_id}")
 async def delete_contact(
