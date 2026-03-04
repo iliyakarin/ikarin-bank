@@ -41,11 +41,7 @@ def get_clickhouse_client():
             host=CH_HOST,
             port=CH_PORT,
             username=CH_USER,
-            password=CH_PASSWORD,
-            # Performance optimizations
-            send_progress=True,
-            send_progress_timeout=10,
-            insert_block_size=1000,
+            password=CH_PASSWORD
         )
         logger.info("🚀 ClickHouse client connected with performance optimizations")
     return ch_client
