@@ -4,7 +4,7 @@ import { Send, Plus, CreditCard, History, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const actions = [
-    { name: 'Send Money', icon: Send, color: 'bg-blue-600 hover:bg-blue-700' },
+    { name: 'Payments', icon: Send, color: 'bg-blue-600 hover:bg-blue-700' },
     { name: 'Request', icon: Plus, color: 'bg-black hover:bg-gray-800' },
     { name: 'New Card', icon: CreditCard, color: 'bg-purple-600 hover:bg-purple-700' },
     { name: 'History', icon: History, color: 'bg-gray-100 hover:bg-gray-200 text-black' },
