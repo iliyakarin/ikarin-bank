@@ -7,11 +7,11 @@ import asyncio
 from typing import Dict, Any, Optional, Tuple, List
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text
+from sqlalchemy import func, text, or_
 from decimal import Decimal
 from aiokafka import AIOKafkaProducer
 from pydantic import BaseModel
-from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest
+from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest, Contact
 
 from fastapi.middleware.cors import CORSMiddleware
 from confluent_kafka.admin import AdminClient
@@ -24,9 +24,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 app = FastAPI(title="Simple Bank API")
 
 # Configuration
-ADMIN_EMAILS = os.getenv(
-    "ADMIN_EMAILS", "ikarin@admin.com,ikarin2@admin.com"
-).split(",")
+# Admins are defined by role="admin" in the database
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "bank_transactions")
 KAFKA_USER = os.getenv("KAFKA_USER", "admin")
@@ -79,6 +77,18 @@ class UserResponse(BaseModel):
     email: str
     backup_email: Optional[str] = None
     role: str
+
+    class Config:
+        from_attributes = True
+
+class NotificationResponse(BaseModel):
+    id: str
+    type: str
+    title: str
+    message: str
+    amount: Optional[float] = None
+    created_at: datetime.datetime
+    link: str
 
     class Config:
         from_attributes = True
@@ -204,12 +214,7 @@ async def get_current_user(
 
 def admin_only(current_user: User = Depends(get_current_user)):
     """Check if current user is an admin"""
-    # Check for admin status via explicit list or RBAC role
-    is_admin_flag = getattr(current_user, "is_admin", False)
-
-    # Check if user has 'admin' role or is in the legacy admin email list
-    # We prioritize the database role for RBAC
-    if current_user.role != "admin" and not is_admin_flag and current_user.email not in ADMIN_EMAILS:
+    if current_user.role != "admin":
         raise HTTPException(
             status_code=403, detail="Admin privileges required for this operation"
         )
@@ -300,6 +305,77 @@ async def update_password(
     db.commit()
     
     return {"status": "success"}
+
+
+@app.get("/api/v1/users/me/notifications", response_model=List[NotificationResponse])
+async def get_notifications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get the latest 10 notifications (transactions & payment requests)."""
+    notifications = []
+    
+    # 1. Transactions
+    account_ids = [acc.id for acc in db.query(Account).filter(Account.user_id == current_user.id).all()]
+    if account_ids:
+        transactions = db.query(Transaction).filter(
+            Transaction.account_id.in_(account_ids),
+            Transaction.status != "cancelled"
+        ).order_by(Transaction.created_at.desc()).limit(10).all()
+        
+        for tx in transactions:
+            is_income = tx.amount > 0 and tx.transaction_side == "CREDIT"
+            title = "Payment Received" if is_income else "Payment Sent"
+            
+            if tx.transaction_type == "transfer":
+                if is_income:
+                    msg = f"from {tx.merchant.replace('Received from ', '')}" if tx.merchant else "Transfer received"
+                else:
+                    msg = f"to {tx.merchant.replace('Transfer to ', '')}" if tx.merchant else "Transfer sent"
+            else:
+                msg = f"Merchant: {tx.merchant}" if tx.merchant else "Transaction processed"
+                
+            notifications.append({
+                "id": f"tx_{tx.id}",
+                "type": "transaction",
+                "title": title,
+                "message": msg,
+                "amount": float(tx.amount) if tx.amount else None,
+                "created_at": tx.created_at,
+                "link": "/client/transactions"
+            })
+            
+    # 2. Payment Requests
+    requests = db.query(PaymentRequest).filter(
+        or_(
+            PaymentRequest.requester_id == current_user.id,
+            PaymentRequest.target_email == current_user.email
+        )
+    ).order_by(PaymentRequest.created_at.desc()).limit(10).all()
+    
+    for req in requests:
+        is_requester = req.requester_id == current_user.id
+        if is_requester:
+            title = "Request Sent"
+            msg = f"You requested ${req.amount} from {req.target_email}"
+        else:
+            title = "Request Received"
+            msg = f"Someone requested ${req.amount} from you"
+            
+        notifications.append({
+            "id": f"pr_{req.id}",
+            "type": "payment_request",
+            "title": title,
+            "message": msg,
+            "amount": float(req.amount) if req.amount else None,
+            "created_at": req.created_at,
+            "link": "/client/send?tab=request"
+        })
+        
+    # Sort by created_at desc
+    notifications.sort(key=lambda x: x["created_at"], reverse=True)
+    
+    return notifications[:10]
 
 
 @app.get("/accounts/{user_id}")
@@ -1346,12 +1422,14 @@ async def get_all_transactions(
             f"event_time >= now() - INTERVAL {days} DAY",
         ]
 
-        # Type filtering: incoming = positive/CREDIT, outgoing = negative/DEBIT
+        # Type filtering: incoming = positive/CREDIT, outgoing = negative/DEBIT, transfer = P2P
         if tx_type:
             if tx_type.lower() == "outgoing":
                 where_clauses.append("amount < 0")
             elif tx_type.lower() == "incoming":
                 where_clauses.append("amount > 0")
+            elif tx_type.lower() == "transfer":
+                where_clauses.append("transaction_type = 'transfer'")
 
         # Amount range filtering (use absolute value so user-entered ranges apply to magnitude)
         if min_amount is not None:

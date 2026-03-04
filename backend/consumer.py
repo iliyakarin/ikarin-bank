@@ -176,7 +176,7 @@ async def run_consumer():
         "session.timeout.ms": OPTIMAL_SESSION_TIMEOUT,
         "metadata.max.age.ms": 600000,  # 10 minutes instead of 30 seconds
         "socket.keepalive.enable": True,
-        "max.poll.records": 2000,  # Increased poll limit
+
         "fetch.min.bytes": 1,
         "fetch.error.backoff.ms": 1000,
         "retry.backoff.ms": 1000,
