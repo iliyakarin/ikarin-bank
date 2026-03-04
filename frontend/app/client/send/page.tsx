@@ -993,7 +993,7 @@ export default function SendMoneyPage() {
                             </div>
                           </td>
                           <td
-                            className={`py-4 text-right font-bold ${isOutgoing ? "text-white" : "text-emerald-400"}`}
+                            className={`py-4 text-right font-bold ${isOutgoing ? "text-red-400" : "text-emerald-400"}`}
                           >
                             {isOutgoing ? "-" : "+"}$
                             {Math.abs(tx.amount).toFixed(2)}
