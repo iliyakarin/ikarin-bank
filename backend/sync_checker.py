@@ -70,7 +70,7 @@ def run_sync_check():
             
             payload = {
                 "transaction_id": str(tx.id),
-                "parent_id": tx.parent_id,
+                "parent_id": str(tx.parent_id) if tx.parent_id else None,
                 "account_id": tx.account_id,
                 "amount": float(tx.amount),
                 "category": tx.category,
