@@ -7,11 +7,11 @@ import asyncio
 from typing import Dict, Any, Optional, Tuple, List
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text
+from sqlalchemy import func, text, or_
 from decimal import Decimal
 from aiokafka import AIOKafkaProducer
 from pydantic import BaseModel
-from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey
+from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest, Contact
 
 from fastapi.middleware.cors import CORSMiddleware
 from confluent_kafka.admin import AdminClient
@@ -20,13 +20,12 @@ import clickhouse_connect
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from sync_checker import run_sync_check
 
 app = FastAPI(title="Simple Bank API")
 
 # Configuration
-ADMIN_EMAILS = os.getenv(
-    "ADMIN_EMAILS", "ikarin@admin.com,ikarin2@admin.com"
-).split(",")
+# Admins are defined by role="admin" in the database
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "bank_transactions")
 KAFKA_USER = os.getenv("KAFKA_USER", "admin")
@@ -77,17 +76,98 @@ class UserResponse(BaseModel):
     first_name: str
     last_name: str
     email: str
+    backup_email: Optional[str] = None
+    role: str
 
     class Config:
         from_attributes = True
+
+class NotificationResponse(BaseModel):
+    id: str
+    type: str
+    title: str
+    message: str
+    amount: Optional[float] = None
+    created_at: datetime.datetime
+    link: str
+
+    class Config:
+        from_attributes = True
+
+class UserBackupUpdate(BaseModel):
+    backup_email: str
+
+class UserPasswordUpdate(BaseModel):
+    current_password: str
+    new_password: str
 
 
 class P2PTransferRequest(BaseModel):
     recipient_email: str
     amount: Decimal
     idempotency_key: Optional[str] = None
+    commentary: Optional[str] = None
+    payment_request_id: Optional[int] = None
+
+class PaymentRequestCreate(BaseModel):
+    target_email: str
+    amount: Decimal
+    purpose: Optional[str] = None
+
+class PaymentRequestCounter(BaseModel):
+    amount: Decimal
 
 
+
+class ScheduledTransferCreate(BaseModel):
+    recipient_email: str
+    amount: Decimal
+    frequency: str
+    frequency_interval: Optional[str] = None
+    start_date: datetime.datetime
+    end_condition: str
+    end_date: Optional[datetime.datetime] = None
+    target_payments: Optional[int] = None
+    reserve_amount: bool = False
+    idempotency_key: Optional[str] = None
+
+class ScheduledPaymentResponse(BaseModel):
+    id: int
+    user_id: int
+    recipient_email: str
+    amount: float
+    frequency: str
+    frequency_interval: Optional[str] = None
+    start_date: datetime.datetime
+    end_condition: str
+    end_date: Optional[datetime.datetime] = None
+    target_payments: Optional[int] = None
+    payments_made: int
+    next_run_at: Optional[datetime.datetime] = None
+    status: str
+    reserve_amount: bool
+
+    class Config:
+        from_attributes = True
+
+
+class ContactCreate(BaseModel):
+    contact_name: str
+    contact_email: str
+
+class ContactResponse(BaseModel):
+    id: int
+    user_id: int
+    contact_name: str
+    contact_email: str
+    created_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+class ContactUpdate(BaseModel):
+    contact_name: str
+    contact_email: str
 
 # Helper Functions
 def verify_password(plain_password, hashed_password):
@@ -139,12 +219,7 @@ async def get_current_user(
 
 def admin_only(current_user: User = Depends(get_current_user)):
     """Check if current user is an admin"""
-    # Check for admin status via explicit list or RBAC role
-    is_admin_flag = getattr(current_user, "is_admin", False)
-
-    # Check if user has 'admin' role or is in the legacy admin email list
-    # We prioritize the database role for RBAC
-    if current_user.role != "admin" and not is_admin_flag and current_user.email not in ADMIN_EMAILS:
+    if current_user.role != "admin":
         raise HTTPException(
             status_code=403, detail="Admin privileges required for this operation"
         )
@@ -195,6 +270,118 @@ async def login(
 async def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
+@app.post("/api/v1/users/me/backup", response_model=UserResponse)
+async def update_backup_email(
+    update_data: UserBackupUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Check if this email is already used by someone else
+    existing = db.query(User).filter(
+        (User.email == update_data.backup_email) | 
+        (User.backup_email == update_data.backup_email)
+    ).first()
+    
+    if existing and existing.id != current_user.id:
+        raise HTTPException(status_code=400, detail="This email is already in use by another user")
+        
+    current_user.backup_email = update_data.backup_email
+    db.commit()
+    db.refresh(current_user)
+    
+    return current_user
+
+@app.post("/api/v1/users/me/password")
+async def update_password(
+    password_data: UserPasswordUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Verify current password
+    if not verify_password(password_data.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Incorrect current password")
+        
+    if len(password_data.new_password) < 8:
+         raise HTTPException(status_code=400, detail="New password must be at least 8 characters long")
+         
+    # Hash new password and save
+    new_hashed_password = get_password_hash(password_data.new_password)
+    current_user.password_hash = new_hashed_password
+    db.commit()
+    
+    return {"status": "success"}
+
+
+@app.get("/api/v1/users/me/notifications", response_model=List[NotificationResponse])
+async def get_notifications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get the latest 10 notifications (transactions & payment requests)."""
+    notifications = []
+    
+    # 1. Transactions
+    account_ids = [acc.id for acc in db.query(Account).filter(Account.user_id == current_user.id).all()]
+    if account_ids:
+        transactions = db.query(Transaction).filter(
+            Transaction.account_id.in_(account_ids),
+            Transaction.status != "cancelled"
+        ).order_by(Transaction.created_at.desc()).limit(10).all()
+        
+        for tx in transactions:
+            is_income = tx.amount > 0 and tx.transaction_side == "CREDIT"
+            title = "Payment Received" if is_income else "Payment Sent"
+            
+            if tx.transaction_type == "transfer":
+                if is_income:
+                    msg = f"from {tx.merchant.replace('Received from ', '')}" if tx.merchant else "Transfer received"
+                else:
+                    msg = f"to {tx.merchant.replace('Transfer to ', '')}" if tx.merchant else "Transfer sent"
+            else:
+                msg = f"Merchant: {tx.merchant}" if tx.merchant else "Transaction processed"
+                
+            notifications.append({
+                "id": f"tx_{tx.id}",
+                "type": "transaction",
+                "title": title,
+                "message": msg,
+                "amount": float(tx.amount) if tx.amount else None,
+                "created_at": tx.created_at,
+                "link": "/client/transactions"
+            })
+            
+    # 2. Payment Requests
+    requests = db.query(PaymentRequest).filter(
+        or_(
+            PaymentRequest.requester_id == current_user.id,
+            PaymentRequest.target_email == current_user.email
+        )
+    ).order_by(PaymentRequest.created_at.desc()).limit(10).all()
+    
+    for req in requests:
+        is_requester = req.requester_id == current_user.id
+        if is_requester:
+            title = "Request Sent"
+            msg = f"You requested ${req.amount} from {req.target_email}"
+        else:
+            title = "Request Received"
+            msg = f"Someone requested ${req.amount} from you"
+            
+        notifications.append({
+            "id": f"pr_{req.id}",
+            "type": "payment_request",
+            "title": title,
+            "message": msg,
+            "amount": float(req.amount) if req.amount else None,
+            "created_at": req.created_at,
+            "link": "/client/send?tab=request"
+        })
+        
+    # Sort by created_at desc
+    notifications.sort(key=lambda x: x["created_at"], reverse=True)
+    
+    return notifications[:10]
+
 
 @app.get("/accounts/{user_id}")
 async def get_account_balance(
@@ -209,7 +396,11 @@ async def get_account_balance(
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    return {"balance": float(account.balance), "user_id": user_id}
+    return {
+        "balance": float(account.balance), 
+        "reserved_balance": float(account.reserved_balance or 0.0),
+        "user_id": user_id
+    }
 
 
 # --- Observability Endpoints ---
@@ -415,6 +606,15 @@ def get_ch_logs(current_user: User = Depends(admin_only)):
     return logs
 
 
+@app.post("/admin/sync-clickhouse")
+def manual_sync_clickhouse(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(admin_only)
+):
+    background_tasks.add_task(run_sync_check)
+    return {"status": "success", "message": "Manual ClickHouse sync started in the background."}
+
+
 # Kafka Producer state
 producer = None
 
@@ -577,7 +777,9 @@ def _create_p2p_transactions(
     sender_email: str,
     idempotency_key: Optional[str],
     client_ip: str,
-    user_agent: str
+    user_agent: str,
+    commentary: Optional[str] = None,
+    payment_request_id: Optional[int] = None
 ) -> Tuple[str, str, str]:
     """Creates transaction records for sender and recipient."""
     tx_id_parent = str(uuid.uuid4())
@@ -596,7 +798,9 @@ def _create_p2p_transactions(
         transaction_side="DEBIT",
         idempotency_key=idempotency_key,
         ip_address=client_ip,
-        user_agent=user_agent
+        user_agent=user_agent,
+        commentary=commentary,
+        payment_request_id=payment_request_id
     )
 
     recipient_tx = Transaction(
@@ -611,7 +815,9 @@ def _create_p2p_transactions(
         transaction_side="CREDIT",
         idempotency_key=idempotency_key,
         ip_address=client_ip,
-        user_agent=user_agent
+        user_agent=user_agent,
+        commentary=commentary,
+        payment_request_id=payment_request_id
     )
 
     db.add(sender_tx)
@@ -628,7 +834,8 @@ def _create_p2p_outbox_entries(
     recipient_email: str,
     tx_id_parent: str,
     tx_id_sender: str,
-    tx_id_recipient: str
+    tx_id_recipient: str,
+    commentary: Optional[str] = None
 ):
     """Creates outbox entries for Kafka processing."""
     sender_payload = {
@@ -644,6 +851,7 @@ def _create_p2p_outbox_entries(
         "transaction_side": "DEBIT",
         "status": "pending",
         "timestamp": datetime.datetime.utcnow().isoformat(),
+        "commentary": commentary
     }
 
     recipient_payload = {
@@ -659,6 +867,7 @@ def _create_p2p_outbox_entries(
         "transaction_side": "CREDIT",
         "status": "pending",
         "timestamp": datetime.datetime.utcnow().isoformat(),
+        "commentary": commentary
     }
 
     db.add(Outbox(event_type="p2p.sender", payload=sender_payload))
@@ -686,7 +895,22 @@ async def create_p2p_transfer(
 
     # 2. Validation & Recipient Lookup
     recipient = _validate_p2p_transfer(transfer, current_user, db)
-    
+
+    # Validate Payment Request if paying one
+    payment_request = None
+    if transfer.payment_request_id:
+        payment_request = db.query(PaymentRequest).filter(PaymentRequest.id == transfer.payment_request_id).first()
+        if not payment_request:
+            raise HTTPException(status_code=404, detail="Payment request not found")
+        # Ensure that the current_user is the target of the request
+        if payment_request.target_email != current_user.email:
+             raise HTTPException(status_code=403, detail="You are not the target of this payment request")
+        if payment_request.status not in ["pending_target", "pending_requester"]:
+             raise HTTPException(status_code=400, detail="Payment request is no longer active")
+        # Ensure that the amount paid is at least the requested amount
+        if transfer.amount < payment_request.amount:
+            raise HTTPException(status_code=400, detail=f"Transfer amount must be at least the requested amount (${payment_request.amount})")
+
     try:
         # 3. Atomic Locking & Balance Verification (ACID)
         sender_account, recipient_account = _execute_p2p_balances(
@@ -703,7 +927,9 @@ async def create_p2p_transfer(
             current_user.email,
             transfer.idempotency_key,
             client_ip,
-            user_agent
+            user_agent,
+            transfer.commentary,
+            transfer.payment_request_id
         )
 
         # 5. Create Outbox Entries
@@ -716,8 +942,14 @@ async def create_p2p_transfer(
             recipient.email,
             tx_id_parent,
             tx_id_sender,
-            tx_id_recipient
+            tx_id_recipient,
+            transfer.commentary
         )
+
+        # Mark payment request as paid if one was linked
+        if payment_request:
+            payment_request.status = "paid"
+            payment_request.updated_at = datetime.datetime.utcnow()
 
         # 6. Finalize Idempotency Key
         response_body = {"status": "success", "transaction_id": tx_id_parent}
@@ -741,6 +973,244 @@ async def create_p2p_transfer(
         raise HTTPException(status_code=500, detail="Internal financial processing error")
 
 
+# --- Payment Requests Endpoints ---
+
+@app.post("/api/v1/requests/create")
+async def create_payment_request(
+    request_data: PaymentRequestCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if request_data.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than 0")
+    
+    if request_data.target_email == current_user.email:
+        raise HTTPException(status_code=400, detail="Cannot request money from yourself")
+        
+    target_user = db.query(User).filter(User.email == request_data.target_email).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Target user not found")
+
+    new_request = PaymentRequest(
+        requester_id=current_user.id,
+        target_email=request_data.target_email,
+        amount=request_data.amount,
+        purpose=request_data.purpose,
+        status="pending_target"
+    )
+    
+    db.add(new_request)
+    db.commit()
+    db.refresh(new_request)
+    
+    return {"status": "success", "request_id": new_request.id}
+
+
+@app.get("/api/v1/requests")
+async def get_payment_requests(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Fetch requests where user is requester or target
+    requests = db.query(PaymentRequest).filter(
+        (PaymentRequest.requester_id == current_user.id) | 
+        (PaymentRequest.target_email == current_user.email)
+    ).order_by(PaymentRequest.updated_at.desc()).all()
+    
+    # Enrich with requester info
+    result = []
+    for req in requests:
+        requester = db.query(User).filter(User.id == req.requester_id).first()
+        result.append({
+            "id": req.id,
+            "requester_id": req.requester_id,
+            "requester_name": f"{requester.first_name} {requester.last_name}" if requester else "Unknown",
+            "requester_email": requester.email if requester else "unknown",
+            "target_email": req.target_email,
+            "amount": float(req.amount),
+            "purpose": req.purpose,
+            "status": req.status,
+            "created_at": req.created_at.isoformat(),
+            "updated_at": req.updated_at.isoformat()
+        })
+        
+    return result
+
+
+@app.post("/api/v1/requests/{request_id}/counter")
+async def counter_payment_request(
+    request_id: int,
+    counter_data: PaymentRequestCounter,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if counter_data.amount <= 0:
+        raise HTTPException(status_code=400, detail="Counter amount must be greater than 0")
+
+    req = db.query(PaymentRequest).filter(PaymentRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Payment request not found")
+
+    is_requester = req.requester_id == current_user.id
+    is_target = req.target_email == current_user.email
+    
+    if not is_requester and not is_target:
+        raise HTTPException(status_code=403, detail="Not authorized to modify this request")
+        
+    if req.status not in ["pending_target", "pending_requester"]:
+        raise HTTPException(status_code=400, detail=f"Request cannot be modified in state: {req.status}")
+
+    # Enforce turns
+    if is_target and req.status != "pending_target":
+        raise HTTPException(status_code=400, detail="It is not your turn to counter-offer")
+    if is_requester and req.status != "pending_requester":
+        raise HTTPException(status_code=400, detail="It is not your turn to counter-offer")
+
+    req.amount = counter_data.amount
+    # Flip the status depending on who just countered
+    req.status = "pending_requester" if is_target else "pending_target"
+    req.updated_at = datetime.datetime.utcnow()
+    
+    db.commit()
+    return {"status": "success", "request_id": req.id, "new_amount": float(req.amount), "new_status": req.status}
+
+
+@app.post("/api/v1/requests/{request_id}/decline")
+async def decline_payment_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    req = db.query(PaymentRequest).filter(PaymentRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Payment request not found")
+
+    if req.requester_id != current_user.id and req.target_email != current_user.email:
+        raise HTTPException(status_code=403, detail="Not authorized to modify this request")
+        
+    if req.status not in ["pending_target", "pending_requester"]:
+        raise HTTPException(status_code=400, detail=f"Request cannot be modified in state: {req.status}")
+
+    req.status = "declined"
+    req.updated_at = datetime.datetime.utcnow()
+    
+    db.commit()
+    return {"status": "success", "request_id": req.id, "new_status": req.status}
+def _calculate_next_run_at(start_date: datetime.datetime, frequency: str, interval: str = None) -> datetime.datetime:
+    # A simplified implementation for the immediate next execution
+    # In a full system, this would apply cron-like interval math
+    return start_date
+
+@app.post("/api/v1/transfers/scheduled")
+async def create_scheduled_transfer(
+    transfer: ScheduledTransferCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Scheduled Limit check (e.g., max $5000 per scheduled transfer)
+    if transfer.amount > 5000:
+        raise HTTPException(status_code=400, detail="Amount exceeds maximum scheduled transfer limit of $5000.")
+
+    # Validation: start date in future
+    if transfer.start_date.date() <= datetime.datetime.utcnow().date():
+        raise HTTPException(status_code=400, detail="Start date must be in the future.")
+
+    ik = transfer.idempotency_key or str(uuid.uuid4())
+    existing_key = db.query(IdempotencyKey).filter(
+        IdempotencyKey.key == ik,
+        IdempotencyKey.user_id == current_user.id
+    ).first()
+    if existing_key:
+        return existing_key.response_body
+
+    try:
+        sender_account = db.query(Account).filter(Account.user_id == current_user.id).with_for_update().first()
+        if not sender_account:
+            raise HTTPException(status_code=404, detail="Account not found")
+
+        # Reserve balance logic
+        if transfer.reserve_amount:
+            if sender_account.balance < transfer.amount:
+                raise HTTPException(status_code=400, detail="Insufficient funds to reserve amount.")
+            sender_account.balance -= transfer.amount
+            sender_account.reserved_balance += transfer.amount
+
+        next_run = _calculate_next_run_at(transfer.start_date, transfer.frequency, transfer.frequency_interval)
+
+        new_scheduled_payment = ScheduledPayment(
+            user_id=current_user.id,
+            recipient_email=transfer.recipient_email,
+            amount=transfer.amount,
+            frequency=transfer.frequency,
+            frequency_interval=transfer.frequency_interval,
+            start_date=transfer.start_date,
+            end_condition=transfer.end_condition,
+            end_date=transfer.end_date,
+            target_payments=transfer.target_payments,
+            next_run_at=next_run,
+            status="Active",
+            idempotency_key=ik,
+            reserve_amount=transfer.reserve_amount
+        )
+        db.add(new_scheduled_payment)
+        
+        response_body = {"status": "success", "message": "Transfer scheduled successfully."}
+        db.add(IdempotencyKey(
+            key=ik,
+            user_id=current_user.id,
+            response_code=200,
+            response_body=response_body
+        ))
+        
+        db.commit()
+        db.refresh(new_scheduled_payment)
+        
+        return {"status": "success", "scheduled_payment_id": new_scheduled_payment.id}
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"[ERROR] Scheduled Transfer failed: {e}")
+        raise HTTPException(status_code=500, detail="Internal processing error")
+
+
+@app.get("/api/v1/transfers/scheduled", response_model=List[ScheduledPaymentResponse])
+async def get_scheduled_payments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get all scheduled payments for the current user."""
+    payments = db.query(ScheduledPayment).filter(
+        ScheduledPayment.user_id == current_user.id
+    ).order_by(ScheduledPayment.id.desc()).all()
+    
+    return payments
+
+@app.post("/api/v1/transfers/scheduled/{payment_id}/cancel")
+async def cancel_scheduled_payment(
+    payment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Cancel a scheduled payment."""
+    payment = db.query(ScheduledPayment).filter(
+        ScheduledPayment.id == payment_id,
+        ScheduledPayment.user_id == current_user.id
+    ).first()
+    
+    if not payment:
+        raise HTTPException(status_code=404, detail="Scheduled payment not found")
+        
+    if payment.status != "Active":
+        raise HTTPException(status_code=400, detail=f"Payment is already {payment.status}")
+        
+    payment.status = "Cancelled"
+    db.commit()
+    
+    return {"status": "success", "message": "Scheduled payment cancelled"}
 
 
 # --- Dashboard & Analytics Endpoints ---
@@ -966,12 +1436,14 @@ async def get_all_transactions(
             f"event_time >= now() - INTERVAL {days} DAY",
         ]
 
-        # Type filtering: incoming = positive/CREDIT, outgoing = negative/DEBIT
+        # Type filtering: incoming = positive/CREDIT, outgoing = negative/DEBIT, transfer = P2P
         if tx_type:
             if tx_type.lower() == "outgoing":
                 where_clauses.append("amount < 0")
             elif tx_type.lower() == "incoming":
                 where_clauses.append("amount > 0")
+            elif tx_type.lower() == "transfer":
+                where_clauses.append("transaction_type = 'transfer'")
 
         # Amount range filtering (use absolute value so user-entered ranges apply to magnitude)
         if min_amount is not None:
@@ -1028,6 +1500,101 @@ async def get_all_transactions(
         print(f"Error querying ClickHouse transactions: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch transactions")
 
+
+# --- Contacts Endpoints ---
+
+@app.get("/api/v1/contacts", response_model=List[ContactResponse])
+async def get_contacts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    contacts = db.query(Contact).filter(Contact.user_id == current_user.id).order_by(Contact.contact_name).all()
+    return contacts
+
+@app.post("/api/v1/contacts", response_model=ContactResponse)
+async def create_contact(
+    contact_data: ContactCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not contact_data.contact_name.strip() or not contact_data.contact_email.strip():
+        raise HTTPException(status_code=400, detail="Name and Email are required")
+        
+    # Check if duplicate email exists for user
+    existing = db.query(Contact).filter(
+        Contact.user_id == current_user.id, 
+        Contact.contact_email == contact_data.contact_email
+    ).first()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Contact with this email already exists")
+
+    new_contact = Contact(
+        user_id=current_user.id,
+        contact_name=contact_data.contact_name,
+        contact_email=contact_data.contact_email
+    )
+    
+    db.add(new_contact)
+    db.commit()
+    db.refresh(new_contact)
+    
+    return new_contact
+
+@app.put("/api/v1/contacts/{contact_id}", response_model=ContactResponse)
+async def update_contact(
+    contact_id: int,
+    contact_data: ContactUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    contact = db.query(Contact).filter(
+        Contact.id == contact_id, 
+        Contact.user_id == current_user.id
+    ).first()
+    
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+        
+    if not contact_data.contact_name.strip() or not contact_data.contact_email.strip():
+        raise HTTPException(status_code=400, detail="Name and Email are required")
+        
+    # Check if duplicate email exists for user (excluding self)
+    existing = db.query(Contact).filter(
+        Contact.user_id == current_user.id, 
+        Contact.contact_email == contact_data.contact_email,
+        Contact.id != contact_id
+    ).first()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Another contact with this email already exists")
+
+    contact.contact_name = contact_data.contact_name
+    contact.contact_email = contact_data.contact_email
+    
+    db.commit()
+    db.refresh(contact)
+    
+    return contact
+
+@app.delete("/api/v1/contacts/{contact_id}")
+async def delete_contact(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    contact = db.query(Contact).filter(
+        Contact.id == contact_id, 
+        Contact.user_id == current_user.id
+    ).first()
+    
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+        
+    db.delete(contact)
+    db.commit()
+    
+    return {"status": "success"}
 
 # --- Admin Endpoints ---
 

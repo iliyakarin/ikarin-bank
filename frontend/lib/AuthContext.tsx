@@ -7,6 +7,8 @@ interface User {
     first_name: string;
     last_name: string;
     email: string;
+    backup_email?: string;
+    role: string;
 }
 
 interface AuthContextType {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { determineErrorSeverity } from './errorLogger.ts';
+import { determineErrorSeverity } from './errorLogger';
 
 test('determineErrorSeverity - critical patterns', () => {
   // Network errors

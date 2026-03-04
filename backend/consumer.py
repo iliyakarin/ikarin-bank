@@ -41,11 +41,7 @@ def get_clickhouse_client():
             host=CH_HOST,
             port=CH_PORT,
             username=CH_USER,
-            password=CH_PASSWORD,
-            # Performance optimizations
-            send_progress=True,
-            send_progress_timeout=10,
-            insert_block_size=1000,
+            password=CH_PASSWORD
         )
         logger.info("🚀 ClickHouse client connected with performance optimizations")
     return ch_client
@@ -176,7 +172,7 @@ async def run_consumer():
         "session.timeout.ms": OPTIMAL_SESSION_TIMEOUT,
         "metadata.max.age.ms": 600000,  # 10 minutes instead of 30 seconds
         "socket.keepalive.enable": True,
-        "max.poll.records": 2000,  # Increased poll limit
+
         "fetch.min.bytes": 1,
         "fetch.error.backoff.ms": 1000,
         "retry.backoff.ms": 1000,

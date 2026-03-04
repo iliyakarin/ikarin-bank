@@ -10,7 +10,7 @@ function TransactionItem({ transaction }: TransactionItemProps) {
     const isPending = transaction.status === 'pending';
     const isProcessing = transaction.status === 'sent_to_kafka';
     const icon = CATEGORY_ICONS[transaction.category] || DEFAULT_CATEGORY_ICON;
-    
+
     // Determine if this is a deduction (expense or transfer) or income
     const isIncome = transaction.transaction_type === 'income';
     const isDeduction = transaction.transaction_type === 'expense' || transaction.transaction_type === 'transfer';
@@ -53,7 +53,7 @@ function TransactionItem({ transaction }: TransactionItemProps) {
                     {amountPrefix}${Math.abs(transaction.amount).toFixed(2)}
                 </p>
                 <p className="text-[10px] text-gray-400">
-                    {new Date(transaction.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    {new Date(transaction.created_at + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                 </p>
             </div>
         </div>
