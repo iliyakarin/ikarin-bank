@@ -59,6 +59,13 @@ function TransactionItem({ transaction, index }: { transaction: Transaction, ind
                             </span>
                         )}
 
+                        {status === 'failed' && (
+                            <span className="flex items-center gap-1 text-[11px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">
+                                <AlertCircle className="w-3 h-3" />
+                                {statusLabel}
+                            </span>
+                        )}
+
                         {/* Transfer indicator */}
                         {isTransfer && (
                             <span className="flex items-center gap-1 text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
@@ -71,13 +78,22 @@ function TransactionItem({ transaction, index }: { transaction: Transaction, ind
                     </div>
                 </div>
             </div>
-            <div className="text-right">
+            <div className="text-right flex flex-col justify-end items-end gap-1">
                 <p className={`font-bold text-lg ${amountColor}`}>
                     {amountPrefix}${Math.abs(transaction.amount).toFixed(2)}
                 </p>
                 <p className="text-xs text-gray-400 font-medium">
                     {new Date(transaction.created_at + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                 </p>
+                {status === 'failed' && (
+                    <Link
+                        href={`/client`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-1 flex items-center gap-1 text-[10px] uppercase font-bold text-white bg-red-500 hover:bg-red-600 px-2 py-1 rounded shadow-sm transition-colors"
+                    >
+                        Top Up & Retry
+                    </Link>
+                )}
             </div>
         </motion.div>
     );
