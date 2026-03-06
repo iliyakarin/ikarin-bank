@@ -5,14 +5,15 @@ import re
 import datetime
 import asyncio
 from typing import Dict, Any, Optional, Tuple, List
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text, or_
 from decimal import Decimal
 from aiokafka import AIOKafkaProducer
 from pydantic import BaseModel
 from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest, Contact
-from activity import emit_activity
+from activity import emit_activity, ws_register, ws_unregister
+from security_checks import check_velocity, check_anomaly
 import clickhouse_connect
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -349,6 +350,42 @@ async def logout(
     # Note: JWTs are stateless. True invalidation requires a token blacklist.
     # For now we log the event; the client must delete the token.
     return {"status": "success", "message": "Logged out successfully"}
+
+
+@app.websocket("/ws/activity/{token}")
+async def ws_activity(websocket: WebSocket, token: str):
+    """WebSocket endpoint for real-time activity updates."""
+    # Authenticate via JWT
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        if not email:
+            await websocket.close(code=4001)
+            return
+    except JWTError:
+        await websocket.close(code=4001)
+        return
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            await websocket.close(code=4001)
+            return
+    finally:
+        db.close()
+
+    await websocket.accept()
+    ws_register(user.id, websocket)
+
+    try:
+        while True:
+            # Keep connection alive — wait for client pings or messages
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        ws_unregister(user.id, websocket)
 
 
 @app.get("/api/v1/users/me/notifications", response_model=List[NotificationResponse])
@@ -941,6 +978,15 @@ async def create_p2p_transfer(
     # 2. Validation & Recipient Lookup
     recipient = _validate_p2p_transfer(transfer, current_user, db)
 
+    # 2.5 Security Checks
+    if not check_velocity(db, current_user.id):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded: too many transactions in the last minute. Please try again shortly."
+        )
+
+    anomaly_flagged = check_anomaly(db, current_user.id, Decimal(str(transfer.amount)))
+
     # Validate Payment Request if paying one
     payment_request = None
     if transfer.payment_request_id:
@@ -1371,7 +1417,7 @@ async def get_activity(
 
         query = f"""
             SELECT event_id, user_id, category, action, event_time, title, details
-            FROM banking.activity_events
+            FROM banking.activity_events FINAL
             WHERE {where_clause}
             ORDER BY event_time {sort_dir}
             LIMIT {{limit:UInt32}} OFFSET {{offset:UInt32}}
@@ -1382,7 +1428,7 @@ async def get_activity(
         result = ch.query(query, parameters=params)
 
         count_query = f"""
-            SELECT count() FROM banking.activity_events WHERE {where_clause}
+            SELECT count() FROM banking.activity_events FINAL WHERE {where_clause}
         """
         count_result = ch.query(count_query, parameters=params)
         total = count_result.result_rows[0][0] if count_result.result_rows else 0
