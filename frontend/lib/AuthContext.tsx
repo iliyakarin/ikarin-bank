@@ -80,7 +80,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         router.push('/client');
     };
 
-    const logout = () => {
+    const logout = async () => {
+        // Call server-side logout to record the event
+        try {
+            if (token) {
+                await fetch('http://localhost:8000/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+            }
+        } catch (err) {
+            console.error("Server logout call failed", err);
+        }
+        // Always clear client state regardless of server response
         localStorage.removeItem('bank_token');
         setToken(null);
         setUser(null);

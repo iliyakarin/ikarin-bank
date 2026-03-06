@@ -1024,74 +1024,76 @@ export default function SendMoneyPage() {
           </form>
         )}
         {/* Instant History Table */}
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 mt-8">
-          <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-            <Clock className="text-purple-400" size={24} />
-            Recent Transfers
-          </h3>
+        {activeTab === "instant" && (
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 mt-8">
+            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+              <Clock className="text-purple-400" size={24} />
+              Recent Transfers
+            </h3>
 
-          {instantHistoryLoading ? (
-            <div className="py-8 text-center text-white/50 animate-pulse font-medium">
-              Loading history...
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-white/10 text-white/50 text-sm">
-                    <th className="pb-3 font-medium">Date</th>
-                    <th className="pb-3 font-medium">To / From</th>
-                    <th className="pb-3 font-medium text-right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {instantHistory.map((tx) => {
-                    const isOutgoing = tx.amount < 0;
-                    return (
-                      <tr
-                        key={tx.id}
-                        className="border-b border-white/5 hover:bg-white/5 transition-colors"
-                      >
-                        <td className="py-4 text-white/70 text-sm">
-                          {new Date(tx.timestamp + "Z").toLocaleString(settings.useEUDates ? 'en-GB' : 'en-US', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                            hour12: !settings.use24Hour
-                          })}
-                        </td>
-                        <td className="py-4">
-                          <div className="text-white font-medium">
-                            {isOutgoing
-                              ? tx.recipient_email
-                              : tx.sender_email}
-                          </div>
-                          <div className="text-white/50 text-xs">
-                            {isOutgoing ? "Sent" : "Received"}
-                          </div>
-                        </td>
-                        <td
-                          className={`py-4 text-right font-bold ${isOutgoing ? "text-red-400" : "text-emerald-400"}`}
+            {instantHistoryLoading ? (
+              <div className="py-8 text-center text-white/50 animate-pulse font-medium">
+                Loading history...
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-white/10 text-white/50 text-sm">
+                      <th className="pb-3 font-medium">Date</th>
+                      <th className="pb-3 font-medium">To / From</th>
+                      <th className="pb-3 font-medium text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {instantHistory.map((tx) => {
+                      const isOutgoing = tx.amount < 0;
+                      return (
+                        <tr
+                          key={tx.id}
+                          className="border-b border-white/5 hover:bg-white/5 transition-colors"
                         >
-                          {isOutgoing ? "-" : "+"}$
-                          {Math.abs(tx.amount).toFixed(2)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {instantHistory.length === 0 && (
-                <p className="text-white/50 text-center py-6">
-                  No recent transfers found.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
+                          <td className="py-4 text-white/70 text-sm">
+                            {new Date(tx.timestamp + "Z").toLocaleString(settings.useEUDates ? 'en-GB' : 'en-US', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                              hour12: !settings.use24Hour
+                            })}
+                          </td>
+                          <td className="py-4">
+                            <div className="text-white font-medium">
+                              {isOutgoing
+                                ? tx.recipient_email
+                                : tx.sender_email}
+                            </div>
+                            <div className="text-white/50 text-xs">
+                              {isOutgoing ? "Sent" : "Received"}
+                            </div>
+                          </td>
+                          <td
+                            className={`py-4 text-right font-bold ${isOutgoing ? "text-red-400" : "text-emerald-400"}`}
+                          >
+                            {isOutgoing ? "-" : "+"}$
+                            {Math.abs(tx.amount).toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {instantHistory.length === 0 && (
+                  <p className="text-white/50 text-center py-6">
+                    No recent transfers found.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {activeTab === "scheduled" && (
           // SCHEDULED TRANSFER FORM
