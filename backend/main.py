@@ -12,6 +12,8 @@ from decimal import Decimal
 from aiokafka import AIOKafkaProducer
 from pydantic import BaseModel
 from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest, Contact
+from activity import emit_activity
+import clickhouse_connect
 
 from fastapi.middleware.cors import CORSMiddleware
 from confluent_kafka.admin import AdminClient
@@ -254,6 +256,9 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     db.add(new_account)
     db.commit()
 
+    emit_activity(db, new_user.id, "security", "register", "Account registered", {"email": new_user.email})
+    db.commit()
+
     return new_user
 
 
@@ -266,6 +271,10 @@ async def login(
         raise HTTPException(status_code=401, detail="Incorrect email or password")
 
     access_token = create_access_token(data={"sub": user.email})
+
+    emit_activity(db, user.id, "security", "login", "User logged in", {"email": user.email})
+    db.commit()
+
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -289,6 +298,10 @@ async def update_backup_email(
         raise HTTPException(status_code=400, detail="This email is already in use by another user")
         
     current_user.backup_email = update_data.backup_email
+
+    emit_activity(db, current_user.id, "security", "email_change", "Backup email updated", {
+        "new_backup_email": update_data.backup_email[:3] + "***"
+    })
     db.commit()
     db.refresh(current_user)
     
@@ -310,9 +323,32 @@ async def update_password(
     # Hash new password and save
     new_hashed_password = get_password_hash(password_data.new_password)
     current_user.password_hash = new_hashed_password
+
+    emit_activity(db, current_user.id, "security", "password_change", "Password changed")
     db.commit()
     
     return {"status": "success"}
+
+
+@app.post("/auth/logout")
+async def logout(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Server-side logout: logs the event and invalidates the session."""
+    user_agent = request.headers.get("user-agent", "unknown")
+    client_ip = request.client.host
+
+    emit_activity(db, current_user.id, "security", "logout", "User logged out", {
+        "ip": client_ip,
+        "user_agent": user_agent,
+    })
+    db.commit()
+
+    # Note: JWTs are stateless. True invalidation requires a token blacklist.
+    # For now we log the event; the client must delete the token.
+    return {"status": "success", "message": "Logged out successfully"}
 
 
 @app.get("/api/v1/users/me/notifications", response_model=List[NotificationResponse])
@@ -986,6 +1022,21 @@ async def create_p2p_transfer(
                 response_body=response_body
             ))
 
+        # Emit activity events for sender and recipient
+        emit_activity(db, current_user.id, "p2p", "sent", f"Sent ${float(transfer.amount):.2f} to {recipient.email}", {
+            "transaction_id": tx_id_parent,
+            "recipient_email": recipient.email,
+            "amount": float(transfer.amount),
+            "commentary": transfer.commentary,
+            "source_account_id": resolved_sender_account.id,
+        })
+        emit_activity(db, recipient.id, "p2p", "received", f"Received ${float(transfer.amount):.2f} from {current_user.email}", {
+            "transaction_id": tx_id_parent,
+            "sender_email": current_user.email,
+            "amount": float(transfer.amount),
+            "commentary": transfer.commentary,
+        })
+
         db.commit()
         return response_body
 
@@ -1025,6 +1076,12 @@ async def create_payment_request(
     )
     
     db.add(new_request)
+
+    emit_activity(db, current_user.id, "p2p", "requested", f"Requested ${float(request_data.amount):.2f} from {request_data.target_email}", {
+        "target_email": request_data.target_email,
+        "amount": float(request_data.amount),
+        "purpose": request_data.purpose,
+    })
     db.commit()
     db.refresh(new_request)
     
@@ -1119,6 +1176,10 @@ async def decline_payment_request(
     req.status = "declined"
     req.updated_at = datetime.datetime.utcnow()
     
+    emit_activity(db, current_user.id, "p2p", "request_declined", f"Declined payment request #{req.id}", {
+        "request_id": req.id,
+        "amount": float(req.amount),
+    })
     db.commit()
     return {"status": "success", "request_id": req.id, "new_status": req.status}
 def _calculate_next_run_at(start_date: datetime.datetime, frequency: str, interval: str = None) -> datetime.datetime:
@@ -1204,6 +1265,15 @@ async def create_scheduled_transfer(
         
         db.commit()
         db.refresh(new_scheduled_payment)
+
+        emit_activity(db, current_user.id, "scheduled", "setup", f"Scheduled ${float(transfer.amount):.2f} {transfer.frequency} to {transfer.recipient_email}", {
+            "scheduled_payment_id": new_scheduled_payment.id,
+            "recipient_email": transfer.recipient_email,
+            "amount": float(transfer.amount),
+            "frequency": transfer.frequency,
+            "start_date": str(transfer.start_date),
+        })
+        db.commit()
         
         return {"status": "success", "scheduled_payment_id": new_scheduled_payment.id}
 
@@ -1247,9 +1317,93 @@ async def cancel_scheduled_payment(
         raise HTTPException(status_code=400, detail=f"Payment is already {payment.status}")
         
     payment.status = "Cancelled"
+
+    emit_activity(db, current_user.id, "scheduled", "cancelled", f"Cancelled scheduled payment #{payment.id}", {
+        "scheduled_payment_id": payment.id,
+        "recipient_email": payment.recipient_email,
+        "amount": float(payment.amount),
+    })
     db.commit()
     
     return {"status": "success", "message": "Scheduled payment cancelled"}
+
+
+# --- Activity Log Endpoint ---
+
+@app.get("/api/v1/activity")
+async def get_activity(
+    category: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    search: Optional[str] = None,
+    order: str = "desc",
+    limit: int = 50,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user),
+):
+    """Query the activity log from ClickHouse."""
+    try:
+        ch = clickhouse_connect.get_client(
+            host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
+        )
+
+        conditions = ["user_id = {user_id:Int64}"]
+        params = {"user_id": current_user.id}
+
+        if category:
+            conditions.append("category = {category:String}")
+            params["category"] = category
+
+        if from_date:
+            conditions.append("event_time >= {from_date:String}")
+            params["from_date"] = from_date
+
+        if to_date:
+            conditions.append("event_time <= {to_date:String}")
+            params["to_date"] = to_date
+
+        if search:
+            conditions.append("(title ILIKE {search:String} OR details ILIKE {search:String})")
+            params["search"] = f"%{search}%"
+
+        where_clause = " AND ".join(conditions)
+        sort_dir = "ASC" if order == "asc" else "DESC"
+
+        query = f"""
+            SELECT event_id, user_id, category, action, event_time, title, details
+            FROM banking.activity_events
+            WHERE {where_clause}
+            ORDER BY event_time {sort_dir}
+            LIMIT {{limit:UInt32}} OFFSET {{offset:UInt32}}
+        """
+        params["limit"] = limit
+        params["offset"] = offset
+
+        result = ch.query(query, parameters=params)
+
+        count_query = f"""
+            SELECT count() FROM banking.activity_events WHERE {where_clause}
+        """
+        count_result = ch.query(count_query, parameters=params)
+        total = count_result.result_rows[0][0] if count_result.result_rows else 0
+
+        events = []
+        for row in result.result_rows:
+            events.append({
+                "event_id": row[0],
+                "user_id": row[1],
+                "category": row[2],
+                "action": row[3],
+                "event_time": str(row[4]),
+                "title": row[5],
+                "details": row[6],
+            })
+
+        return {"events": events, "total": total}
+
+    except Exception as e:
+        print(f"[ERROR] Activity query failed: {e}")
+        return {"events": [], "total": 0}
 
 
 # --- Dashboard & Analytics Endpoints ---

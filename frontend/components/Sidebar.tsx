@@ -2,7 +2,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Send, CreditCard, Wallet, LogOut, History, Users } from 'lucide-react';
+import { LayoutDashboard, Send, CreditCard, Wallet, LogOut, History, Users, Activity } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -11,6 +11,7 @@ const navItems = [
     { name: 'Payments', href: '/client/send', icon: Send },
     { name: 'My Contacts', href: '/client/contacts', icon: Users },
     { name: 'My Cards', href: '/client/cards', icon: CreditCard },
+    { name: 'Activity', href: '/client/activity', icon: Activity },
     { name: 'Transactions', href: '/client/transactions', icon: History },
 ];
 

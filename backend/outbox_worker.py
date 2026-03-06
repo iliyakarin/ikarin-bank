@@ -9,6 +9,7 @@ from aiokafka import AIOKafkaProducer
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
+KAFKA_ACTIVITY_TOPIC = os.getenv("KAFKA_ACTIVITY_TOPIC")
 KAFKA_USER = os.getenv("KAFKA_USER")
 KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD", "")
 
@@ -38,9 +39,12 @@ async def process_outbox():
                         payload_data = event.payload
                         tx_id = payload_data.get("transaction_id")
                         
+                        # Route to the correct topic based on event type
+                        target_topic = KAFKA_ACTIVITY_TOPIC if event.event_type == "activity_event" else KAFKA_TOPIC
+                        
                         # Send to Kafka
                         await producer.send_and_wait(
-                            KAFKA_TOPIC, 
+                            target_topic, 
                             json.dumps(payload_data).encode("utf-8")
                         )
 
