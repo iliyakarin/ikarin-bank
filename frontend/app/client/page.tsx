@@ -7,6 +7,7 @@ import { useTransactions, useBalance } from "@/hooks/useDashboard";
 import SpendingStats, { SpendingByCategory } from "@/components/SpendingStats";
 import TransactionList from "@/components/TransactionList";
 import BalanceHistoryChart from "@/components/BalanceHistoryChart";
+import SubAccountManager from "@/components/SubAccountManager";
 import { TrendingUp, RefreshCw, ShieldCheck } from "lucide-react";
 import {
   LineChart,
@@ -21,7 +22,7 @@ import {
 export default function DashboardPage() {
   const { user, token } = useAuth();
   const [userName, setUserName] = useState<string>("User");
-  const [dayFilter, setDayFilter] = useState(30);
+  const [dayFilter, setDayFilter] = useState(1); // Default to 24h
 
   const {
     transactions,
@@ -33,6 +34,7 @@ export default function DashboardPage() {
   const {
     balance,
     reservedBalance,
+    accounts,
     loading: balanceLoading,
     refresh: refreshBalance,
     refetching: balanceRefetching,
@@ -59,12 +61,12 @@ export default function DashboardPage() {
 
   const stats = {
     totalIncome: transactions
-      .filter((t) => t.amount > 0)
+      .filter((t) => t.amount > 0 && t.category !== "Internal Transfer")
       .reduce((sum, t) => sum + t.amount, 0),
     totalExpenses: transactions
-      .filter((t) => t.amount < 0)
+      .filter((t) => t.amount < 0 && t.category !== "Internal Transfer")
       .reduce((sum, t) => sum + Math.abs(t.amount), 0),
-    transactionCount: transactions.length,
+    transactionCount: transactions.filter((t) => t.category !== "Internal Transfer").length,
   };
 
   const balanceHistoryData = transactions
@@ -78,6 +80,17 @@ export default function DashboardPage() {
     .reverse();
 
   const growthPercent = 2.5;
+
+  const getPeriodText = () => {
+    switch (dayFilter) {
+      case 1: return "Last 24 Hours";
+      case 7: return "Last 7 Days";
+      case 30: return "Last 30 Days";
+      case 60: return "Last 60 Days";
+      case 90: return "Last 90 Days";
+      default: return `Last ${dayFilter} Days`;
+    }
+  };
 
   return (
     <div className="space-y-12 pb-12">
@@ -191,6 +204,17 @@ export default function DashboardPage() {
         </div>
       </motion.div>
 
+      {/* Sub-Accounts Manager */}
+      {!balanceLoading && accounts && accounts.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <SubAccountManager accounts={accounts} refresh={refreshBalance} />
+        </motion.div>
+      )}
+
       {/* Spending Statistics */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -209,7 +233,7 @@ export default function DashboardPage() {
             <p className="text-2xl lg:text-3xl font-bold text-emerald-400">
               {formatCurrency(stats.totalIncome)}
             </p>
-            <p className="text-white/30 text-xs mt-1">Last 24 Hours</p>
+            <p className="text-white/30 text-xs mt-1">{getPeriodText()}</p>
           </div>
         </div>
 
@@ -224,7 +248,7 @@ export default function DashboardPage() {
             <p className="text-2xl lg:text-3xl font-bold text-rose-400">
               {formatCurrency(stats.totalExpenses)}
             </p>
-            <p className="text-white/30 text-xs mt-1">Last 24 Hours</p>
+            <p className="text-white/30 text-xs mt-1">{getPeriodText()}</p>
           </div>
         </div>
 
@@ -239,7 +263,7 @@ export default function DashboardPage() {
             >
               {formatCurrency(stats.totalIncome - stats.totalExpenses)}
             </p>
-            <p className="text-white/30 text-xs mt-1">Last 24 Hours</p>
+            <p className="text-white/30 text-xs mt-1">{getPeriodText()}</p>
           </div>
         </div>
 
@@ -254,7 +278,7 @@ export default function DashboardPage() {
             <p className="text-2xl lg:text-3xl font-bold text-white">
               {stats.transactionCount}
             </p>
-            <p className="text-white/30 text-xs mt-1">Last 24 Hours</p>
+            <p className="text-white/30 text-xs mt-1">{getPeriodText()}</p>
           </div>
         </div>
       </motion.div>
@@ -272,17 +296,16 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold text-white">Balance Trend</h2>
               <div className="flex gap-2">
-                {[7, 30, 60, 90].map((days) => (
+                {[1, 7, 30, 60, 90].map((days) => (
                   <button
                     key={days}
                     onClick={() => setDayFilter(days)}
-                    className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                      dayFilter === days
-                        ? "bg-purple-500 text-white"
-                        : "bg-white/10 text-white/60 hover:bg-white/20"
-                    }`}
+                    className={`px-4 py-2 rounded-lg font-semibold transition-all ${dayFilter === days
+                      ? "bg-purple-500 text-white"
+                      : "bg-white/10 text-white/60 hover:bg-white/20"
+                      }`}
                   >
-                    {days}d
+                    {days === 1 ? "24h" : `${days}d`}
                   </button>
                 ))}
               </div>

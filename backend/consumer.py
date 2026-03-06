@@ -94,13 +94,13 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                 msg["transaction_id"],
                 msg.get("parent_id") or "00000000-0000-0000-0000-000000000000",
                 msg["account_id"],
-                msg.get("sender_email", ""),
-                msg.get("recipient_email", ""),
+                msg.get("sender_email") or "",
+                msg.get("recipient_email") or "",
                 msg["amount"],
                 msg["category"],
                 msg["merchant"],
-                msg.get("transaction_type", "expense"),
-                msg.get("transaction_side", ""),
+                msg.get("transaction_type") or "expense",
+                msg.get("transaction_side") or "",
                 msg["timestamp"],
             ]
             for msg in batch

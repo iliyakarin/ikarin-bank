@@ -147,3 +147,16 @@ services:
     env_file: .env
     depends_on:
       - api
+
+  scheduled-payments-worker:
+    build: ./backend
+    container_name: bank-scheduled-payments-worker
+    command: python scheduled_payments_worker.py
+    env_file: .env
+    volumes:
+      - ./backend:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
