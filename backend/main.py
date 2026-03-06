@@ -105,6 +105,7 @@ class UserPasswordUpdate(BaseModel):
 class P2PTransferRequest(BaseModel):
     recipient_email: str
     amount: Decimal
+    source_account_id: Optional[int] = None
     idempotency_key: Optional[str] = None
     commentary: Optional[str] = None
     payment_request_id: Optional[int] = None
@@ -130,6 +131,7 @@ class ScheduledTransferCreate(BaseModel):
     target_payments: Optional[int] = None
     reserve_amount: bool = False
     idempotency_key: Optional[str] = None
+    funding_account_id: Optional[int] = None
 
 class ScheduledPaymentResponse(BaseModel):
     id: int
@@ -146,6 +148,7 @@ class ScheduledPaymentResponse(BaseModel):
     next_run_at: Optional[datetime.datetime] = None
     status: str
     reserve_amount: bool
+    funding_account_id: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -329,16 +332,20 @@ async def get_notifications(
         ).order_by(Transaction.created_at.desc()).limit(10).all()
         
         for tx in transactions:
-            is_income = tx.amount > 0 and tx.transaction_side == "CREDIT"
-            title = "Payment Received" if is_income else "Payment Sent"
-            
-            if tx.transaction_type == "transfer":
-                if is_income:
-                    msg = f"from {tx.merchant.replace('Received from ', '')}" if tx.merchant else "Transfer received"
-                else:
-                    msg = f"to {tx.merchant.replace('Transfer to ', '')}" if tx.merchant else "Transfer sent"
+            if tx.status == "failed":
+                title = "Payment Failed"
+                msg = tx.commentary if tx.commentary else "Transaction failed."
             else:
-                msg = f"Merchant: {tx.merchant}" if tx.merchant else "Transaction processed"
+                is_income = tx.amount > 0 and tx.transaction_side == "CREDIT"
+                title = "Payment Received" if is_income else "Payment Sent"
+                
+                if tx.transaction_type == "transfer":
+                    if is_income:
+                        msg = f"from {tx.merchant.replace('Received from ', '')}" if tx.merchant else "Transfer received"
+                    else:
+                        msg = f"to {tx.merchant.replace('Transfer to ', '')}" if tx.merchant else "Transfer sent"
+                else:
+                    msg = f"Merchant: {tx.merchant}" if tx.merchant else "Transaction processed"
                 
             notifications.append({
                 "id": f"tx_{tx.id}",
@@ -389,17 +396,26 @@ async def get_account_balance(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.id != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    account = db.query(Account).filter(Account.user_id == user_id).first()
-    if not account:
+    accounts = db.query(Account).filter(Account.user_id == user_id).all()
+    if not accounts:
         raise HTTPException(status_code=404, detail="Account not found")
 
+    total_balance = sum(float(acc.balance) for acc in accounts)
+    total_reserved = sum(float(acc.reserved_balance or 0.0) for acc in accounts)
+    
+    sub_accounts = [{
+        "id": acc.id,
+        "name": acc.name,
+        "balance": float(acc.balance),
+        "reserved_balance": float(acc.reserved_balance or 0.0),
+        "is_main": acc.is_main
+    } for acc in accounts]
+
     return {
-        "balance": float(account.balance), 
-        "reserved_balance": float(account.reserved_balance or 0.0),
-        "user_id": user_id
+        "balance": total_balance, 
+        "reserved_balance": total_reserved,
+        "user_id": user_id,
+        "accounts": sub_accounts
     }
 
 
@@ -727,35 +743,28 @@ def _validate_p2p_transfer(
 
 def _execute_p2p_balances(
     db: Session,
-    sender_id: int,
-    recipient_id: int,
+    sender_account_id: int,
+    recipient_account_id: int,
     amount: Decimal
 ) -> Tuple[Account, Account]:
     """Locks accounts and updates balances atomically."""
     # Order by ID to prevent deadlocks.
-    # We query sequentially ensuring order based on ID to avoid deadlock if concurrent transfers happen in opposite directions.
-    # Ideally we should grab locks in ID order.
+    first_id, second_id = sorted([sender_account_id, recipient_account_id])
 
-    first_id, second_id = sorted([sender_id, recipient_id])
+    acc1 = db.query(Account).filter(Account.id == first_id).with_for_update().first()
+    acc2 = db.query(Account).filter(Account.id == second_id).with_for_update().first()
 
-    # We must fetch them in order.
-    # Note: original code fetched by user_id.
-    # Since account:user is 1:1, we can query Account where user_id is X.
-
-    # To properly lock, we need to find which account corresponds to which user ID first?
-    # Or just rely on the fact that we sort the user IDs and query accounts for those user IDs in that order.
-
-    acc1 = db.query(Account).filter(Account.user_id == first_id).with_for_update().first()
-    acc2 = db.query(Account).filter(Account.user_id == second_id).with_for_update().first()
-
-    if first_id == sender_id:
+    if first_id == sender_account_id:
         sender_account = acc1
         recipient_account = acc2
     else:
         sender_account = acc2
         recipient_account = acc1
 
-    if not sender_account or sender_account.balance < amount:
+    if not sender_account:
+        raise HTTPException(status_code=404, detail="Sender account not found")
+        
+    if sender_account.balance < amount:
         raise HTTPException(
             status_code=400, detail="Insufficient funds for this transfer."
         )
@@ -911,10 +920,26 @@ async def create_p2p_transfer(
         if transfer.amount < payment_request.amount:
             raise HTTPException(status_code=400, detail=f"Transfer amount must be at least the requested amount (${payment_request.amount})")
 
+    # Resolve Sender Account
+    sender_account_query = db.query(Account).filter(Account.user_id == current_user.id)
+    if transfer.source_account_id:
+        sender_account_query = sender_account_query.filter(Account.id == transfer.source_account_id)
+    else:
+        sender_account_query = sender_account_query.filter(Account.is_main == True)
+        
+    resolved_sender_account = sender_account_query.first()
+    if not resolved_sender_account:
+        raise HTTPException(status_code=404, detail="Source account not found or access denied")
+
+    # Resolve Recipient Main Account
+    resolved_recipient_account = db.query(Account).filter(Account.user_id == recipient.id, Account.is_main == True).first()
+    if not resolved_recipient_account:
+        raise HTTPException(status_code=404, detail="Recipient main account not found")
+
     try:
         # 3. Atomic Locking & Balance Verification (ACID)
         sender_account, recipient_account = _execute_p2p_balances(
-            db, current_user.id, recipient.id, transfer.amount
+            db, resolved_sender_account.id, resolved_recipient_account.id, transfer.amount
         )
 
         # 4. Create Transaction Records
@@ -1125,7 +1150,20 @@ async def create_scheduled_transfer(
         return existing_key.response_body
 
     try:
-        sender_account = db.query(Account).filter(Account.user_id == current_user.id).with_for_update().first()
+        sender_account = None
+        if transfer.funding_account_id:
+            sender_account = db.query(Account).filter(
+                Account.id == transfer.funding_account_id,
+                Account.user_id == current_user.id
+            ).with_for_update().first()
+            if not sender_account:
+                raise HTTPException(status_code=403, detail="Invalid funding account")
+        else:
+            # Default to main account
+            sender_account = db.query(Account).filter(Account.user_id == current_user.id, Account.is_main == True).with_for_update().first()
+            if not sender_account:
+                sender_account = db.query(Account).filter(Account.user_id == current_user.id).with_for_update().first()
+                
         if not sender_account:
             raise HTTPException(status_code=404, detail="Account not found")
 
@@ -1151,7 +1189,8 @@ async def create_scheduled_transfer(
             next_run_at=next_run,
             status="Active",
             idempotency_key=ik,
-            reserve_amount=transfer.reserve_amount
+            reserve_amount=transfer.reserve_amount,
+            funding_account_id=sender_account.id
         )
         db.add(new_scheduled_payment)
         
@@ -1280,6 +1319,7 @@ async def get_balance_history(
 @app.get("/dashboard/recent-transactions")
 async def get_recent_transactions(
     hours: int = 24,
+    account_id: int = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1289,7 +1329,14 @@ async def get_recent_transactions(
         
         # 1. Get PENDING transactions from Postgres (only outgoing ones exist here)
         user_accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
-        account_ids = [acc.id for acc in user_accounts]
+        user_account_ids = [acc.id for acc in user_accounts]
+        
+        if account_id:
+            if account_id not in user_account_ids:
+                raise HTTPException(status_code=403, detail="Access denied to this account")
+            account_ids = [account_id]
+        else:
+            account_ids = user_account_ids
         
         pg_transactions = (
             db.query(Transaction)
@@ -1415,13 +1462,23 @@ async def get_all_transactions(
     min_amount: float = None,
     max_amount: float = None,
     sort: str = "desc",  # 'asc' or 'desc'
+    account_id: int = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get all transactions with filtering by sender/recipient email, amount, date range, and sort direction."""
-    account = db.query(Account).filter(Account.user_id == current_user.id).first()
-    if not account:
+    accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
+    if not accounts:
         raise HTTPException(status_code=404, detail="Account not found")
+
+    user_account_ids = [acc.id for acc in accounts]
+
+    if account_id:
+        if account_id not in user_account_ids:
+            raise HTTPException(status_code=403, detail="Access denied to this account")
+        target_account_ids = [account_id]
+    else:
+        target_account_ids = user_account_ids
 
     cutoff_time = datetime.datetime.utcnow() - datetime.timedelta(days=days)
 
@@ -1430,9 +1487,9 @@ async def get_all_transactions(
             host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
         )
 
-        # Visibility: user must see transactions exactly for THEIR account
+        account_ids_str = ",".join(map(str, target_account_ids))
         where_clauses = [
-            f"account_id = {account.id}",
+            f"account_id IN ({account_ids_str})",
             f"event_time >= now() - INTERVAL {days} DAY",
         ]
 
@@ -1958,6 +2015,9 @@ async def get_banking_metrics(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to fetch banking metrics")
 
+
+from routers import accounts
+app.include_router(accounts.router)
 
 if __name__ == "__main__":
     import uvicorn

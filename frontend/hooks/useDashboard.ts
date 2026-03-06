@@ -107,9 +107,18 @@ export function useTransactions(hours: number = 24, autoRefresh: boolean = true)
     return { transactions, loading, error, refresh: () => fetchTransactions(true), refetching };
 }
 
+export interface AccountData {
+    id: number;
+    name: string;
+    balance: number;
+    reserved_balance: number;
+    is_main: boolean;
+}
+
 interface UseBalanceResult {
     balance: number | null;
     reservedBalance: number | null;
+    accounts: AccountData[];
     loading: boolean;
     error: string | null;
     refresh: () => Promise<void>;
@@ -121,6 +130,7 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
     const { token, user } = useAuth();
     const [balance, setBalance] = useState<number | null>(null);
     const [reservedBalance, setReservedBalance] = useState<number | null>(null);
+    const [accounts, setAccounts] = useState<AccountData[]>([]);
     const [loading, setLoading] = useState(true);
     const [refetching, setRefetching] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -166,6 +176,7 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
                 const balanceData = await balanceResponse.json();
                 setBalance(balanceData.balance);
                 setReservedBalance(balanceData.reserved_balance);
+                setAccounts(balanceData.accounts || []);
             }
         } catch (err: any) {
             if (err.name === 'AbortError') {
@@ -206,7 +217,7 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
         };
     }, []);
 
-    return { balance, reservedBalance, loading, error, refresh: () => fetchBalance(true), userId: user ? user.id : null, refetching };
+    return { balance, reservedBalance, accounts, loading, error, refresh: () => fetchBalance(true), userId: user ? user.id : null, refetching };
 }
 
 interface UseBalanceHistoryResult {

@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
+import { useBalance } from "@/hooks/useDashboard";
 import {
   Send,
   ArrowRight,
@@ -16,7 +17,8 @@ import {
 import DOMPurify from "isomorphic-dompurify";
 
 export default function SendMoneyPage() {
-  const { token } = useAuth();
+  const { token, settings } = useAuth();
+  const { accounts, loading: accountsLoading } = useBalance();
 
   // Global UI State
   const [activeTab, setActiveTab] = useState<
@@ -32,6 +34,7 @@ export default function SendMoneyPage() {
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [commentary, setCommentary] = useState("");
+  const [sourceAccountId, setSourceAccountId] = useState<number | "">("");
 
   // Request Transfer State
   const [requestEmail, setRequestEmail] = useState("");
@@ -63,6 +66,7 @@ export default function SendMoneyPage() {
   const [reserveAmount, setReserveAmount] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("checking"); // Mock source
   const [isVendorDropdownOpen, setIsVendorDropdownOpen] = useState(false);
+  const [isSourceDropdownOpen, setIsSourceDropdownOpen] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
 
   // Scheduled History State
@@ -239,6 +243,7 @@ export default function SendMoneyPage() {
           recipient_email: recipient,
           amount: parseFloat(amount),
           commentary: cleanCommentary || null,
+          source_account_id: sourceAccountId || undefined,
         }),
       });
       if (res.ok) {
@@ -247,6 +252,7 @@ export default function SendMoneyPage() {
         setTxId(data.transaction_id);
         setRecipient("");
         setAmount("");
+        fetchInstantHistory();
         setTimeout(() => setSuccess(false), 5000);
       } else {
         const data = await res.json();
@@ -334,6 +340,7 @@ export default function SendMoneyPage() {
             ? parseInt(targetPayments)
             : null,
         reserve_amount: reserveAmount,
+        funding_account_id: sourceAccountId || undefined,
       };
 
       const res = await fetch(
@@ -515,11 +522,10 @@ export default function SendMoneyPage() {
             setError("");
             setSuccess(false);
           }}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 rounded-lg font-semibold transition-all ${
-            activeTab === "instant"
-              ? "bg-purple-500 text-white shadow-lg"
-              : "text-white/60 hover:text-white hover:bg-white/5"
-          }`}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 rounded-lg font-semibold transition-all ${activeTab === "instant"
+            ? "bg-purple-500 text-white shadow-lg"
+            : "text-white/60 hover:text-white hover:bg-white/5"
+            }`}
         >
           <Send size={18} /> Send to Contact
         </button>
@@ -529,11 +535,10 @@ export default function SendMoneyPage() {
             setError("");
             setSuccess(false);
           }}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 rounded-lg font-semibold transition-all ${
-            activeTab === "scheduled"
-              ? "bg-indigo-500 text-white shadow-lg"
-              : "text-white/60 hover:text-white hover:bg-white/5"
-          }`}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 rounded-lg font-semibold transition-all ${activeTab === "scheduled"
+            ? "bg-indigo-500 text-white shadow-lg"
+            : "text-white/60 hover:text-white hover:bg-white/5"
+            }`}
         >
           <Calendar size={18} /> Scheduled
         </button>
@@ -543,11 +548,10 @@ export default function SendMoneyPage() {
             setError("");
             setSuccess(false);
           }}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 rounded-lg font-semibold transition-all ${
-            activeTab === "request"
-              ? "bg-emerald-500 text-white shadow-lg"
-              : "text-white/60 hover:text-white hover:bg-white/5"
-          }`}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 rounded-lg font-semibold transition-all ${activeTab === "request"
+            ? "bg-emerald-500 text-white shadow-lg"
+            : "text-white/60 hover:text-white hover:bg-white/5"
+            }`}
         >
           <HandCoins size={18} /> Request Transfer
         </button>
@@ -819,6 +823,76 @@ export default function SendMoneyPage() {
           // SEND TO CONTACT FORM
           <form onSubmit={handleInstantSubmit} className="space-y-6">
             <div className="space-y-3 relative">
+              <label className="block text-white font-semibold flex justify-between">
+                <span>Source Account</span>
+                {sourceAccountId !== "" && (
+                  <span
+                    className="text-xs text-purple-400 cursor-pointer hover:underline"
+                    onClick={() => setSourceAccountId("")}
+                  >
+                    Reset to Default
+                  </span>
+                )}
+              </label>
+              <div className="relative">
+                <div
+                  onClick={() => accountsLoading ? null : setIsSourceDropdownOpen(!isSourceDropdownOpen)}
+                  className={`w-full bg-white/5 border ${isSourceDropdownOpen ? 'border-purple-400' : 'border-white/10'} rounded-xl px-4 py-3 text-white cursor-pointer hover:bg-white/10 transition-colors flex items-center justify-between shadow-inner`}
+                >
+                  <span className="truncate">
+                    {sourceAccountId === "" ? (
+                      `Default (Main Account) - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
+                    ) : (
+                      accounts.find(a => a.id === sourceAccountId)?.name + ` - $${accounts.find(a => a.id === sourceAccountId)?.balance.toFixed(2)}` || "Unknown Account"
+                    )}
+                  </span>
+                  <ChevronDown
+                    className={`text-white/40 transition-transform duration-200 ${isSourceDropdownOpen ? 'rotate-180' : ''}`}
+                    size={20}
+                  />
+                </div>
+
+                <AnimatePresence>
+                  {isSourceDropdownOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute z-[100] w-full mt-2 bg-[#2a1f42] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
+                    >
+                      <div className="p-2 space-y-1">
+                        <div
+                          onClick={() => {
+                            setSourceAccountId("");
+                            setIsSourceDropdownOpen(false);
+                          }}
+                          className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === "" ? 'bg-purple-500/20 text-purple-300 font-bold' : 'hover:bg-white/10 text-white'}`}
+                        >
+                          <span className="block truncate">Default (Main Account)</span>
+                          <span className="text-xs opacity-70">${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}</span>
+                        </div>
+                        {accounts.filter(acc => !acc.is_main).map(acc => (
+                          <div
+                            key={acc.id}
+                            onClick={() => {
+                              setSourceAccountId(acc.id);
+                              setIsSourceDropdownOpen(false);
+                            }}
+                            className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === acc.id ? 'bg-purple-500/20 text-purple-300 font-bold' : 'hover:bg-white/10 text-white'}`}
+                          >
+                            <span className="block truncate">{acc.name}</span>
+                            <span className="text-xs opacity-70">${acc.balance.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+
+            <div className="space-y-3 relative">
               <label className="block text-white font-semibold">
                 Recipient Email
               </label>
@@ -950,82 +1024,145 @@ export default function SendMoneyPage() {
           </form>
         )}
         {/* Instant History Table */}
-        {activeTab === "instant" && (
-          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 mt-8">
-            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-              <Clock className="text-purple-400" size={24} />
-              Recent Transfers
-            </h3>
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 mt-8">
+          <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+            <Clock className="text-purple-400" size={24} />
+            Recent Transfers
+          </h3>
 
-            {instantHistoryLoading ? (
-              <div className="py-8 text-center text-white/50 animate-pulse font-medium">
-                Loading history...
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-white/10 text-white/50 text-sm">
-                      <th className="pb-3 font-medium">Date</th>
-                      <th className="pb-3 font-medium">To / From</th>
-                      <th className="pb-3 font-medium text-right">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {instantHistory.map((tx) => {
-                      const isOutgoing = tx.amount < 0;
-                      return (
-                        <tr
-                          key={tx.id}
-                          className="border-b border-white/5 hover:bg-white/5 transition-colors"
+          {instantHistoryLoading ? (
+            <div className="py-8 text-center text-white/50 animate-pulse font-medium">
+              Loading history...
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-white/10 text-white/50 text-sm">
+                    <th className="pb-3 font-medium">Date</th>
+                    <th className="pb-3 font-medium">To / From</th>
+                    <th className="pb-3 font-medium text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {instantHistory.map((tx) => {
+                    const isOutgoing = tx.amount < 0;
+                    return (
+                      <tr
+                        key={tx.id}
+                        className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                      >
+                        <td className="py-4 text-white/70 text-sm">
+                          {new Date(tx.timestamp + "Z").toLocaleString(settings.useEUDates ? 'en-GB' : 'en-US', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: !settings.use24Hour
+                          })}
+                        </td>
+                        <td className="py-4">
+                          <div className="text-white font-medium">
+                            {isOutgoing
+                              ? tx.recipient_email
+                              : tx.sender_email}
+                          </div>
+                          <div className="text-white/50 text-xs">
+                            {isOutgoing ? "Sent" : "Received"}
+                          </div>
+                        </td>
+                        <td
+                          className={`py-4 text-right font-bold ${isOutgoing ? "text-red-400" : "text-emerald-400"}`}
                         >
-                          <td className="py-4 text-white/70 text-sm">
-                            {new Date(tx.timestamp + "Z").toLocaleDateString()}
-                          </td>
-                          <td className="py-4">
-                            <div className="text-white font-medium">
-                              {isOutgoing
-                                ? tx.recipient_email
-                                : tx.sender_email}
-                            </div>
-                            <div className="text-white/50 text-xs">
-                              {isOutgoing ? "Sent" : "Received"}
-                            </div>
-                          </td>
-                          <td
-                            className={`py-4 text-right font-bold ${isOutgoing ? "text-red-400" : "text-emerald-400"}`}
-                          >
-                            {isOutgoing ? "-" : "+"}$
-                            {Math.abs(tx.amount).toFixed(2)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {instantHistory.length === 0 && (
-                  <p className="text-white/50 text-center py-6">
-                    No recent transfers found.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        )}{" "}
+                          {isOutgoing ? "-" : "+"}$
+                          {Math.abs(tx.amount).toFixed(2)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {instantHistory.length === 0 && (
+                <p className="text-white/50 text-center py-6">
+                  No recent transfers found.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
         {activeTab === "scheduled" && (
           // SCHEDULED TRANSFER FORM
           <form onSubmit={handleScheduledSubmit} className="space-y-6">
-            {/* Funding Source Mock */}
-            <div className="space-y-3">
-              <label className="block text-white font-semibold">
-                Funding Source
+            <div className="space-y-3 relative">
+              <label className="block text-white font-semibold flex justify-between">
+                <span>Funding Account</span>
+                {sourceAccountId !== "" && (
+                  <span
+                    className="text-xs text-indigo-400 cursor-pointer hover:underline"
+                    onClick={() => setSourceAccountId("")}
+                  >
+                    Reset to Default
+                  </span>
+                )}
               </label>
-              <div className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white flex items-center gap-3">
-                <CreditCard className="text-indigo-400" size={24} />
-                <div>
-                  <p className="font-semibold">Main Account (...1234)</p>
-                  <p className="text-xs text-white/50">Expires 12/28</p>
+              <div className="relative">
+                <div
+                  onClick={() => accountsLoading ? null : setIsSourceDropdownOpen(!isSourceDropdownOpen)}
+                  className={`w-full bg-[#3b2d59] border ${isSourceDropdownOpen ? 'border-indigo-400' : 'border-white/20'} rounded-xl px-4 py-3 text-white cursor-pointer hover:bg-[#4a3a70] transition-colors flex items-center justify-between shadow-inner`}
+                >
+                  <span className="truncate">
+                    {sourceAccountId === "" ? (
+                      `Default (Main Account) - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
+                    ) : (
+                      accounts.find(a => a.id === sourceAccountId)?.name + ` - $${accounts.find(a => a.id === sourceAccountId)?.balance.toFixed(2)}` || "Unknown Account"
+                    )}
+                  </span>
+                  <ChevronDown
+                    className={`text-white/40 transition-transform duration-200 ${isSourceDropdownOpen ? 'rotate-180' : ''}`}
+                    size={20}
+                  />
                 </div>
+
+                <AnimatePresence>
+                  {isSourceDropdownOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute z-[100] w-full mt-2 bg-[#2a1f42] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
+                    >
+                      <div className="p-2 space-y-1">
+                        <div
+                          onClick={() => {
+                            setSourceAccountId("");
+                            setIsSourceDropdownOpen(false);
+                          }}
+                          className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === "" ? 'bg-indigo-500/20 text-indigo-300 font-bold' : 'hover:bg-white/10 text-white'}`}
+                        >
+                          <span className="block truncate">Default (Main Account)</span>
+                          <span className="text-xs opacity-70">${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}</span>
+                        </div>
+                        {accounts.filter(acc => !acc.is_main).map(acc => (
+                          <div
+                            key={acc.id}
+                            onClick={() => {
+                              setSourceAccountId(acc.id);
+                              setIsSourceDropdownOpen(false);
+                            }}
+                            className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === acc.id ? 'bg-indigo-500/20 text-indigo-300 font-bold' : 'hover:bg-white/10 text-white'}`}
+                          >
+                            <span className="block truncate">{acc.name}</span>
+                            <span className="text-xs opacity-70">${acc.balance.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
 
@@ -1351,19 +1488,18 @@ export default function SendMoneyPage() {
                           <td className="p-4 text-white/70">
                             {pmt.next_run_at
                               ? new Date(
-                                  pmt.next_run_at + "Z",
-                                ).toLocaleDateString()
+                                pmt.next_run_at + "Z",
+                              ).toLocaleDateString()
                               : "N/A"}
                           </td>
                           <td className="p-4">
                             <span
-                              className={`px-2 py-1 rounded text-xs font-semibold ${
-                                pmt.status === "Active"
-                                  ? "bg-indigo-500/20 text-indigo-300"
-                                  : pmt.status === "Cancelled"
-                                    ? "bg-red-500/20 text-red-300"
-                                    : "bg-white/10 text-white/70"
-                              }`}
+                              className={`px-2 py-1 rounded text-xs font-semibold ${pmt.status === "Active"
+                                ? "bg-indigo-500/20 text-indigo-300"
+                                : pmt.status === "Cancelled"
+                                  ? "bg-red-500/20 text-red-300"
+                                  : "bg-white/10 text-white/70"
+                                }`}
                             >
                               {pmt.status}
                             </span>
@@ -1564,7 +1700,7 @@ export default function SendMoneyPage() {
                   const isTarget =
                     token &&
                     JSON.parse(atob(token.split(".")[1])).sub ===
-                      req.target_email;
+                    req.target_email;
                   const isRequester = !isTarget;
                   const isMyTurn =
                     (isTarget && req.status === "pending_target") ||
@@ -1591,13 +1727,12 @@ export default function SendMoneyPage() {
                       </td>
                       <td className="py-4">
                         <span
-                          className={`px-2 py-1 rounded text-xs font-semibold ${
-                            req.status === "paid"
-                              ? "bg-emerald-500/20 text-emerald-300"
-                              : req.status === "declined"
-                                ? "bg-red-500/20 text-red-300"
-                                : "bg-amber-500/20 text-amber-300"
-                          }`}
+                          className={`px-2 py-1 rounded text-xs font-semibold ${req.status === "paid"
+                            ? "bg-emerald-500/20 text-emerald-300"
+                            : req.status === "declined"
+                              ? "bg-red-500/20 text-red-300"
+                              : "bg-amber-500/20 text-amber-300"
+                            }`}
                         >
                           {req.status.replace("_", " ").toUpperCase()}
                         </span>

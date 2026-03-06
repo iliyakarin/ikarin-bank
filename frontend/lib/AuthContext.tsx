@@ -11,12 +11,19 @@ interface User {
     role: string;
 }
 
+interface Settings {
+    use24Hour: boolean;
+    useEUDates: boolean;
+}
+
 interface AuthContextType {
     user: User | null;
     token: string | null;
     login: (token: string) => Promise<void>;
     logout: () => void;
     isLoading: boolean;
+    settings: Settings;
+    updateSettings: (newSettings: Partial<Settings>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -25,9 +32,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [token, setToken] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [settings, setSettings] = useState<Settings>({ use24Hour: false, useEUDates: false });
     const router = useRouter();
 
     useEffect(() => {
+        const savedSettings = localStorage.getItem('bank_settings');
+        if (savedSettings) {
+            try {
+                setSettings(JSON.parse(savedSettings));
+            } catch (e) { }
+        }
+
         const savedToken = localStorage.getItem('bank_token');
         if (savedToken) {
             setToken(savedToken);
@@ -72,8 +87,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         router.push('/auth/login');
     };
 
+    const updateSettings = (newSettings: Partial<Settings>) => {
+        const updated = { ...settings, ...newSettings };
+        setSettings(updated);
+        localStorage.setItem('bank_settings', JSON.stringify(updated));
+    };
+
     return (
-        <AuthContext.Provider value={{ user, token, login, logout, isLoading }}>
+        <AuthContext.Provider value={{ user, token, login, logout, isLoading, settings, updateSettings }}>
             {children}
         </AuthContext.Provider>
     );

@@ -33,6 +33,9 @@ class Account(Base):
     __tablename__ = "accounts"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
+    is_main = Column(Boolean, default=True, server_default="true", nullable=False)
+    parent_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
+    name = Column(String(100), default="Main Account", server_default="Main Account", nullable=False)
     balance = Column(Numeric(15, 2), default=0.00)
     reserved_balance = Column(Numeric(15, 2), default=0.00)
 
@@ -40,6 +43,7 @@ class ScheduledPayment(Base):
     __tablename__ = "scheduled_payments"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    funding_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True) # Allows targeting sub-accounts
     recipient_email = Column(String(100), nullable=False)
     amount = Column(Numeric(15, 2), nullable=False)
     frequency = Column(String(50), nullable=False)
@@ -51,6 +55,7 @@ class ScheduledPayment(Base):
     payments_made = Column(Integer, default=0, nullable=False)
     next_run_at = Column(DateTime, index=True, nullable=True)
     status = Column(String(20), default="Active", nullable=False)
+    retry_count = Column(Integer, default=0, nullable=False)
     idempotency_key = Column(String(100), unique=True, index=True, nullable=False)
     reserve_amount = Column(Boolean, default=False, nullable=False)
 

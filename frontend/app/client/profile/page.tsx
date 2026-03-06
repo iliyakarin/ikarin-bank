@@ -12,12 +12,13 @@ import {
     AlertTriangle,
     Star,
     RefreshCw,
+    Settings,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { useBalance } from "@/hooks/useDashboard";
 
 export default function ProfilePage() {
-    const { user, token, logout, login } = useAuth();
+    const { user, token, logout, login, settings, updateSettings } = useAuth();
     const { balance, loading: balanceLoading } = useBalance(false);
 
     // Backup State
@@ -244,6 +245,51 @@ export default function ProfilePage() {
                                     )}
                                 </p>
                             </div>
+                        </div>
+                    </div>
+                </motion.div>
+
+                {/* Preferences Form */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.15 }}
+                    className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 space-y-6 md:col-span-2"
+                >
+                    <div>
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2 mb-2">
+                            <Settings className="text-pink-400 w-6 h-6" />
+                            Display Preferences
+                        </h3>
+                        <p className="text-white/50 text-sm">
+                            Customize how information is displayed across the application.
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="flex items-center justify-between p-4 bg-black/20 rounded-xl border border-white/5">
+                            <div>
+                                <p className="text-white font-medium">Time Format</p>
+                                <p className="text-white/50 text-xs">Switch between 12-hour and 24-hour time.</p>
+                            </div>
+                            <button
+                                onClick={() => updateSettings({ use24Hour: !settings.use24Hour })}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${settings.use24Hour ? 'bg-purple-500' : 'bg-white/20'}`}
+                            >
+                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.use24Hour ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </button>
+                        </div>
+                        <div className="flex items-center justify-between p-4 bg-black/20 rounded-xl border border-white/5">
+                            <div>
+                                <p className="text-white font-medium">Date Format</p>
+                                <p className="text-white/50 text-xs">Use European format (DD.MM.YYYY).</p>
+                            </div>
+                            <button
+                                onClick={() => updateSettings({ useEUDates: !settings.useEUDates })}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${settings.useEUDates ? 'bg-purple-500' : 'bg-white/20'}`}
+                            >
+                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.useEUDates ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </button>
                         </div>
                     </div>
                 </motion.div>
