@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Activity,
@@ -17,6 +17,8 @@ import {
     Settings,
     X,
     RefreshCw,
+    AlertTriangle,
+    Zap,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 
@@ -67,6 +69,9 @@ const getCategoryIcon = (category: string) => {
 const isFinancialEvent = (category: string) =>
     ["p2p", "sub_account", "scheduled"].includes(category);
 
+const isSecurityAlert = (action: string) =>
+    ["velocity_alert", "anomaly_alert"].includes(action);
+
 export default function ActivityPage() {
     const { token, settings } = useAuth();
     const [events, setEvents] = useState<ActivityEvent[]>([]);
@@ -82,7 +87,49 @@ export default function ActivityPage() {
     const [order, setOrder] = useState<"desc" | "asc">("desc");
     const [offset, setOffset] = useState(0);
     const [isCatDropdownOpen, setIsCatDropdownOpen] = useState(false);
+    const [newEventIds, setNewEventIds] = useState<Set<string>>(new Set());
+    const wsRef = useRef<WebSocket | null>(null);
     const limit = 30;
+
+    // WebSocket connection for real-time updates
+    useEffect(() => {
+        if (!token) return;
+
+        const ws = new window.WebSocket(`ws://localhost:8000/ws/activity/${token}`);
+        wsRef.current = ws;
+
+        ws.onmessage = (msg) => {
+            try {
+                const event: ActivityEvent = JSON.parse(msg.data);
+                setEvents((prev) => {
+                    // Dedup
+                    if (prev.some((e) => e.event_id === event.event_id)) return prev;
+                    return [event, ...prev];
+                });
+                setTotal((prev) => prev + 1);
+                // Highlight new event briefly
+                setNewEventIds((prev) => new Set(prev).add(event.event_id));
+                setTimeout(() => {
+                    setNewEventIds((prev) => {
+                        const next = new Set(prev);
+                        next.delete(event.event_id);
+                        return next;
+                    });
+                }, 3000);
+            } catch (err) {
+                console.error("WS parse error", err);
+            }
+        };
+
+        ws.onerror = (err) => console.error("WS error", err);
+        ws.onclose = () => console.log("WS closed");
+
+        return () => {
+            ws.close();
+            wsRef.current = null;
+        };
+    }, [token]);
+
 
     const fetchActivity = useCallback(async () => {
         if (!token) return;
@@ -364,7 +411,7 @@ export default function ActivityPage() {
                             <motion.div
                                 key={ev.event_id}
                                 layout
-                                className={`bg-white/[0.06] backdrop-blur-xl border ${isExpanded ? style.border : "border-white/10"} rounded-2xl overflow-hidden transition-colors hover:bg-white/[0.08] cursor-pointer`}
+                                className={`bg-white/[0.06] backdrop-blur-xl border ${isSecurityAlert(ev.action) ? "border-orange-500/40 bg-orange-500/[0.04]" : isExpanded ? style.border : "border-white/10"} rounded-2xl overflow-hidden transition-colors hover:bg-white/[0.08] cursor-pointer ${newEventIds.has(ev.event_id) ? "ring-2 ring-indigo-400/50 animate-pulse" : ""}`}
                                 onClick={() =>
                                     setExpandedId(isExpanded ? null : ev.event_id)
                                 }
@@ -395,6 +442,14 @@ export default function ActivityPage() {
                                         <p className="text-white font-medium text-sm truncate">
                                             {ev.title}
                                         </p>
+                                        {isSecurityAlert(ev.action) && (
+                                            <div className="flex items-center gap-1 mt-1">
+                                                <AlertTriangle size={12} className="text-orange-400" />
+                                                <span className="text-[10px] font-bold text-orange-400 uppercase tracking-wider">
+                                                    {ev.action === "velocity_alert" ? "⚡ High Velocity" : "🔍 Anomaly Detected"}
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Timestamp */}
