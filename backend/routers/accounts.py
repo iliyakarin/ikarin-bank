@@ -6,6 +6,7 @@ from sqlalchemy import func
 from pydantic import BaseModel
 from typing import Optional, List
 from database import Account, User, Transaction, SessionLocal
+from activity import emit_activity
 import datetime
 import uuid
 
@@ -72,6 +73,12 @@ async def create_sub_account(
         reserved_balance=Decimal("0.00")
     )
     db.add(new_sub)
+
+    emit_activity(db, current_user.id, "sub_account", "created", f"Created sub-account '{name}'", {
+        "account_id": None,  # Will be set after commit
+        "name": name,
+        "sub_count": sub_account_count + 1,
+    })
     db.commit()
     db.refresh(new_sub)
     
@@ -96,7 +103,14 @@ async def rename_account(
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
+    old_name = account.name
     account.name = name
+
+    emit_activity(db, current_user.id, "sub_account", "renamed", f"Renamed sub-account '{old_name}' → '{name}'", {
+        "account_id": account.id,
+        "old_name": old_name,
+        "new_name": name,
+    })
     db.commit()
     return {"id": account.id, "name": account.name}
 
@@ -170,6 +184,13 @@ async def internal_transfer(
 
         db.add(sender_tx)
         db.add(receiver_tx)
+
+        emit_activity(db, current_user.id, "sub_account", "transfer", f"Transferred ${float(request.amount):.2f} from {sender.name} to {receiver.name}", {
+            "from_account": sender.name,
+            "to_account": receiver.name,
+            "amount": float(request.amount),
+            "transaction_id": tx_id_parent,
+        })
         
         db.commit()
         
