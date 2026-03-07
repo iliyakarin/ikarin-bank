@@ -1752,10 +1752,52 @@ async def get_all_transactions(
             }
             transactions.append(tx)
 
+        if not transactions:
+            # Fall back to Postgres when ClickHouse has no data
+            raise Exception("No data in ClickHouse, falling back to Postgres")
+
         return {"transactions": transactions, "total": len(transactions)}
     except Exception as e:
-        print(f"Error querying ClickHouse transactions: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch transactions")
+        print(f"ClickHouse query failed or empty, falling back to Postgres: {e}")
+
+        # --- Postgres Fallback ---
+        query = db.query(Transaction).filter(
+            Transaction.account_id.in_(target_account_ids),
+            Transaction.created_at >= cutoff_time,
+        )
+
+        if tx_type:
+            if tx_type.lower() == "outgoing":
+                query = query.filter(Transaction.transaction_side == "DEBIT")
+            elif tx_type.lower() == "incoming":
+                query = query.filter(Transaction.transaction_side == "CREDIT")
+
+        if min_amount is not None:
+            query = query.filter(func.abs(Transaction.amount) >= min_amount)
+        if max_amount is not None:
+            query = query.filter(func.abs(Transaction.amount) >= min_amount)
+
+        sort_fn = Transaction.created_at.asc() if sort and sort.lower() == "asc" else Transaction.created_at.desc()
+        query = query.order_by(sort_fn).limit(100)
+
+        results = query.all()
+        transactions = []
+        for row in results:
+            tx = {
+                "id": str(row.id),
+                "sender_email": row.sender_email or "",
+                "recipient_email": row.recipient_email or "",
+                "amount": float(row.amount),
+                "category": row.category or "Transfer",
+                "merchant": row.merchant or "",
+                "transaction_type": row.transaction_type or "expense",
+                "transaction_side": row.transaction_side or "",
+                "timestamp": row.created_at.isoformat() if row.created_at else "",
+                "status": row.status or "Cleared",
+            }
+            transactions.append(tx)
+
+        return {"transactions": transactions, "total": len(transactions)}
 
 
 # --- Contacts Endpoints ---
