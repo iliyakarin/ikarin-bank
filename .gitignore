@@ -79,3 +79,8 @@ init-db/*.xml
 *.MD
 !README.md
 !README.MD
+
+# Infrastructure & Cache
+backend/gunicorn.ctl
+backend/.pytest_cache/
+frontend/.next/
