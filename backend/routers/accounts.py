@@ -1,6 +1,6 @@
 import re
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
@@ -37,9 +37,17 @@ def is_valid_name(name: str) -> bool:
         return False
     return bool(re.match(r"^[a-zA-Z0-9 ]+$", name))
 
+def check_account_owner(account_id: int, user_id: int, db: Session):
+    """Verify that the account exists and belongs to the specified user."""
+    account = db.query(Account).filter(Account.id == account_id, Account.user_id == user_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found or access denied")
+    return account
+
 @router.post("/sub", status_code=status.HTTP_201_CREATED)
 async def create_sub_account(
     request: SubAccountCreate,
+    current_request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -76,11 +84,20 @@ async def create_sub_account(
     assign_account_credentials(db, new_sub)
     db.add(new_sub)
 
-    emit_activity(db, current_user.id, "sub_account", "created", f"Created sub-account '{name}'", {
-        "account_id": None,  # Will be set after commit
-        "name": name,
-        "sub_count": sub_account_count + 1,
-    })
+    emit_activity(
+        db, 
+        current_user.id, 
+        "sub_account", 
+        "created", 
+        f"Created sub-account '{name}'", 
+        {
+            "account_id": None,  # Will be set after commit
+            "name": name,
+            "sub_count": sub_account_count + 1,
+        },
+        ip=current_request.client.host,
+        user_agent=current_request.headers.get("user-agent")
+    )
     db.commit()
     db.refresh(new_sub)
     
@@ -90,6 +107,7 @@ async def create_sub_account(
 async def rename_account(
     account_id: int,
     request: SubAccountRename,
+    current_request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -97,22 +115,25 @@ async def rename_account(
     if not is_valid_name(name):
         raise HTTPException(status_code=400, detail="Name can only contain letters, numbers, and spaces")
 
-    account = db.query(Account).filter(
-        Account.id == account_id,
-        Account.user_id == current_user.id
-    ).first()
-
-    if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+    account = check_account_owner(account_id, current_user.id, db)
 
     old_name = account.name
     account.name = name
 
-    emit_activity(db, current_user.id, "sub_account", "renamed", f"Renamed sub-account '{old_name}' → '{name}'", {
-        "account_id": account.id,
-        "old_name": old_name,
-        "new_name": name,
-    })
+    emit_activity(
+        db, 
+        current_user.id, 
+        "sub_account", 
+        "renamed", 
+        f"Renamed sub-account '{old_name}' → '{name}'", 
+        {
+            "account_id": account.id,
+            "old_name": old_name,
+            "new_name": name,
+        },
+        ip=current_request.client.host,
+        user_agent=current_request.headers.get("user-agent")
+    )
     db.commit()
     return {"id": account.id, "name": account.name}
 
@@ -120,6 +141,7 @@ async def rename_account(
 @router.post("/transfer/internal")
 async def internal_transfer(
     request: InternalTransferRequest,
+    current_request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -187,12 +209,21 @@ async def internal_transfer(
         db.add(sender_tx)
         db.add(receiver_tx)
 
-        emit_activity(db, current_user.id, "sub_account", "transfer", f"Transferred ${float(request.amount):.2f} from {sender.name} to {receiver.name}", {
-            "from_account": sender.name,
-            "to_account": receiver.name,
-            "amount": float(request.amount),
-            "transaction_id": tx_id_parent,
-        })
+        emit_activity(
+            db, 
+            current_user.id, 
+            "sub_account", 
+            "transfer", 
+            f"Transferred ${float(request.amount):.2f} from {sender.name} to {receiver.name}", 
+            {
+                "from_account": sender.name,
+                "to_account": receiver.name,
+                "amount": float(request.amount),
+                "transaction_id": tx_id_parent,
+            },
+            ip=current_request.client.host,
+            user_agent=current_request.headers.get("user-agent")
+        )
         
         db.commit()
         
@@ -217,10 +248,7 @@ async def get_account_credentials(
     db: Session = Depends(get_db)
 ):
     """Securely retrieve unmasked account credentials."""
-    account = db.query(Account).filter(
-        Account.id == account_id,
-        Account.user_id == current_user.id
-    ).first()
+    account = check_account_owner(account_id, current_user.id, db)
 
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
