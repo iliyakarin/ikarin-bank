@@ -56,6 +56,7 @@ __pycache__/
 Thumbs.db
 *.swp
 *.swo
+.gemini
 
 # Testing
 .pytest_cache/
