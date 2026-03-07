@@ -1,8 +1,8 @@
 import re
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select
 from pydantic import BaseModel
 from typing import Optional, List
 from database import Account, User, Transaction, SessionLocal
@@ -37,9 +37,10 @@ def is_valid_name(name: str) -> bool:
         return False
     return bool(re.match(r"^[a-zA-Z0-9 ]+$", name))
 
-def check_account_owner(account_id: int, user_id: int, db: Session):
+async def check_account_owner(account_id: int, user_id: int, db: AsyncSession):
     """Verify that the account exists and belongs to the specified user."""
-    account = db.query(Account).filter(Account.id == account_id, Account.user_id == user_id).first()
+    result = await db.execute(select(Account).filter(Account.id == account_id, Account.user_id == user_id))
+    account = result.scalars().first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or access denied")
     return account
@@ -49,26 +50,28 @@ async def create_sub_account(
     request: SubAccountCreate,
     current_request: Request,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     name = request.name.strip()
     if not is_valid_name(name):
         raise HTTPException(status_code=400, detail="Name can only contain letters, numbers, and spaces")
 
     # Check constraint: max 10 sub-accounts
-    sub_account_count = db.query(Account).filter(
+    result = await db.execute(select(func.count(Account.id)).filter(
         Account.user_id == current_user.id,
         Account.is_main == False
-    ).count()
+    ))
+    sub_account_count = result.scalar()
 
     if sub_account_count >= 10:
         raise HTTPException(status_code=400, detail="Maximum of 10 sub-accounts reached")
 
     # Find the main account to link as parent (assuming at least one exists)
-    main_account = db.query(Account).filter(
+    result = await db.execute(select(Account).filter(
         Account.user_id == current_user.id,
         Account.is_main == True
-    ).first()
+    ))
+    main_account = result.scalars().first()
 
     if not main_account:
         raise HTTPException(status_code=404, detail="Main account not found")
@@ -98,8 +101,8 @@ async def create_sub_account(
         ip=current_request.client.host,
         user_agent=current_request.headers.get("user-agent")
     )
-    db.commit()
-    db.refresh(new_sub)
+    await db.commit()
+    await db.refresh(new_sub)
     
     return {"id": new_sub.id, "name": new_sub.name, "balance": float(new_sub.balance)}
 
@@ -109,7 +112,7 @@ async def rename_account(
     request: SubAccountRename,
     current_request: Request,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     name = request.name.strip()
     if not is_valid_name(name):
@@ -134,7 +137,7 @@ async def rename_account(
         ip=current_request.client.host,
         user_agent=current_request.headers.get("user-agent")
     )
-    db.commit()
+    await db.commit()
     return {"id": account.id, "name": account.name}
 
 
@@ -143,7 +146,7 @@ async def internal_transfer(
     request: InternalTransferRequest,
     current_request: Request,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     if request.amount <= 0:
          raise HTTPException(status_code=400, detail="Transfer amount must be positive")
@@ -156,8 +159,10 @@ async def internal_transfer(
 
     # Enforce atomic transaction and lock rows
     try:
-        acc1 = db.query(Account).filter(Account.id == first_id, Account.user_id == current_user.id).with_for_update().first()
-        acc2 = db.query(Account).filter(Account.id == second_id, Account.user_id == current_user.id).with_for_update().first()
+        res1 = await db.execute(select(Account).filter(Account.id == first_id, Account.user_id == current_user.id).with_for_update())
+        acc1 = res1.scalars().first()
+        res2 = await db.execute(select(Account).filter(Account.id == second_id, Account.user_id == current_user.id).with_for_update())
+        acc2 = res2.scalars().first()
 
         if not acc1 or not acc2:
              raise HTTPException(status_code=404, detail="One or more accounts not found or access denied")
@@ -225,7 +230,7 @@ async def internal_transfer(
             user_agent=current_request.headers.get("user-agent")
         )
         
-        db.commit()
+        await db.commit()
         
         return {
             "status": "success", 
@@ -234,10 +239,10 @@ async def internal_transfer(
             "receiver_balance": float(receiver.balance)
         }
     except HTTPException:
-        db.rollback()
+        await db.rollback()
         raise
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(status_code=500, detail="Internal transfer failed")
 
 
@@ -245,10 +250,10 @@ async def internal_transfer(
 async def get_account_credentials(
     account_id: int,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Securely retrieve unmasked account credentials."""
-    account = check_account_owner(account_id, current_user.id, db)
+    account = await check_account_owner(account_id, current_user.id, db)
 
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")

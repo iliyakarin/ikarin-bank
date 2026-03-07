@@ -3,7 +3,8 @@ import os
 import time
 import asyncio
 import datetime
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from database import SessionLocal, Outbox, Transaction
 from aiokafka import AIOKafkaProducer
 
@@ -29,53 +30,55 @@ async def process_outbox():
     
     try:
         while True:
-            db: Session = SessionLocal()
-            try:
-                # Fetch unprocessed events
-                events = db.query(Outbox).filter(Outbox.status == "pending").limit(50).all()
-                
-                for event in events:
-                    try:
-                        payload_data = event.payload
-                        tx_id = payload_data.get("transaction_id")
-                        
-                        # Route to the correct topic based on event type
-                        if event.event_type == "activity_event":
-                            target_topic = "bank_activity_events"
-                        else:
-                            target_topic = KAFKA_TOPIC
-                        
-                        # Send to Kafka
-                        await producer.send_and_wait(
-                            target_topic, 
-                            json.dumps(payload_data).encode("utf-8")
-                        )
+            async with SessionLocal() as db:
+                try:
+                    # Fetch unprocessed events
+                    result = await db.execute(select(Outbox).filter(Outbox.status == "pending").limit(50))
+                    events = result.scalars().all()
+                    
+                    for event in events:
+                        try:
+                            payload_data = event.payload
+                            tx_id = payload_data.get("transaction_id")
+                            
+                            # Route to the correct topic based on event type
+                            if event.event_type == "activity_event":
+                                target_topic = "bank_activity_events"
+                            else:
+                                target_topic = KAFKA_TOPIC
+                            
+                            # Send to Kafka
+                            await producer.send_and_wait(
+                                target_topic, 
+                                json.dumps(payload_data).encode("utf-8")
+                            )
 
-                        
-                        # Update outbox status
-                        event.status = "processed"
-                        event.processed_at = datetime.datetime.utcnow()
-                        
-                        # Update transaction status in Postgres
-                        if tx_id:
-                            tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
-                            if tx:
-                                tx.status = "sent_to_kafka"
-                        
-                        db.commit()
-                        print(f"✅ Processed event {event.id} for transaction {tx_id}")
-                        
-                    except Exception as e:
-                        print(f"❌ Failed to process event {event.id}: {e}")
-                        db.rollback()
-                        # Mark as failed after some retries? For now just skip
-                        event.status = "failed"
-                        db.commit()
-                
-                if not events:
-                    await asyncio.sleep(1) # Wait for new events
-            finally:
-                db.close()
+                            
+                            # Update outbox status
+                            event.status = "processed"
+                            event.processed_at = datetime.datetime.utcnow()
+                            
+                            # Update transaction status in Postgres
+                            if tx_id:
+                                result = await db.execute(select(Transaction).filter(Transaction.id == tx_id))
+                                tx = result.scalars().first()
+                                if tx:
+                                    tx.status = "sent_to_kafka"
+                            
+                            await db.commit()
+                            print(f"✅ Processed event {event.id} for transaction {tx_id}")
+                            
+                        except Exception as e:
+                            print(f"❌ Failed to process event {event.id}: {e}")
+                            # db.rollback() is fully implicit with context managers in async mode per session, but for
+                            # specific event loops it's safer to just let the iteration handle faults
+                            event.status = "failed"
+                            await db.commit()
+                    
+                    if not events:
+                        await asyncio.sleep(1) # Wait for new events
+                except Exception as loop_e:
+                    print(f"Loop processing error: {loop_e}")
                 
     except Exception as e:
         print(f"💥 Outbox worker fatal error: {e}")
