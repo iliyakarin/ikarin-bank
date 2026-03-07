@@ -1491,7 +1491,7 @@ export default function SendMoneyPage() {
                             {pmt.next_run_at
                               ? new Date(
                                 pmt.next_run_at + "Z",
-                              ).toLocaleDateString()
+                              ).toLocaleDateString(settings.useEUDates ? 'en-GB' : 'en-US')
                               : "N/A"}
                           </td>
                           <td className="p-4">
@@ -1714,7 +1714,7 @@ export default function SendMoneyPage() {
                       className="border-b border-white/5 hover:bg-white/5 transition-colors"
                     >
                       <td className="py-4 text-white/70 text-sm">
-                        {new Date(req.created_at + "Z").toLocaleDateString()}
+                        {new Date(req.created_at + "Z").toLocaleDateString(settings.useEUDates ? 'en-GB' : 'en-US')}
                       </td>
                       <td className="py-4">
                         <div className="text-white font-medium">

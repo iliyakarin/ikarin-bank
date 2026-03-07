@@ -17,7 +17,7 @@ interface Transaction {
 }
 
 export default function TransactionsPage() {
-  const { token } = useAuth();
+  const { token, settings } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [dayRange, setDayRange] = useState(1); // default to last 24 hours
@@ -291,15 +291,14 @@ export default function TransactionsPage() {
                         {tx.recipient_email || "—"}
                       </td>
                       <td
-                        className={`px-6 py-4 text-right font-mono font-semibold ${
-                          tx.amount > 0 ? "text-emerald-400" : "text-red-400"
-                        }`}
+                        className={`px-6 py-4 text-right font-mono font-semibold ${tx.amount > 0 ? "text-emerald-400" : "text-red-400"
+                          }`}
                       >
                         {tx.amount > 0 ? "+" : "-"}$
                         {Math.abs(tx.amount).toFixed(2)}
                       </td>
                       <td className="px-6 py-4 text-white/60 text-sm text-right">
-                        {new Date(tx.timestamp + "Z").toLocaleString()}
+                        {new Date(tx.timestamp + "Z").toLocaleString(settings.useEUDates ? "en-GB" : "en-US", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: !settings.use24Hour })}
                       </td>
                       <td className="px-6 py-4 text-right text-white/70">
                         {tx.status || "Cleared"}

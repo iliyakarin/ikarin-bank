@@ -211,7 +211,7 @@ export default function ActivityPage() {
             </div>
 
             {/* Filter Bar */}
-            <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-5">
+            <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-5 relative z-20">
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                     {/* Category Dropdown */}
                     <div className="md:col-span-3 relative">
@@ -289,7 +289,7 @@ export default function ActivityPage() {
                             type="date"
                             value={fromDate}
                             onChange={(e) => setFromDate(e.target.value)}
-                            className="w-full bg-[#3b2d59] border border-white/20 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-400"
+                            className="w-full bg-[#3b2d59] border border-white/20 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-400 [color-scheme:dark]"
                         />
                     </div>
                     <div className="md:col-span-2">
@@ -300,7 +300,7 @@ export default function ActivityPage() {
                             type="date"
                             value={toDate}
                             onChange={(e) => setToDate(e.target.value)}
-                            className="w-full bg-[#3b2d59] border border-white/20 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-400"
+                            className="w-full bg-[#3b2d59] border border-white/20 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-400 [color-scheme:dark]"
                         />
                     </div>
 
