@@ -21,6 +21,7 @@ import {
     Zap,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
+import DatePicker from "@/components/ui/DatePicker";
 
 interface ActivityEvent {
     event_id: string;
@@ -289,22 +290,18 @@ export default function ActivityPage() {
                         <label className="block text-white/60 text-xs font-medium mb-1.5">
                             From
                         </label>
-                        <input
-                            type="date"
+                        <DatePicker
                             value={fromDate}
-                            onChange={(e) => setFromDate(e.target.value)}
-                            className="w-full bg-[#3b2d59] border border-white/20 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-400 [color-scheme:dark]"
+                            onChange={(date) => setFromDate(date)}
                         />
                     </div>
                     <div className="md:col-span-2">
                         <label className="block text-white/60 text-xs font-medium mb-1.5">
                             To
                         </label>
-                        <input
-                            type="date"
+                        <DatePicker
                             value={toDate}
-                            onChange={(e) => setToDate(e.target.value)}
-                            className="w-full bg-[#3b2d59] border border-white/20 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-400 [color-scheme:dark]"
+                            onChange={(date) => setToDate(date)}
                         />
                     </div>
 
