@@ -125,7 +125,10 @@ def process_single_payment(db: Session, payment: ScheduledPayment, now: datetime
         payment.status = "Active"
 
         # Check end condition
-        if payment.end_condition == "target" and payment.target_payments and payment.payments_made >= payment.target_payments:
+        if payment.frequency == "One-time":
+            payment.status = "Completed"
+            payment.next_run_at = None
+        elif payment.end_condition == "target" and payment.target_payments and payment.payments_made >= payment.target_payments:
             payment.status = "Completed"
             payment.next_run_at = None
         else:

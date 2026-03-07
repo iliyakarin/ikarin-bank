@@ -82,7 +82,11 @@ export default function ActivityPage() {
     // Filters
     const [category, setCategory] = useState("");
     const [search, setSearch] = useState("");
-    const [fromDate, setFromDate] = useState("");
+    const [fromDate, setFromDate] = useState(() => {
+        const d = new Date();
+        d.setHours(d.getHours() - 24);
+        return d.toISOString().split("T")[0];
+    });
     const [toDate, setToDate] = useState("");
     const [order, setOrder] = useState<"desc" | "asc">("desc");
     const [offset, setOffset] = useState(0);

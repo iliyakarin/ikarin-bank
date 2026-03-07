@@ -1041,8 +1041,10 @@ export default function SendMoneyPage() {
                   <thead>
                     <tr className="border-b border-white/10 text-white/50 text-sm">
                       <th className="pb-3 font-medium">Date</th>
-                      <th className="pb-3 font-medium">To / From</th>
+                      <th className="pb-3 font-medium">From / To</th>
                       <th className="pb-3 font-medium text-right">Amount</th>
+                      <th className="pb-3 font-medium px-4">Status</th>
+                      <th className="pb-3 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1054,24 +1056,24 @@ export default function SendMoneyPage() {
                           className="border-b border-white/5 hover:bg-white/5 transition-colors"
                         >
                           <td className="py-4 text-white/70 text-sm">
-                            {new Date(tx.timestamp + "Z").toLocaleString(settings.useEUDates ? 'en-GB' : 'en-US', {
+                            {new Date(tx.timestamp + (tx.timestamp.endsWith('Z') ? '' : 'Z')).toLocaleString(settings.useEUDates ? 'en-GB' : 'en-US', {
                               year: 'numeric',
                               month: '2-digit',
                               day: '2-digit',
                               hour: '2-digit',
                               minute: '2-digit',
-                              second: '2-digit',
                               hour12: !settings.use24Hour
                             })}
                           </td>
                           <td className="py-4">
                             <div className="text-white font-medium">
-                              {isOutgoing
-                                ? tx.recipient_email
-                                : tx.sender_email}
+                              {isOutgoing ? `To: ${tx.recipient_email}` : `From: ${tx.sender_email}`}
                             </div>
-                            <div className="text-white/50 text-xs">
-                              {isOutgoing ? "Sent" : "Received"}
+                            <div className="text-white/40 text-xs flex items-center gap-1">
+                              {isOutgoing ? 'Sent from' : 'Received into'}
+                              <span className="bg-white/10 px-1.5 py-0.5 rounded font-mono">
+                                *{tx.internal_account_last_4 || '????'}
+                              </span>
                             </div>
                           </td>
                           <td
@@ -1079,6 +1081,30 @@ export default function SendMoneyPage() {
                           >
                             {isOutgoing ? "-" : "+"}$
                             {Math.abs(tx.amount).toFixed(2)}
+                          </td>
+                          <td className="py-4 px-4">
+                            <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider ${tx.status === 'cleared' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                                tx.status === 'pending' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                                  'bg-white/10 text-white/50'
+                              }`}>
+                              {tx.status || 'cleared'}
+                            </span>
+                          </td>
+                          <td className="py-4 text-right">
+                            <button
+                              onClick={() => {
+                                if (isOutgoing) {
+                                  setRecipient(tx.recipient_email);
+                                  setAmount(Math.abs(tx.amount).toString());
+                                } else {
+                                  setRecipient(tx.sender_email);
+                                  setAmount(Math.abs(tx.amount).toString());
+                                }
+                              }}
+                              className="text-xs bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg border border-purple-500/30 transition-all font-bold"
+                            >
+                              Repeat
+                            </button>
                           </td>
                         </tr>
                       );
