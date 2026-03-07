@@ -5,7 +5,7 @@ import re
 import datetime
 import asyncio
 from typing import Dict, Any, Optional, Tuple, List
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Request, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text, or_
 from decimal import Decimal
@@ -224,13 +224,20 @@ async def get_current_user(
     return user
 
 
-def admin_only(current_user: User = Depends(get_current_user)):
-    """Check if current user is an admin"""
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=403, detail="Admin privileges required for this operation"
-        )
-    return current_user
+class RoleChecker:
+    def __init__(self, allowed_roles: List[str]):
+        self.allowed_roles = allowed_roles
+
+    def __call__(self, current_user: User = Depends(get_current_user)):
+        if current_user.role not in self.allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have the required permissions for this operation"
+            )
+        return current_user
+
+admin_only = RoleChecker(["admin"])
+support_only = RoleChecker(["admin", "support"])
 
 
 # --- Auth Endpoints ---
@@ -259,7 +266,16 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     db.add(new_account)
     db.commit()
 
-    emit_activity(db, new_user.id, "security", "register", "Account registered", {"email": new_user.email})
+    emit_activity(
+        db, 
+        new_user.id, 
+        "security", 
+        "register", 
+        "Account registered", 
+        {"email": new_user.email},
+        ip=None, # No request object here yet, but we could pass it if register had it
+        user_agent=None
+    )
     db.commit()
 
     return new_user
@@ -267,15 +283,37 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
 
 @app.post("/auth/login", response_model=Token)
 async def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ):
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.password_hash):
+        if user:
+            emit_activity(
+                db, 
+                user.id, 
+                "security", 
+                "login_failed", 
+                "Failed login attempt", 
+                {"email": form_data.username},
+                ip=request.client.host,
+                user_agent=request.headers.get("user-agent")
+            )
+            db.commit()
         raise HTTPException(status_code=401, detail="Incorrect email or password")
 
-    access_token = create_access_token(data={"sub": user.email})
+    access_token = create_access_token(data={"sub": user.email, "role": user.role})
 
-    emit_activity(db, user.id, "security", "login", "User logged in", {"email": user.email})
+    emit_activity(
+        db, 
+        user.id, 
+        "security", 
+        "login", 
+        "User logged in", 
+        {"email": user.email},
+        ip=request.client.host,
+        user_agent=request.headers.get("user-agent")
+    )
     db.commit()
 
     return {"access_token": access_token, "token_type": "bearer"}
@@ -288,6 +326,7 @@ async def read_users_me(current_user: User = Depends(get_current_user)):
 @app.post("/api/v1/users/me/backup", response_model=UserResponse)
 async def update_backup_email(
     update_data: UserBackupUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -302,9 +341,18 @@ async def update_backup_email(
         
     current_user.backup_email = update_data.backup_email
 
-    emit_activity(db, current_user.id, "security", "email_change", "Backup email updated", {
-        "new_backup_email": update_data.backup_email[:3] + "***"
-    })
+    emit_activity(
+        db, 
+        current_user.id, 
+        "security", 
+        "email_change", 
+        "Backup email updated", 
+        {
+            "new_backup_email": update_data.backup_email[:3] + "***"
+        },
+        ip=request.client.host,
+        user_agent=request.headers.get("user-agent")
+    )
     db.commit()
     db.refresh(current_user)
     
@@ -313,6 +361,7 @@ async def update_backup_email(
 @app.post("/api/v1/users/me/password")
 async def update_password(
     password_data: UserPasswordUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -327,7 +376,15 @@ async def update_password(
     new_hashed_password = get_password_hash(password_data.new_password)
     current_user.password_hash = new_hashed_password
 
-    emit_activity(db, current_user.id, "security", "password_change", "Password changed")
+    emit_activity(
+        db, 
+        current_user.id, 
+        "security", 
+        "password_change", 
+        "Password changed",
+        ip=request.client.host,
+        user_agent=request.headers.get("user-agent")
+    )
     db.commit()
     
     return {"status": "success"}
@@ -343,10 +400,19 @@ async def logout(
     user_agent = request.headers.get("user-agent", "unknown")
     client_ip = request.client.host
 
-    emit_activity(db, current_user.id, "security", "logout", "User logged out", {
-        "ip": client_ip,
-        "user_agent": user_agent,
-    })
+    emit_activity(
+        db, 
+        current_user.id, 
+        "security", 
+        "logout", 
+        "User logged out", 
+        {
+            "ip": client_ip,
+            "user_agent": user_agent,
+        },
+        ip=client_ip,
+        user_agent=user_agent
+    )
     db.commit()
 
     # Note: JWTs are stateless. True invalidation requires a token blacklist.
@@ -471,6 +537,12 @@ async def get_account_balance(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.id != user_id and current_user.role not in ["admin", "support"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="You do not have permission to access these accounts"
+        )
+    
     accounts = db.query(Account).filter(Account.user_id == user_id).all()
     if not accounts:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -761,13 +833,20 @@ class TransferRequest(BaseModel):
 
 
 @app.post("/transfer")
-async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_db)):
+async def create_transfer(
+    transfer: TransferRequest, 
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     tx_id = str(uuid.uuid4())
+    client_ip = request.client.host
+    user_agent = request.headers.get("user-agent", "unknown")
     try:
 
-        account = db.query(Account).filter(Account.id == transfer.account_id).first()
+        account = db.query(Account).filter(Account.id == transfer.account_id, Account.user_id == current_user.id).first()
         if not account:
-            raise HTTPException(status_code=404, detail="Account not found")
+            raise HTTPException(status_code=403, detail="Account not found or access denied")
 
         new_tx = Transaction(
             id=tx_id,
@@ -1078,19 +1157,37 @@ async def create_p2p_transfer(
             ))
 
         # Emit activity events for sender and recipient
-        emit_activity(db, current_user.id, "p2p", "sent", f"Sent ${float(transfer.amount):.2f} to {recipient.email}", {
-            "transaction_id": tx_id_parent,
-            "recipient_email": recipient.email,
-            "amount": float(transfer.amount),
-            "commentary": transfer.commentary,
-            "source_account_id": resolved_sender_account.id,
-        })
-        emit_activity(db, recipient.id, "p2p", "received", f"Received ${float(transfer.amount):.2f} from {current_user.email}", {
-            "transaction_id": tx_id_parent,
-            "sender_email": current_user.email,
-            "amount": float(transfer.amount),
-            "commentary": transfer.commentary,
-        })
+        emit_activity(
+            db, 
+            current_user.id, 
+            "p2p", 
+            "sent", 
+            f"Sent ${float(transfer.amount):.2f} to {recipient.email}", 
+            {
+                "transaction_id": tx_id_parent,
+                "recipient_email": recipient.email,
+                "amount": float(transfer.amount),
+                "commentary": transfer.commentary,
+                "source_account_id": resolved_sender_account.id,
+            },
+            ip=client_ip,
+            user_agent=user_agent
+        )
+        emit_activity(
+            db, 
+            recipient.id, 
+            "p2p", 
+            "received", 
+            f"Received ${float(transfer.amount):.2f} from {current_user.email}", 
+            {
+                "transaction_id": tx_id_parent,
+                "sender_email": current_user.email,
+                "amount": float(transfer.amount),
+                "commentary": transfer.commentary,
+            },
+            ip=client_ip,
+            user_agent=user_agent
+        )
 
         db.commit()
         return response_body
@@ -1321,13 +1418,22 @@ async def create_scheduled_transfer(
         db.commit()
         db.refresh(new_scheduled_payment)
 
-        emit_activity(db, current_user.id, "scheduled", "setup", f"Scheduled ${float(transfer.amount):.2f} {transfer.frequency} to {transfer.recipient_email}", {
-            "scheduled_payment_id": new_scheduled_payment.id,
-            "recipient_email": transfer.recipient_email,
-            "amount": float(transfer.amount),
-            "frequency": transfer.frequency,
-            "start_date": str(transfer.start_date),
-        })
+        emit_activity(
+            db, 
+            current_user.id, 
+            "scheduled", 
+            "setup", 
+            f"Scheduled ${float(transfer.amount):.2f} {transfer.frequency} to {transfer.recipient_email}", 
+            {
+                "scheduled_payment_id": new_scheduled_payment.id,
+                "recipient_email": transfer.recipient_email,
+                "amount": float(transfer.amount),
+                "frequency": transfer.frequency,
+                "start_date": str(transfer.start_date),
+            },
+            ip=request.client.host,
+            user_agent=request.headers.get("user-agent")
+        )
         db.commit()
         
         return {"status": "success", "scheduled_payment_id": new_scheduled_payment.id}

@@ -27,6 +27,8 @@ export default function SubAccountDetailPage() {
     const [transferError, setTransferError] = useState("");
     const [transferLoading, setTransferLoading] = useState(false);
     const [isIdVisible, setIsIdVisible] = useState(false);
+    const [fullCredentials, setFullCredentials] = useState<{ account_number: string, routing_number: string } | null>(null);
+    const [credentialsLoading, setCredentialsLoading] = useState(false);
 
     useEffect(() => {
         if (accounts.length > 0) {
@@ -117,6 +119,30 @@ export default function SubAccountDetailPage() {
         }
     };
 
+    const fetchFullCredentials = async () => {
+        if (fullCredentials) {
+            setIsIdVisible(!isIdVisible);
+            return;
+        }
+
+        setCredentialsLoading(true);
+        try {
+            const authToken = token || localStorage.getItem("bank_token");
+            const res = await fetch(`http://localhost:8000/api/v1/accounts/${accountId}/credentials`, {
+                headers: { Authorization: `Bearer ${authToken}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setFullCredentials(data);
+                setIsIdVisible(true);
+            }
+        } catch (err) {
+            console.error("Error fetching credentials", err);
+        } finally {
+            setCredentialsLoading(false);
+        }
+    };
+
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat("en-US", {
             style: "currency",
@@ -156,17 +182,29 @@ export default function SubAccountDetailPage() {
                         <h1 className="text-5xl md:text-6xl font-black text-white">
                             {formatCurrency(account.balance)}
                         </h1>
-                        <div className="flex items-center gap-2 mt-4 text-white/60 font-medium">
-                            <span className="text-sm font-mono tracking-wider">
-                                Acc ID: {isIdVisible ? account.id.toString().padStart(8, '0') : `****${account.id.toString().slice(-4).padStart(4, '0')}`}
-                            </span>
-                            <button
-                                onClick={() => setIsIdVisible(!isIdVisible)}
-                                className="p-1 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-all"
-                                title={isIdVisible ? "Hide Account ID" : "Show Account ID"}
-                            >
-                                {isIdVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                            </button>
+                        <div className="flex flex-col gap-2 mt-4">
+                            <div className="flex items-center gap-2 text-white/60 font-medium">
+                                <span className="text-sm font-mono tracking-wider">
+                                    Account: {isIdVisible ? (fullCredentials?.account_number || "Not assigned") : (account.masked_account_number || "****0000")}
+                                </span>
+                                <button
+                                    onClick={fetchFullCredentials}
+                                    disabled={credentialsLoading}
+                                    className="p-1 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-all disabled:opacity-50"
+                                    title={isIdVisible ? "Hide Details" : "Show Details"}
+                                >
+                                    {credentialsLoading ? (
+                                        <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        isIdVisible ? <EyeOff size={16} /> : <Eye size={16} />
+                                    )}
+                                </button>
+                            </div>
+                            {(isIdVisible || credentialsLoading) && (
+                                <div className="text-white/60 font-medium text-sm font-mono tracking-wider">
+                                    Routing: {fullCredentials?.routing_number || account.routing_number || "123400000"}
+                                </div>
+                            )}
                         </div>
                     </div>
                     <div className="flex flex-col gap-3">

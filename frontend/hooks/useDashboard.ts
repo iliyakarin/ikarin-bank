@@ -113,6 +113,8 @@ export interface AccountData {
     balance: number;
     reserved_balance: number;
     is_main: boolean;
+    routing_number?: string;
+    masked_account_number?: string;
 }
 
 interface UseBalanceResult {

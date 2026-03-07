@@ -55,6 +55,8 @@ def emit_activity(
     action: str,
     title: str,
     details: dict | None = None,
+    ip: str | None = None,
+    user_agent: str | None = None,
 ):
     """
     Emit an activity event to the Outbox for async processing.
@@ -74,6 +76,8 @@ def emit_activity(
         "event_time": now,
         "title": title,
         "details": json.dumps(details or {}),
+        "ip": ip,
+        "user_agent": user_agent,
     }
 
     outbox_entry = Outbox(
