@@ -14,7 +14,7 @@ export default function AdminTools() {
 
     const startSimulation = async () => {
         try {
-            const res = await fetch('http://localhost:8000/admin/simulate', {
+            const res = await fetch('/api/admin/simulate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tps, count }),

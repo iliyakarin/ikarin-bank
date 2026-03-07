@@ -26,7 +26,7 @@ export default function DashboardPage() {
             if (!authToken) return;
 
             try {
-                const userRes = await fetch('http://localhost:8000/auth/me', {
+                const userRes = await fetch('/api/auth/me', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 if (userRes.ok) {

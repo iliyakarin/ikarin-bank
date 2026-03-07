@@ -38,7 +38,7 @@ export default function SubAccountManager({ accounts, refresh }: SubAccountManag
         setError(null);
         try {
             const authToken = token || localStorage.getItem('bank_token');
-            const response = await fetch("http://localhost:8000/api/v1/accounts/sub", {
+            const response = await fetch("/api/api/v1/accounts/sub", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

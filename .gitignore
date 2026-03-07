@@ -88,3 +88,5 @@ docker-compose.prod.yml
 .env.prod
 init-db/*.prod.conf
 init-db/*.prod.xml
+nginx.prod.conf
+deploy.sh
