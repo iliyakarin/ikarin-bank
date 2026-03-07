@@ -18,6 +18,7 @@ CH_HOST = os.getenv("CLICKHOUSE_HOST", "localhost")
 CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
 CH_USER = os.getenv("CLICKHOUSE_USER", "default")
 CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
+CH_DB = os.getenv("CLICKHOUSE_DB", "banking_log")
 
 # Limits
 VELOCITY_MAX_TX_PER_MINUTE = 10
@@ -94,7 +95,7 @@ async def check_anomaly(db: AsyncSession, user_id: int, amount: Decimal) -> bool
                 avg(abs(amount)) as avg_amount,
                 stddevPop(abs(amount)) as std_amount,
                 count() as tx_count
-            FROM banking.transactions FINAL
+            FROM {CH_DB}.transactions FINAL
             WHERE account_id IN ({ids_str})
               AND event_time >= now() - INTERVAL 90 DAY
             """
