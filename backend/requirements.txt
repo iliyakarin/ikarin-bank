@@ -12,3 +12,5 @@ python-jose[cryptography]
 python-multipart
 asyncpg
 gunicorn
+pytest
+pytest-asyncio
