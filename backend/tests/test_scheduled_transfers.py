@@ -8,14 +8,54 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from main import _calculate_next_run_at, ScheduledTransferCreate
 
-def test_calculate_next_run_at_basic():
-    """
-    Tests the placeholder calculation logic for the next run date.
-    """
+def test_calculate_next_run_at_daily():
     start = datetime.datetime(2026, 1, 1, 10, 0)
-    # The current simplified logic just returns the start_date
+    result = _calculate_next_run_at(start, "Daily")
+    assert result == start + datetime.timedelta(days=1)
+
+def test_calculate_next_run_at_weekly():
+    start = datetime.datetime(2026, 1, 1, 10, 0)
+    result = _calculate_next_run_at(start, "Weekly")
+    assert result == start + datetime.timedelta(weeks=1)
+
+def test_calculate_next_run_at_monthly():
+    # Regular month
+    start = datetime.datetime(2026, 1, 15, 10, 0)
     result = _calculate_next_run_at(start, "Monthly")
-    assert result == start
+    assert result == datetime.datetime(2026, 2, 15, 10, 0)
+    
+    # Month end boundary
+    start = datetime.datetime(2026, 1, 31, 10, 0)
+    result = _calculate_next_run_at(start, "Monthly")
+    assert result == datetime.datetime(2026, 2, 28, 10, 0)
+
+def test_calculate_next_run_at_specific_day():
+    # 2026-03-06 is a Friday
+    start = datetime.datetime(2026, 3, 6, 10, 0)
+    
+    # Next Monday should be 2026-03-09
+    result = _calculate_next_run_at(start, "Specific Day of Week", "Monday")
+    assert result == datetime.datetime(2026, 3, 9, 10, 0)
+    
+    # Next Friday (since today is Friday, it should be next week)
+    result = _calculate_next_run_at(start, "Specific Day of Week", "Friday")
+    assert result == datetime.datetime(2026, 3, 13, 10, 0)
+
+def test_calculate_next_run_at_specific_date():
+    start = datetime.datetime(2026, 1, 15, 10, 0)
+    
+    # Next 25th of the month
+    result = _calculate_next_run_at(start, "Specific Date of Month", "25")
+    assert result == datetime.datetime(2026, 2, 25, 10, 0)
+    
+    # Next 31st of the month (Feb only has 28 in 2026)
+    result = _calculate_next_run_at(start, "Specific Date of Month", "31")
+    assert result == datetime.datetime(2026, 2, 28, 10, 0)
+
+def test_calculate_next_run_at_one_time():
+    start = datetime.datetime(2026, 1, 1, 10, 0)
+    result = _calculate_next_run_at(start, "One-time")
+    assert result is None
 
 def test_pydantic_schema_validation_valid():
     """

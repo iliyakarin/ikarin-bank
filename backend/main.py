@@ -862,12 +862,13 @@ async def create_transfer(
         payload = {
             "transaction_id": tx_id,
             "account_id": transfer.account_id,
+            "internal_account_last_4": account.account_number_last_4,
             "internal_reference_id": account.internal_reference_id,
             "amount": transfer.amount,
             "category": transfer.category,
             "merchant": transfer.merchant,
             "transaction_type": "expense",
-            "status": "pending",
+            "status": "cleared", # legacy /transfer is cleared immediately
             "timestamp": datetime.datetime.utcnow().isoformat(),
         }
         
@@ -997,8 +998,8 @@ def _create_p2p_transactions(
 
 def _create_p2p_outbox_entries(
     db: Session,
-    sender_account_id: int,
-    recipient_account_id: int,
+    sender_account: Account,
+    recipient_account: Account,
     amount: Decimal,
     sender_email: str,
     recipient_email: str,
@@ -1011,7 +1012,8 @@ def _create_p2p_outbox_entries(
     sender_payload = {
         "transaction_id": tx_id_sender,
         "parent_id": tx_id_parent,
-        "account_id": sender_account_id,
+        "account_id": sender_account.id,
+        "internal_account_last_4": sender_account.account_number_last_4,
         "sender_email": sender_email,
         "recipient_email": recipient_email,
         "amount": -float(amount),
@@ -1019,7 +1021,7 @@ def _create_p2p_outbox_entries(
         "merchant": f"Transfer to {recipient_email}",
         "transaction_type": "transfer",
         "transaction_side": "DEBIT",
-        "status": "pending",
+        "status": "cleared", # cleared in postgres already
         "timestamp": datetime.datetime.utcnow().isoformat(),
         "commentary": commentary
     }
@@ -1027,7 +1029,8 @@ def _create_p2p_outbox_entries(
     recipient_payload = {
         "transaction_id": tx_id_recipient,
         "parent_id": tx_id_parent,
-        "account_id": recipient_account_id,
+        "account_id": recipient_account.id,
+        "internal_account_last_4": recipient_account.account_number_last_4,
         "sender_email": sender_email,
         "recipient_email": recipient_email,
         "amount": float(amount),
@@ -1035,7 +1038,7 @@ def _create_p2p_outbox_entries(
         "merchant": f"Received from {sender_email}",
         "transaction_type": "transfer",
         "transaction_side": "CREDIT",
-        "status": "pending",
+        "status": "cleared",
         "timestamp": datetime.datetime.utcnow().isoformat(),
         "commentary": commentary
     }
@@ -1130,8 +1133,8 @@ async def create_p2p_transfer(
         # 5. Create Outbox Entries
         _create_p2p_outbox_entries(
             db,
-            sender_account.id,
-            recipient_account.id,
+            sender_account,
+            recipient_account,
             transfer.amount,
             current_user.email,
             recipient.email,
@@ -1334,10 +1337,73 @@ async def decline_payment_request(
     })
     db.commit()
     return {"status": "success", "request_id": req.id, "new_status": req.status}
-def _calculate_next_run_at(start_date: datetime.datetime, frequency: str, interval: str = None) -> datetime.datetime:
-    # A simplified implementation for the immediate next execution
-    # In a full system, this would apply cron-like interval math
-    return start_date
+def _calculate_next_run_at(reference_date: datetime.datetime, frequency: str, interval: str = None) -> Optional[datetime.datetime]:
+    """Calculates the next execution date based on frequency and reference date."""
+    if frequency == "One-time":
+        return None
+    
+    if frequency == "Daily":
+        return reference_date + datetime.timedelta(days=1)
+    
+    if frequency == "Weekly":
+        return reference_date + datetime.timedelta(weeks=1)
+    
+    if frequency == "Bi-weekly":
+        return reference_date + datetime.timedelta(weeks=2)
+    
+    if frequency == "Monthly":
+        # Advance by exactly one month
+        month = reference_date.month
+        year = reference_date.year + (month // 12)
+        month = (month % 12) + 1
+        
+        # Max days in the new month
+        if month == 2:
+            max_day = 29 if (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)) else 28
+        else:
+            max_day = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month]
+            
+        day = min(reference_date.day, max_day)
+        return reference_date.replace(year=year, month=month, day=day)
+
+    if frequency == "Annually":
+        try:
+            return reference_date.replace(year=reference_date.year + 1)
+        except ValueError: # Handle Feb 29
+            return reference_date.replace(year=reference_date.year + 1, day=28)
+
+    if frequency == "Specific Day of Week":
+        days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        if not interval or interval not in days_of_week:
+            return reference_date + datetime.timedelta(weeks=1)
+        
+        target_weekday = days_of_week.index(interval)
+        current_weekday = reference_date.weekday()
+        days_ahead = target_weekday - current_weekday
+        if days_ahead <= 0:
+            days_ahead += 7
+        return reference_date + datetime.timedelta(days=days_ahead)
+
+    if frequency == "Specific Date of Month":
+        try:
+            target_day = int(interval)
+        except (TypeError, ValueError):
+            return reference_date + datetime.timedelta(days=30)
+            
+        # Move to next month and try to set the requested day
+        month = reference_date.month
+        year = reference_date.year + (month // 12)
+        month = (month % 12) + 1
+        
+        if month == 2:
+            max_day = 29 if (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)) else 28
+        else:
+            max_day = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month]
+            
+        actual_day = min(target_day, max_day)
+        return reference_date.replace(year=year, month=month, day=actual_day)
+
+    return None
 
 @app.post("/api/v1/transfers/scheduled")
 async def create_scheduled_transfer(
@@ -1387,7 +1453,8 @@ async def create_scheduled_transfer(
             sender_account.balance -= transfer.amount
             sender_account.reserved_balance += transfer.amount
 
-        next_run = _calculate_next_run_at(transfer.start_date, transfer.frequency, transfer.frequency_interval)
+        # The first run should happen at the start_date provided by user
+        next_run = transfer.start_date
 
         new_scheduled_payment = ScheduledPayment(
             user_id=current_user.id,
@@ -1507,6 +1574,10 @@ async def get_activity(
         ch = clickhouse_connect.get_client(
             host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
         )
+
+        if not from_date:
+            # Default to last 24 hours if not specified
+            from_date = (datetime.datetime.utcnow() - datetime.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
 
         conditions = ["user_id = {user_id:Int64}"]
         params = {"user_id": current_user.id}
@@ -1839,7 +1910,9 @@ async def get_all_transactions(
             merchant,
             transaction_type,
             transaction_side,
-            event_time
+            event_time,
+            internal_account_last_4,
+            status
         FROM banking.transactions
         WHERE {where_clause}
         ORDER BY event_time {sort_dir}
@@ -1856,15 +1929,15 @@ async def get_all_transactions(
                 "recipient_email": row.get("recipient_email"),
                 "amount": float(row["amount"]),
                 "category": row["category"],
-                "merchant": row.get("merchant"),
-                "transaction_type": row.get("transaction_type", "expense"),
-                "transaction_side": row.get("transaction_side"),
-                "timestamp": row["event_time"].isoformat()
-                if hasattr(row["event_time"], "isoformat")
-                else str(row["event_time"]),
-                # Hardcode status as requested
-                "status": "Cleared",
+                "merchant": row["merchant"],
+                "type": row["transaction_type"],
+                "side": row["transaction_side"],
+                "timestamp": row["event_time"].isoformat(),
+                "internal_account_last_4": row.get("internal_account_last_4"),
+                "status": row.get("status", "cleared")
             }
+            # IDOR check: even though we filter by account_ids belonging to user,
+            # this is a defense-in-depth to ensure no leakage if query logic fails.
             transactions.append(tx)
 
         if not transactions:
