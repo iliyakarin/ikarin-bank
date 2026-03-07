@@ -1,7 +1,8 @@
 import secrets
 import os
 from cryptography.fernet import Fernet
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from dotenv import load_dotenv
 from database import Account
 from typing import Optional
@@ -85,7 +86,7 @@ def generate_internal_reference() -> str:
     """Generates a unique internal reference ID for ClickHouse logging."""
     return f"KB-{secrets.token_hex(8).upper()}"
 
-def assign_account_credentials(db: Session, account: Account):
+async def assign_account_credentials(db: AsyncSession, account: Account):
     """
     Orchestrates the generation and assignment of credentials to an Account.
     Ensures uniqueness (collision checking).
@@ -98,7 +99,8 @@ def assign_account_credentials(db: Session, account: Account):
         acc_num = generate_account_number()
         # Check for collision in accounts table
         last_4 = acc_num[-4:]
-        existing = db.query(Account).filter(Account.account_number_last_4 == last_4).all()
+        result = await db.execute(select(Account).filter(Account.account_number_last_4 == last_4))
+        existing = result.scalars().all()
         
         collision = False
         for e in existing:
@@ -114,6 +116,7 @@ def assign_account_credentials(db: Session, account: Account):
     # 3. Generate Internal Reference ID
     while True:
         ref_id = generate_internal_reference()
-        if not db.query(Account).filter(Account.internal_reference_id == ref_id).first():
+        result = await db.execute(select(Account).filter(Account.internal_reference_id == ref_id))
+        if not result.scalars().first():
             account.internal_reference_id = ref_id
             break

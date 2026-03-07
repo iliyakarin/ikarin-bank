@@ -64,6 +64,7 @@ Thumbs.db
 htmlcov/
 .nyc_output/
 .tox/
+performance_tests/
 
 # AI & Internal Tooling
 .Jules/

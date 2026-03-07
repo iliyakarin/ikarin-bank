@@ -1,7 +1,7 @@
 import os
-from sqlalchemy import create_engine, Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean
+from sqlalchemy.orm import declarative_base
 import datetime
 
 # Database Configuration
@@ -15,10 +15,22 @@ if not all([POSTGRES_USER, POSTGRES_DB, POSTGRES_HOST, POSTGRES_PORT]):
     # Note: password might be empty in some dev setups, but others are required
     print("[WARNING] Missing database environment variables. Application may fail to connect.")
 
-DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+DATABASE_URL = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine = create_async_engine(
+    DATABASE_URL, 
+    echo=False, 
+    future=True,
+    pool_size=20,
+    max_overflow=10
+)
+SessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    autocommit=False,
+    autoflush=False,
+    expire_on_commit=False
+)
 Base = declarative_base()
 
 class User(Base):
