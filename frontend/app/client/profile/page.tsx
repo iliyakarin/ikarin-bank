@@ -292,6 +292,51 @@ export default function ProfilePage() {
                             </button>
                         </div>
                     </div>
+
+                    {/* Live Preview */}
+                    <div className="mt-4 p-5 bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/20 rounded-xl">
+                        <p className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-3">
+                            Live Preview
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                                <p className="text-white/40 text-[10px] uppercase tracking-wider mb-1">Date</p>
+                                <p className="text-white font-mono text-sm">
+                                    {new Date().toLocaleDateString(
+                                        settings.useEUDates ? "en-GB" : "en-US",
+                                        { year: "numeric", month: "2-digit", day: "2-digit" }
+                                    )}
+                                </p>
+                                <p className="text-white/30 text-[10px] mt-1">
+                                    {settings.useEUDates ? "DD/MM/YYYY" : "MM/DD/YYYY"}
+                                </p>
+                            </div>
+                            <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                                <p className="text-white/40 text-[10px] uppercase tracking-wider mb-1">Time</p>
+                                <p className="text-white font-mono text-sm">
+                                    {new Date().toLocaleTimeString(
+                                        settings.useEUDates ? "en-GB" : "en-US",
+                                        { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: !settings.use24Hour }
+                                    )}
+                                </p>
+                                <p className="text-white/30 text-[10px] mt-1">
+                                    {settings.use24Hour ? "24-hour" : "12-hour (AM/PM)"}
+                                </p>
+                            </div>
+                            <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                                <p className="text-white/40 text-[10px] uppercase tracking-wider mb-1">Full Timestamp</p>
+                                <p className="text-white font-mono text-sm">
+                                    {new Date().toLocaleString(
+                                        settings.useEUDates ? "en-GB" : "en-US",
+                                        { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: !settings.use24Hour }
+                                    )}
+                                </p>
+                                <p className="text-white/30 text-[10px] mt-1">
+                                    As shown across the portal
+                                </p>
+                            </div>
+                        </div>
+                    </div>
                 </motion.div>
 
                 {/* Backup Email Form */}

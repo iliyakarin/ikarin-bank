@@ -6,8 +6,10 @@ import { CATEGORY_ICONS, DEFAULT_CATEGORY_ICON } from '@/lib/constants';
 import { motion } from 'framer-motion';
 import { Check, Clock, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
+import { useAuth } from '@/lib/AuthContext';
 
 function TransactionItem({ transaction, index }: { transaction: Transaction, index: number }) {
+    const { settings } = useAuth();
     const status = getTransactionStatus(transaction.status);
     const statusLabel = getStatusLabel(status);
     const icon = CATEGORY_ICONS[transaction.category] || DEFAULT_CATEGORY_ICON;
@@ -83,7 +85,7 @@ function TransactionItem({ transaction, index }: { transaction: Transaction, ind
                     {amountPrefix}${Math.abs(transaction.amount).toFixed(2)}
                 </p>
                 <p className="text-xs text-gray-400 font-medium">
-                    {new Date(transaction.created_at + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    {new Date(transaction.created_at + 'Z').toLocaleDateString(settings.useEUDates ? 'en-GB' : 'en-US', { month: 'short', day: 'numeric' })}
                 </p>
                 {status === 'failed' && (
                     <Link

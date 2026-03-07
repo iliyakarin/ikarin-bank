@@ -20,7 +20,7 @@ import {
 } from "recharts";
 
 export default function DashboardPage() {
-  const { user, token } = useAuth();
+  const { user, token, settings } = useAuth();
   const [userName, setUserName] = useState<string>("User");
   const [dayFilter, setDayFilter] = useState(1); // Default to 24h
 
@@ -71,7 +71,7 @@ export default function DashboardPage() {
 
   const balanceHistoryData = transactions
     .map((t) => ({
-      date: new Date(t.created_at + "Z").toLocaleDateString("en-US", {
+      date: new Date(t.created_at + "Z").toLocaleDateString(settings.useEUDates ? "en-GB" : "en-US", {
         month: "short",
         day: "numeric",
       }),
