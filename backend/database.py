@@ -38,6 +38,12 @@ class Account(Base):
     name = Column(String(100), default="Main Account", server_default="Main Account", nullable=False)
     balance = Column(Numeric(15, 2), default=0.00)
     reserved_balance = Column(Numeric(15, 2), default=0.00)
+    
+    # Account Credentials
+    routing_number = Column(String(9), nullable=True)
+    account_number_encrypted = Column(String(255), nullable=True)
+    account_number_last_4 = Column(String(4), nullable=True)
+    internal_reference_id = Column(String(100), unique=True, index=True, nullable=True)
 
 class ScheduledPayment(Base):
     __tablename__ = "scheduled_payments"

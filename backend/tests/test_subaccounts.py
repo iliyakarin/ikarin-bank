@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from decimal import Decimal
 import datetime
 from fastapi import HTTPException
@@ -42,17 +42,18 @@ def test_subaccount_creation_limit(mock_fastapi_dependency):
     
     req = accounts_router.SubAccountCreate(name="Trip Fund")
     
-    try:
-        import asyncio
-        fn = getattr(accounts_router.create_sub_account, "__wrapped__", accounts_router.create_sub_account)
-        if asyncio.iscoroutinefunction(fn):
-            asyncio.run(fn(req, current_user, mock_db))
-        else:
-            fn(req, current_user, mock_db)
-        pytest.fail("Should have raised HTTPException for max limit")
-    except Exception as e:
-        assert getattr(e, "status_code", 0) == 400
-        assert "Maximum of 10 sub-accounts reached" in str(getattr(e, "detail", ""))
+    with patch("routers.accounts.assign_account_credentials") as mock_assign:
+        try:
+            import asyncio
+            fn = getattr(accounts_router.create_sub_account, "__wrapped__", accounts_router.create_sub_account)
+            if asyncio.iscoroutinefunction(fn):
+                asyncio.run(fn(req, current_user, mock_db))
+            else:
+                fn(req, current_user, mock_db)
+            pytest.fail("Should have raised HTTPException for max limit")
+        except Exception as e:
+            assert getattr(e, "status_code", 0) == 400
+            assert "Maximum of 10 sub-accounts reached" in str(getattr(e, "detail", ""))
 
 def test_subaccount_creation_invalid_name(mock_fastapi_dependency):
     import main
