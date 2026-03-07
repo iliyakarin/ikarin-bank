@@ -5,11 +5,15 @@ from sqlalchemy.orm import sessionmaker
 import datetime
 
 # Database Configuration
-POSTGRES_USER = os.getenv("POSTGRES_USER", "admin")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "")
-POSTGRES_DB = os.getenv("POSTGRES_DB", "banking_db")
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
-POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+POSTGRES_USER = os.getenv("POSTGRES_USER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+POSTGRES_DB = os.getenv("POSTGRES_DB")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT")
+
+if not all([POSTGRES_USER, POSTGRES_DB, POSTGRES_HOST, POSTGRES_PORT]):
+    # Note: password might be empty in some dev setups, but others are required
+    print("[WARNING] Missing database environment variables. Application may fail to connect.")
 
 DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
@@ -33,13 +37,23 @@ class Account(Base):
     __tablename__ = "accounts"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
+    is_main = Column(Boolean, default=True, server_default="true", nullable=False)
+    parent_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
+    name = Column(String(100), default="Main Account", server_default="Main Account", nullable=False)
     balance = Column(Numeric(15, 2), default=0.00)
     reserved_balance = Column(Numeric(15, 2), default=0.00)
+    
+    # Account Credentials
+    routing_number = Column(String(9), nullable=True)
+    account_number_encrypted = Column(String(255), nullable=True)
+    account_number_last_4 = Column(String(4), nullable=True)
+    internal_reference_id = Column(String(100), unique=True, index=True, nullable=True)
 
 class ScheduledPayment(Base):
     __tablename__ = "scheduled_payments"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    funding_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True) # Allows targeting sub-accounts
     recipient_email = Column(String(100), nullable=False)
     amount = Column(Numeric(15, 2), nullable=False)
     frequency = Column(String(50), nullable=False)
@@ -51,6 +65,7 @@ class ScheduledPayment(Base):
     payments_made = Column(Integer, default=0, nullable=False)
     next_run_at = Column(DateTime, index=True, nullable=True)
     status = Column(String(20), default="Active", nullable=False)
+    retry_count = Column(Integer, default=0, nullable=False)
     idempotency_key = Column(String(100), unique=True, index=True, nullable=False)
     reserve_amount = Column(Boolean, default=False, nullable=False)
 

@@ -96,6 +96,15 @@ def mock_fastapi_dependency():
     mock_app_instance.add_middleware = MagicMock()
 
     mock_fastapi.FastAPI.return_value = mock_app_instance
+    
+    mock_router_instance = MagicMock()
+    mock_router_instance.get.side_effect = passthrough_decorator
+    mock_router_instance.post.side_effect = passthrough_decorator
+    mock_router_instance.put.side_effect = passthrough_decorator
+    mock_router_instance.delete.side_effect = passthrough_decorator
+    mock_router_instance.patch.side_effect = passthrough_decorator
+    
+    mock_fastapi.APIRouter.return_value = mock_router_instance
 
     mock_fastapi.Depends = MagicMock()
 
@@ -131,12 +140,13 @@ def mock_fastapi_dependency():
     mock_confluent.Consumer = MagicMock()
 
     mock_clickhouse = MagicMock()
-    mock_pydantic = MagicMock()
     mock_database = MagicMock()
 
     mock_sqlalchemy = MagicMock()
     mock_sqlalchemy.orm = MagicMock()
     mock_sqlalchemy.func = MagicMock()
+
+    mock_sync_checker = MagicMock()
 
     modules_to_patch = {
         "fastapi": mock_fastapi,
@@ -150,21 +160,21 @@ def mock_fastapi_dependency():
         "confluent_kafka": mock_confluent,
         "confluent_kafka.admin": mock_confluent.admin,
         "clickhouse_connect": mock_clickhouse,
-        "pydantic": mock_pydantic,
         "backend.database": mock_database,
         "database": mock_database,
         "sqlalchemy": mock_sqlalchemy,
-        "sqlalchemy.orm": mock_sqlalchemy.orm
+        "sqlalchemy.orm": mock_sqlalchemy.orm,
+        "sync_checker": mock_sync_checker,
+        "backend.sync_checker": mock_sync_checker
     }
 
-    if "backend.main" in sys.modules:
-        del sys.modules["backend.main"]
+    if "main" in sys.modules:
+        del sys.modules["main"]
 
     with patch.dict(sys.modules, modules_to_patch):
-        import backend.main
-        # Re-inject our MockHTTPException if import reloaded it from mock
-        backend.main.HTTPException = MockHTTPException
-        yield backend.main
+        import main
+        main.HTTPException = MockHTTPException
+        yield main
 
-    if "backend.main" in sys.modules:
-        del sys.modules["backend.main"]
+    if "main" in sys.modules:
+        del sys.modules["main"]

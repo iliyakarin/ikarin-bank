@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useBalance } from "@/hooks/useDashboard";
 
 export default function PortalHeader() {
-  const { user, token, logout } = useAuth();
+  const { user, token, logout, settings } = useAuth();
   const { balance, loading: balanceLoading } = useBalance(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -48,13 +48,13 @@ export default function PortalHeader() {
         <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-full">
           <Clock className="w-4 h-4 text-purple-400" />
           <span className="text-sm font-medium text-white/80 tracking-wide">
-            {currentTime.toLocaleString("en-US", {
+            {currentTime.toLocaleString(settings.useEUDates ? "en-GB" : "en-US", {
               weekday: "short",
               month: "short",
               day: "numeric",
               hour: "numeric",
               minute: "2-digit",
-              hour12: true,
+              hour12: !settings.use24Hour,
             })}
           </span>
         </div>
@@ -120,7 +120,7 @@ export default function PortalHeader() {
                           </p>
                           <div className="flex items-center justify-between mt-2">
                             <span className="text-[10px] text-white/40">
-                              {new Date(notif.created_at).toLocaleDateString()}
+                              {new Date(notif.created_at).toLocaleDateString(settings.useEUDates ? "en-GB" : "en-US")}
                             </span>
                             {notif.amount && (
                               <span className="text-xs font-bold text-white/80">
