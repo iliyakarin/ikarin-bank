@@ -46,7 +46,7 @@ export function useTransactions(hours: number = 24, autoRefresh: boolean = true)
             }
 
             const response = await fetch(
-                `http://localhost:8000/dashboard/recent-transactions?hours=${hours}`,
+                `/api/dashboard/recent-transactions?hours=${hours}`,
                 {
                     headers: {
                         'Authorization': `Bearer ${authToken}`,
@@ -164,7 +164,7 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
 
             if (mountedRef.current && user) {
                 const balanceResponse = await fetch(
-                    `http://localhost:8000/accounts/${user.id}`,
+                    `/api/accounts/${user.id}`,
                     {
                         headers: { 'Authorization': `Bearer ${authToken}` },
                         signal: controller.signal,
@@ -257,7 +257,7 @@ export function useBalanceHistory(days: number = 30, autoRefresh: boolean = true
             }
 
             const response = await fetch(
-                `http://localhost:8000/dashboard/balance-history?days=${days}`,
+                `/api/dashboard/balance-history?days=${days}`,
                 {
                     headers: { 'Authorization': `Bearer ${authToken}` },
                     signal: controller.signal,

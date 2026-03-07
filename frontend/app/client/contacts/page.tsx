@@ -47,7 +47,7 @@ export default function ContactsPage() {
 
   const fetchContacts = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/v1/contacts", {
+      const res = await fetch("/api/api/v1/contacts", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -68,7 +68,7 @@ export default function ContactsPage() {
     setActionLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8000/api/v1/contacts", {
+      const res = await fetch("/api/api/v1/contacts", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -103,7 +103,7 @@ export default function ContactsPage() {
     if (!confirm("Are you sure you want to delete this contact?")) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/contacts/${id}`, {
+      const res = await fetch(`/api/api/v1/contacts/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -138,7 +138,7 @@ export default function ContactsPage() {
     setActionLoading(true);
     setError("");
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/contacts/${id}`, {
+      const res = await fetch(`/api/api/v1/contacts/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

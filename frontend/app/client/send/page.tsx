@@ -113,7 +113,7 @@ export default function SendMoneyPage() {
 
     // Fetch contacts
     if (token) {
-      fetch("http://localhost:8000/api/v1/contacts", {
+      fetch("/api/api/v1/contacts", {
         headers: { Authorization: `Bearer ${token}` },
       })
         .then((res) => res.json())
@@ -140,7 +140,7 @@ export default function SendMoneyPage() {
     setInstantHistoryLoading(true);
     try {
       const res = await fetch(
-        "http://localhost:8000/transactions?tx_type=transfer&days=30",
+        "/api/transactions?tx_type=transfer&days=30",
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -160,7 +160,7 @@ export default function SendMoneyPage() {
     setScheduledHistoryLoading(true);
     try {
       const res = await fetch(
-        "http://localhost:8000/api/v1/transfers/scheduled",
+        "/api/api/v1/transfers/scheduled",
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -187,7 +187,7 @@ export default function SendMoneyPage() {
     setCancelModalOpen(false);
     try {
       const res = await fetch(
-        `http://localhost:8000/api/v1/transfers/scheduled/${cancelPaymentId}/cancel`,
+        `/api/api/v1/transfers/scheduled/${cancelPaymentId}/cancel`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
@@ -217,7 +217,7 @@ export default function SendMoneyPage() {
 
   const fetchRequests = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/v1/requests", {
+      const res = await fetch("/api/api/v1/requests", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -242,7 +242,7 @@ export default function SendMoneyPage() {
         : selectedRepeatTx.sender_email;
 
       const cleanCommentary = DOMPurify.sanitize(repeatCommentary);
-      const res = await fetch("http://localhost:8000/p2p-transfer", {
+      const res = await fetch("/api/p2p-transfer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -288,7 +288,7 @@ export default function SendMoneyPage() {
 
     try {
       const cleanCommentary = DOMPurify.sanitize(commentary);
-      const res = await fetch("http://localhost:8000/p2p-transfer", {
+      const res = await fetch("/api/p2p-transfer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -399,7 +399,7 @@ export default function SendMoneyPage() {
       };
 
       const res = await fetch(
-        "http://localhost:8000/api/v1/transfers/scheduled",
+        "/api/api/v1/transfers/scheduled",
         {
           method: "POST",
           headers: {
@@ -450,7 +450,7 @@ export default function SendMoneyPage() {
 
     try {
       const cleanPurpose = DOMPurify.sanitize(requestPurpose);
-      const res = await fetch("http://localhost:8000/api/v1/requests/create", {
+      const res = await fetch("/api/api/v1/requests/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -487,13 +487,13 @@ export default function SendMoneyPage() {
     setLoading(true);
     setError("");
     setSuccess(false);
-    let endpoint = `http://localhost:8000/api/v1/requests/${requestId}/${action}`;
+    let endpoint = `/api/api/v1/requests/${requestId}/${action}`;
     let method = "POST";
     let body: any = {};
 
     if (action === "pay") {
       // Re-route 'pay' to the standard p2p-transfer endpoint, linking the request
-      endpoint = "http://localhost:8000/p2p-transfer";
+      endpoint = "/api/p2p-transfer";
       // Need the original target email from the request object:
       const reqObj = paymentRequests.find((r) => r.id === requestId);
       if (!reqObj) return;
