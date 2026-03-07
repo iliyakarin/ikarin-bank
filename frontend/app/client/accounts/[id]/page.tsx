@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 import { useBalance, useTransactions, AccountData } from "@/hooks/useDashboard";
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowDownRight, ArrowUpRight, Wallet, AlertCircle } from "lucide-react";
+import { ArrowLeft, ArrowDownRight, ArrowUpRight, Wallet, AlertCircle, Eye, EyeOff } from "lucide-react";
 import TransactionList from "@/components/TransactionList";
 
 export default function SubAccountDetailPage() {
@@ -26,6 +26,7 @@ export default function SubAccountDetailPage() {
     const [transferType, setTransferType] = useState<"add" | "withdraw">("add");
     const [transferError, setTransferError] = useState("");
     const [transferLoading, setTransferLoading] = useState(false);
+    const [isIdVisible, setIsIdVisible] = useState(false);
 
     useEffect(() => {
         if (accounts.length > 0) {
@@ -155,6 +156,18 @@ export default function SubAccountDetailPage() {
                         <h1 className="text-5xl md:text-6xl font-black text-white">
                             {formatCurrency(account.balance)}
                         </h1>
+                        <div className="flex items-center gap-2 mt-4 text-white/60 font-medium">
+                            <span className="text-sm font-mono tracking-wider">
+                                Acc ID: {isIdVisible ? account.id.toString().padStart(8, '0') : `****${account.id.toString().slice(-4).padStart(4, '0')}`}
+                            </span>
+                            <button
+                                onClick={() => setIsIdVisible(!isIdVisible)}
+                                className="p-1 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-all"
+                                title={isIdVisible ? "Hide Account ID" : "Show Account ID"}
+                            >
+                                {isIdVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                        </div>
                     </div>
                     <div className="flex flex-col gap-3">
                         <button

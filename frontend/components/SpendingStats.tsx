@@ -17,15 +17,17 @@ export default function SpendingStats({ transactions, period }: SpendingStatsPro
             .reduce((sum, t) => sum + t.amount, 0);
 
         const totalExpenses = transactions
-            .filter(t => (t.transaction_type === 'expense' || t.transaction_type === 'transfer') && t.category !== 'Internal Transfer')
+            .filter(t => (t.transaction_type === 'expense' || t.transaction_type === 'transfer') && t.category !== 'Internal Transfer' && t.amount < 0)
             .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
         const netFlow = totalIncome - totalExpenses;
 
         const spendingByCategory = transactions
-            .filter(t => t.transaction_type === 'expense' && t.category !== 'Internal Transfer')
+            .filter(t => (t.transaction_type === 'expense' || t.transaction_type === 'transfer') && t.category !== 'Internal Transfer' && t.amount < 0)
             .reduce((acc, t) => {
-                acc[t.category] = (acc[t.category] || 0) + t.amount;
+                const category = t.transaction_type === 'transfer' ? 'Transfers' : t.category;
+                const amount = Math.abs(t.amount);
+                acc[category] = (acc[category] || 0) + amount;
                 return acc;
             }, {} as Record<string, number>);
 
@@ -128,9 +130,11 @@ interface SpendingByCategoryProps {
 export function SpendingByCategory({ transactions, limit = 5 }: SpendingByCategoryProps) {
     const spendingData = useMemo(() => {
         const spendingByCategory = transactions
-            .filter(t => t.transaction_type === 'expense' && t.category !== 'Internal Transfer')
+            .filter(t => (t.transaction_type === 'expense' || t.transaction_type === 'transfer') && t.category !== 'Internal Transfer' && t.amount < 0)
             .reduce((acc, t) => {
-                acc[t.category] = (acc[t.category] || 0) + t.amount;
+                const category = t.transaction_type === 'transfer' ? 'Transfers' : t.category;
+                const amount = Math.abs(t.amount);
+                acc[category] = (acc[category] || 0) + amount;
                 return acc;
             }, {} as Record<string, number>);
 
@@ -201,9 +205,9 @@ interface QuickSummaryProps {
 export function QuickSummary({ balance, transactions, loading }: QuickSummaryProps) {
     const recentSpending = useMemo(() => {
         const recent = transactions
-            .filter(t => t.transaction_type === 'expense' && t.category !== 'Internal Transfer')
+            .filter(t => (t.transaction_type === 'expense' || t.transaction_type === 'transfer') && t.category !== 'Internal Transfer' && t.amount < 0)
             .slice(0, 5)
-            .reduce((sum, t) => sum + t.amount, 0);
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
         return recent;
     }, [transactions]);
 
