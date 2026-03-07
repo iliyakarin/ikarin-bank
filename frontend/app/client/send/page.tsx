@@ -15,6 +15,7 @@ import {
   HandCoins,
 } from "lucide-react";
 import DOMPurify from "isomorphic-dompurify";
+import DatePicker from "@/components/ui/DatePicker";
 
 export default function SendMoneyPage() {
   const { token, settings } = useAuth();
@@ -841,9 +842,12 @@ export default function SendMoneyPage() {
                 >
                   <span className="truncate">
                     {sourceAccountId === "" ? (
-                      `Default (Main Account) - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
+                      `Main Account (primary) ${accounts.find(a => a.is_main)?.masked_account_number || ''} - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
                     ) : (
-                      accounts.find(a => a.id === sourceAccountId)?.name + ` - $${accounts.find(a => a.id === sourceAccountId)?.balance.toFixed(2)}` || "Unknown Account"
+                      (() => {
+                        const acc = accounts.find(a => a.id === sourceAccountId);
+                        return `${acc?.name} ${acc?.masked_account_number || ''} - $${acc?.balance.toFixed(2) || '0.00'}`;
+                      })()
                     )}
                   </span>
                   <ChevronDown
@@ -869,7 +873,7 @@ export default function SendMoneyPage() {
                           }}
                           className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === "" ? 'bg-purple-500/20 text-purple-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                         >
-                          <span className="block truncate">Default (Main Account)</span>
+                          <span className="block truncate">Main Account (primary) {accounts.find(a => a.is_main)?.masked_account_number || ''}</span>
                           <span className="text-xs opacity-70">${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}</span>
                         </div>
                         {accounts.filter(acc => !acc.is_main).map(acc => (
@@ -881,7 +885,7 @@ export default function SendMoneyPage() {
                             }}
                             className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === acc.id ? 'bg-purple-500/20 text-purple-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                           >
-                            <span className="block truncate">{acc.name}</span>
+                            <span className="block truncate">{acc.name} {acc.masked_account_number || ''}</span>
                             <span className="text-xs opacity-70">${acc.balance.toFixed(2)}</span>
                           </div>
                         ))}
@@ -1084,8 +1088,8 @@ export default function SendMoneyPage() {
                           </td>
                           <td className="py-4 px-4">
                             <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider ${tx.status === 'cleared' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                                tx.status === 'pending' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                                  'bg-white/10 text-white/50'
+                              tx.status === 'pending' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                                'bg-white/10 text-white/50'
                               }`}>
                               {tx.status || 'cleared'}
                             </span>
@@ -1143,9 +1147,12 @@ export default function SendMoneyPage() {
                 >
                   <span className="truncate">
                     {sourceAccountId === "" ? (
-                      `Default (Main Account) - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
+                      `Main Account (primary) ${accounts.find(a => a.is_main)?.masked_account_number || ''} - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
                     ) : (
-                      accounts.find(a => a.id === sourceAccountId)?.name + ` - $${accounts.find(a => a.id === sourceAccountId)?.balance.toFixed(2)}` || "Unknown Account"
+                      (() => {
+                        const acc = accounts.find(a => a.id === sourceAccountId);
+                        return `${acc?.name} ${acc?.masked_account_number || ''} - $${acc?.balance.toFixed(2) || '0.00'}`;
+                      })()
                     )}
                   </span>
                   <ChevronDown
@@ -1171,7 +1178,7 @@ export default function SendMoneyPage() {
                           }}
                           className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === "" ? 'bg-indigo-500/20 text-indigo-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                         >
-                          <span className="block truncate">Default (Main Account)</span>
+                          <span className="block truncate">Main Account (primary) {accounts.find(a => a.is_main)?.masked_account_number || ''}</span>
                           <span className="text-xs opacity-70">${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}</span>
                         </div>
                         {accounts.filter(acc => !acc.is_main).map(acc => (
@@ -1183,7 +1190,7 @@ export default function SendMoneyPage() {
                             }}
                             className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === acc.id ? 'bg-indigo-500/20 text-indigo-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                           >
-                            <span className="block truncate">{acc.name}</span>
+                            <span className="block truncate">{acc.name} {acc.masked_account_number || ''}</span>
                             <span className="text-xs opacity-70">${acc.balance.toFixed(2)}</span>
                           </div>
                         ))}
@@ -1322,18 +1329,12 @@ export default function SendMoneyPage() {
                   <option>Specific Date of Month</option>
                 </select>
               </div>
-              <div className="space-y-3">
-                <label className="block text-white font-semibold">
-                  Start Date
-                </label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full bg-[#3b2d59] border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-400"
-                  required
-                />
-              </div>
+              <DatePicker
+                label="Start Date"
+                value={startDate}
+                onChange={(date) => setStartDate(date)}
+                required
+              />
             </div>
 
             {/* Conditional Intervals */}
@@ -1399,11 +1400,9 @@ export default function SendMoneyPage() {
                   )}
                 </div>
                 {endCondition === "End Date" && (
-                  <input
-                    type="date"
+                  <DatePicker
                     value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full bg-[#3b2d59] border border-white/20 rounded-xl px-4 py-3 text-white"
+                    onChange={(date) => setEndDate(date)}
                     required
                   />
                 )}
@@ -1503,6 +1502,15 @@ export default function SendMoneyPage() {
                           <td className="p-4">
                             <div className="text-white font-medium">
                               {pmt.recipient_email}
+                            </div>
+                            <div className="text-white/40 text-xs flex items-center gap-1">
+                              Sent from
+                              <span className="bg-white/10 px-1.5 py-0.5 rounded font-mono">
+                                *{(() => {
+                                  const acc = accounts.find(a => a.id === pmt.funding_account_id);
+                                  return acc?.masked_account_number || accounts.find(a => a.is_main)?.masked_account_number || '????';
+                                })()}
+                              </span>
                             </div>
                           </td>
                           <td className="p-4 text-white font-semibold">
