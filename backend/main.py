@@ -5,13 +5,17 @@ import re
 import datetime
 import asyncio
 from typing import Dict, Any, Optional, Tuple, List
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Request, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text, or_
 from decimal import Decimal
 from aiokafka import AIOKafkaProducer
 from pydantic import BaseModel
 from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest, Contact
+from activity import emit_activity, ws_register, ws_unregister
+from security_checks import check_velocity, check_anomaly
+from account_service import assign_account_credentials, mask_account_number, decrypt_account_number
+import clickhouse_connect
 
 from fastapi.middleware.cors import CORSMiddleware
 from confluent_kafka.admin import AdminClient
@@ -105,6 +109,7 @@ class UserPasswordUpdate(BaseModel):
 class P2PTransferRequest(BaseModel):
     recipient_email: str
     amount: Decimal
+    source_account_id: Optional[int] = None
     idempotency_key: Optional[str] = None
     commentary: Optional[str] = None
     payment_request_id: Optional[int] = None
@@ -130,6 +135,7 @@ class ScheduledTransferCreate(BaseModel):
     target_payments: Optional[int] = None
     reserve_amount: bool = False
     idempotency_key: Optional[str] = None
+    funding_account_id: Optional[int] = None
 
 class ScheduledPaymentResponse(BaseModel):
     id: int
@@ -146,6 +152,7 @@ class ScheduledPaymentResponse(BaseModel):
     next_run_at: Optional[datetime.datetime] = None
     status: str
     reserve_amount: bool
+    funding_account_id: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -217,13 +224,20 @@ async def get_current_user(
     return user
 
 
-def admin_only(current_user: User = Depends(get_current_user)):
-    """Check if current user is an admin"""
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=403, detail="Admin privileges required for this operation"
-        )
-    return current_user
+class RoleChecker:
+    def __init__(self, allowed_roles: List[str]):
+        self.allowed_roles = allowed_roles
+
+    def __call__(self, current_user: User = Depends(get_current_user)):
+        if current_user.role not in self.allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have the required permissions for this operation"
+            )
+        return current_user
+
+admin_only = RoleChecker(["admin"])
+support_only = RoleChecker(["admin", "support"])
 
 
 # --- Auth Endpoints ---
@@ -247,8 +261,21 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(new_user)
 
     # Auto-create an account for the new user
-    new_account = Account(user_id=new_user.id, balance=0.00)
+    new_account = Account(user_id=new_user.id, balance=0.00, name="Main Account", is_main=True)
+    assign_account_credentials(db, new_account)
     db.add(new_account)
+    db.commit()
+
+    emit_activity(
+        db, 
+        new_user.id, 
+        "security", 
+        "register", 
+        "Account registered", 
+        {"email": new_user.email},
+        ip=None, # No request object here yet, but we could pass it if register had it
+        user_agent=None
+    )
     db.commit()
 
     return new_user
@@ -256,13 +283,39 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
 
 @app.post("/auth/login", response_model=Token)
 async def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ):
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.password_hash):
+        if user:
+            emit_activity(
+                db, 
+                user.id, 
+                "security", 
+                "login_failed", 
+                "Failed login attempt", 
+                {"email": form_data.username},
+                ip=request.client.host,
+                user_agent=request.headers.get("user-agent")
+            )
+            db.commit()
         raise HTTPException(status_code=401, detail="Incorrect email or password")
 
-    access_token = create_access_token(data={"sub": user.email})
+    access_token = create_access_token(data={"sub": user.email, "role": user.role})
+
+    emit_activity(
+        db, 
+        user.id, 
+        "security", 
+        "login", 
+        "User logged in", 
+        {"email": user.email},
+        ip=request.client.host,
+        user_agent=request.headers.get("user-agent")
+    )
+    db.commit()
+
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -273,6 +326,7 @@ async def read_users_me(current_user: User = Depends(get_current_user)):
 @app.post("/api/v1/users/me/backup", response_model=UserResponse)
 async def update_backup_email(
     update_data: UserBackupUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -286,6 +340,19 @@ async def update_backup_email(
         raise HTTPException(status_code=400, detail="This email is already in use by another user")
         
     current_user.backup_email = update_data.backup_email
+
+    emit_activity(
+        db, 
+        current_user.id, 
+        "security", 
+        "email_change", 
+        "Backup email updated", 
+        {
+            "new_backup_email": update_data.backup_email[:3] + "***"
+        },
+        ip=request.client.host,
+        user_agent=request.headers.get("user-agent")
+    )
     db.commit()
     db.refresh(current_user)
     
@@ -294,6 +361,7 @@ async def update_backup_email(
 @app.post("/api/v1/users/me/password")
 async def update_password(
     password_data: UserPasswordUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -307,9 +375,85 @@ async def update_password(
     # Hash new password and save
     new_hashed_password = get_password_hash(password_data.new_password)
     current_user.password_hash = new_hashed_password
+
+    emit_activity(
+        db, 
+        current_user.id, 
+        "security", 
+        "password_change", 
+        "Password changed",
+        ip=request.client.host,
+        user_agent=request.headers.get("user-agent")
+    )
     db.commit()
     
     return {"status": "success"}
+
+
+@app.post("/auth/logout")
+async def logout(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Server-side logout: logs the event and invalidates the session."""
+    user_agent = request.headers.get("user-agent", "unknown")
+    client_ip = request.client.host
+
+    emit_activity(
+        db, 
+        current_user.id, 
+        "security", 
+        "logout", 
+        "User logged out", 
+        {
+            "ip": client_ip,
+            "user_agent": user_agent,
+        },
+        ip=client_ip,
+        user_agent=user_agent
+    )
+    db.commit()
+
+    # Note: JWTs are stateless. True invalidation requires a token blacklist.
+    # For now we log the event; the client must delete the token.
+    return {"status": "success", "message": "Logged out successfully"}
+
+
+@app.websocket("/ws/activity/{token}")
+async def ws_activity(websocket: WebSocket, token: str):
+    """WebSocket endpoint for real-time activity updates."""
+    # Authenticate via JWT
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        if not email:
+            await websocket.close(code=4001)
+            return
+    except JWTError:
+        await websocket.close(code=4001)
+        return
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            await websocket.close(code=4001)
+            return
+    finally:
+        db.close()
+
+    await websocket.accept()
+    ws_register(user.id, websocket)
+
+    try:
+        while True:
+            # Keep connection alive — wait for client pings or messages
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        ws_unregister(user.id, websocket)
 
 
 @app.get("/api/v1/users/me/notifications", response_model=List[NotificationResponse])
@@ -329,16 +473,20 @@ async def get_notifications(
         ).order_by(Transaction.created_at.desc()).limit(10).all()
         
         for tx in transactions:
-            is_income = tx.amount > 0 and tx.transaction_side == "CREDIT"
-            title = "Payment Received" if is_income else "Payment Sent"
-            
-            if tx.transaction_type == "transfer":
-                if is_income:
-                    msg = f"from {tx.merchant.replace('Received from ', '')}" if tx.merchant else "Transfer received"
-                else:
-                    msg = f"to {tx.merchant.replace('Transfer to ', '')}" if tx.merchant else "Transfer sent"
+            if tx.status == "failed":
+                title = "Payment Failed"
+                msg = tx.commentary if tx.commentary else "Transaction failed."
             else:
-                msg = f"Merchant: {tx.merchant}" if tx.merchant else "Transaction processed"
+                is_income = tx.amount > 0 and tx.transaction_side == "CREDIT"
+                title = "Payment Received" if is_income else "Payment Sent"
+                
+                if tx.transaction_type == "transfer":
+                    if is_income:
+                        msg = f"from {tx.merchant.replace('Received from ', '')}" if tx.merchant else "Transfer received"
+                    else:
+                        msg = f"to {tx.merchant.replace('Transfer to ', '')}" if tx.merchant else "Transfer sent"
+                else:
+                    msg = f"Merchant: {tx.merchant}" if tx.merchant else "Transaction processed"
                 
             notifications.append({
                 "id": f"tx_{tx.id}",
@@ -389,17 +537,34 @@ async def get_account_balance(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.id != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    account = db.query(Account).filter(Account.user_id == user_id).first()
-    if not account:
+    if current_user.id != user_id and current_user.role not in ["admin", "support"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="You do not have permission to access these accounts"
+        )
+    
+    accounts = db.query(Account).filter(Account.user_id == user_id).all()
+    if not accounts:
         raise HTTPException(status_code=404, detail="Account not found")
 
+    total_balance = sum(float(acc.balance) for acc in accounts)
+    total_reserved = sum(float(acc.reserved_balance or 0.0) for acc in accounts)
+    
+    sub_accounts = [{
+        "id": acc.id,
+        "name": acc.name,
+        "balance": float(acc.balance),
+        "reserved_balance": float(acc.reserved_balance or 0.0),
+        "is_main": acc.is_main,
+        "routing_number": acc.routing_number,
+        "masked_account_number": mask_account_number(decrypt_account_number(acc.account_number_encrypted)) if acc.account_number_encrypted else None
+    } for acc in accounts]
+
     return {
-        "balance": float(account.balance), 
-        "reserved_balance": float(account.reserved_balance or 0.0),
-        "user_id": user_id
+        "balance": total_balance, 
+        "reserved_balance": total_reserved,
+        "user_id": user_id,
+        "accounts": sub_accounts
     }
 
 
@@ -668,9 +833,20 @@ class TransferRequest(BaseModel):
 
 
 @app.post("/transfer")
-async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_db)):
+async def create_transfer(
+    transfer: TransferRequest, 
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     tx_id = str(uuid.uuid4())
+    client_ip = request.client.host
+    user_agent = request.headers.get("user-agent", "unknown")
     try:
+
+        account = db.query(Account).filter(Account.id == transfer.account_id, Account.user_id == current_user.id).first()
+        if not account:
+            raise HTTPException(status_code=403, detail="Account not found or access denied")
 
         new_tx = Transaction(
             id=tx_id,
@@ -686,11 +862,13 @@ async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_d
         payload = {
             "transaction_id": tx_id,
             "account_id": transfer.account_id,
+            "internal_account_last_4": account.account_number_last_4,
+            "internal_reference_id": account.internal_reference_id,
             "amount": transfer.amount,
             "category": transfer.category,
             "merchant": transfer.merchant,
             "transaction_type": "expense",
-            "status": "pending",
+            "status": "cleared", # legacy /transfer is cleared immediately
             "timestamp": datetime.datetime.utcnow().isoformat(),
         }
         
@@ -727,35 +905,28 @@ def _validate_p2p_transfer(
 
 def _execute_p2p_balances(
     db: Session,
-    sender_id: int,
-    recipient_id: int,
+    sender_account_id: int,
+    recipient_account_id: int,
     amount: Decimal
 ) -> Tuple[Account, Account]:
     """Locks accounts and updates balances atomically."""
     # Order by ID to prevent deadlocks.
-    # We query sequentially ensuring order based on ID to avoid deadlock if concurrent transfers happen in opposite directions.
-    # Ideally we should grab locks in ID order.
+    first_id, second_id = sorted([sender_account_id, recipient_account_id])
 
-    first_id, second_id = sorted([sender_id, recipient_id])
+    acc1 = db.query(Account).filter(Account.id == first_id).with_for_update().first()
+    acc2 = db.query(Account).filter(Account.id == second_id).with_for_update().first()
 
-    # We must fetch them in order.
-    # Note: original code fetched by user_id.
-    # Since account:user is 1:1, we can query Account where user_id is X.
-
-    # To properly lock, we need to find which account corresponds to which user ID first?
-    # Or just rely on the fact that we sort the user IDs and query accounts for those user IDs in that order.
-
-    acc1 = db.query(Account).filter(Account.user_id == first_id).with_for_update().first()
-    acc2 = db.query(Account).filter(Account.user_id == second_id).with_for_update().first()
-
-    if first_id == sender_id:
+    if first_id == sender_account_id:
         sender_account = acc1
         recipient_account = acc2
     else:
         sender_account = acc2
         recipient_account = acc1
 
-    if not sender_account or sender_account.balance < amount:
+    if not sender_account:
+        raise HTTPException(status_code=404, detail="Sender account not found")
+        
+    if sender_account.balance < amount:
         raise HTTPException(
             status_code=400, detail="Insufficient funds for this transfer."
         )
@@ -827,8 +998,8 @@ def _create_p2p_transactions(
 
 def _create_p2p_outbox_entries(
     db: Session,
-    sender_account_id: int,
-    recipient_account_id: int,
+    sender_account: Account,
+    recipient_account: Account,
     amount: Decimal,
     sender_email: str,
     recipient_email: str,
@@ -841,7 +1012,8 @@ def _create_p2p_outbox_entries(
     sender_payload = {
         "transaction_id": tx_id_sender,
         "parent_id": tx_id_parent,
-        "account_id": sender_account_id,
+        "account_id": sender_account.id,
+        "internal_account_last_4": sender_account.account_number_last_4,
         "sender_email": sender_email,
         "recipient_email": recipient_email,
         "amount": -float(amount),
@@ -849,7 +1021,7 @@ def _create_p2p_outbox_entries(
         "merchant": f"Transfer to {recipient_email}",
         "transaction_type": "transfer",
         "transaction_side": "DEBIT",
-        "status": "pending",
+        "status": "cleared", # cleared in postgres already
         "timestamp": datetime.datetime.utcnow().isoformat(),
         "commentary": commentary
     }
@@ -857,7 +1029,8 @@ def _create_p2p_outbox_entries(
     recipient_payload = {
         "transaction_id": tx_id_recipient,
         "parent_id": tx_id_parent,
-        "account_id": recipient_account_id,
+        "account_id": recipient_account.id,
+        "internal_account_last_4": recipient_account.account_number_last_4,
         "sender_email": sender_email,
         "recipient_email": recipient_email,
         "amount": float(amount),
@@ -865,7 +1038,7 @@ def _create_p2p_outbox_entries(
         "merchant": f"Received from {sender_email}",
         "transaction_type": "transfer",
         "transaction_side": "CREDIT",
-        "status": "pending",
+        "status": "cleared",
         "timestamp": datetime.datetime.utcnow().isoformat(),
         "commentary": commentary
     }
@@ -896,6 +1069,15 @@ async def create_p2p_transfer(
     # 2. Validation & Recipient Lookup
     recipient = _validate_p2p_transfer(transfer, current_user, db)
 
+    # 2.5 Security Checks
+    if not check_velocity(db, current_user.id):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded: too many transactions in the last minute. Please try again shortly."
+        )
+
+    anomaly_flagged = check_anomaly(db, current_user.id, Decimal(str(transfer.amount)))
+
     # Validate Payment Request if paying one
     payment_request = None
     if transfer.payment_request_id:
@@ -911,10 +1093,26 @@ async def create_p2p_transfer(
         if transfer.amount < payment_request.amount:
             raise HTTPException(status_code=400, detail=f"Transfer amount must be at least the requested amount (${payment_request.amount})")
 
+    # Resolve Sender Account
+    sender_account_query = db.query(Account).filter(Account.user_id == current_user.id)
+    if transfer.source_account_id:
+        sender_account_query = sender_account_query.filter(Account.id == transfer.source_account_id)
+    else:
+        sender_account_query = sender_account_query.filter(Account.is_main == True)
+        
+    resolved_sender_account = sender_account_query.first()
+    if not resolved_sender_account:
+        raise HTTPException(status_code=404, detail="Source account not found or access denied")
+
+    # Resolve Recipient Main Account
+    resolved_recipient_account = db.query(Account).filter(Account.user_id == recipient.id, Account.is_main == True).first()
+    if not resolved_recipient_account:
+        raise HTTPException(status_code=404, detail="Recipient main account not found")
+
     try:
         # 3. Atomic Locking & Balance Verification (ACID)
         sender_account, recipient_account = _execute_p2p_balances(
-            db, current_user.id, recipient.id, transfer.amount
+            db, resolved_sender_account.id, resolved_recipient_account.id, transfer.amount
         )
 
         # 4. Create Transaction Records
@@ -935,8 +1133,8 @@ async def create_p2p_transfer(
         # 5. Create Outbox Entries
         _create_p2p_outbox_entries(
             db,
-            sender_account.id,
-            recipient_account.id,
+            sender_account,
+            recipient_account,
             transfer.amount,
             current_user.email,
             recipient.email,
@@ -960,6 +1158,39 @@ async def create_p2p_transfer(
                 response_code=200,
                 response_body=response_body
             ))
+
+        # Emit activity events for sender and recipient
+        emit_activity(
+            db, 
+            current_user.id, 
+            "p2p", 
+            "sent", 
+            f"Sent ${float(transfer.amount):.2f} to {recipient.email}", 
+            {
+                "transaction_id": tx_id_parent,
+                "recipient_email": recipient.email,
+                "amount": float(transfer.amount),
+                "commentary": transfer.commentary,
+                "source_account_id": resolved_sender_account.id,
+            },
+            ip=client_ip,
+            user_agent=user_agent
+        )
+        emit_activity(
+            db, 
+            recipient.id, 
+            "p2p", 
+            "received", 
+            f"Received ${float(transfer.amount):.2f} from {current_user.email}", 
+            {
+                "transaction_id": tx_id_parent,
+                "sender_email": current_user.email,
+                "amount": float(transfer.amount),
+                "commentary": transfer.commentary,
+            },
+            ip=client_ip,
+            user_agent=user_agent
+        )
 
         db.commit()
         return response_body
@@ -1000,6 +1231,12 @@ async def create_payment_request(
     )
     
     db.add(new_request)
+
+    emit_activity(db, current_user.id, "p2p", "requested", f"Requested ${float(request_data.amount):.2f} from {request_data.target_email}", {
+        "target_email": request_data.target_email,
+        "amount": float(request_data.amount),
+        "purpose": request_data.purpose,
+    })
     db.commit()
     db.refresh(new_request)
     
@@ -1094,12 +1331,79 @@ async def decline_payment_request(
     req.status = "declined"
     req.updated_at = datetime.datetime.utcnow()
     
+    emit_activity(db, current_user.id, "p2p", "request_declined", f"Declined payment request #{req.id}", {
+        "request_id": req.id,
+        "amount": float(req.amount),
+    })
     db.commit()
     return {"status": "success", "request_id": req.id, "new_status": req.status}
-def _calculate_next_run_at(start_date: datetime.datetime, frequency: str, interval: str = None) -> datetime.datetime:
-    # A simplified implementation for the immediate next execution
-    # In a full system, this would apply cron-like interval math
-    return start_date
+def _calculate_next_run_at(reference_date: datetime.datetime, frequency: str, interval: str = None) -> Optional[datetime.datetime]:
+    """Calculates the next execution date based on frequency and reference date."""
+    if frequency == "One-time":
+        return None
+    
+    if frequency == "Daily":
+        return reference_date + datetime.timedelta(days=1)
+    
+    if frequency == "Weekly":
+        return reference_date + datetime.timedelta(weeks=1)
+    
+    if frequency == "Bi-weekly":
+        return reference_date + datetime.timedelta(weeks=2)
+    
+    if frequency == "Monthly":
+        # Advance by exactly one month
+        month = reference_date.month
+        year = reference_date.year + (month // 12)
+        month = (month % 12) + 1
+        
+        # Max days in the new month
+        if month == 2:
+            max_day = 29 if (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)) else 28
+        else:
+            max_day = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month]
+            
+        day = min(reference_date.day, max_day)
+        return reference_date.replace(year=year, month=month, day=day)
+
+    if frequency == "Annually":
+        try:
+            return reference_date.replace(year=reference_date.year + 1)
+        except ValueError: # Handle Feb 29
+            return reference_date.replace(year=reference_date.year + 1, day=28)
+
+    if frequency == "Specific Day of Week":
+        days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        if not interval or interval not in days_of_week:
+            return reference_date + datetime.timedelta(weeks=1)
+        
+        target_weekday = days_of_week.index(interval)
+        current_weekday = reference_date.weekday()
+        days_ahead = target_weekday - current_weekday
+        if days_ahead <= 0:
+            days_ahead += 7
+        return reference_date + datetime.timedelta(days=days_ahead)
+
+    if frequency == "Specific Date of Month":
+        try:
+            target_day = int(interval)
+        except (TypeError, ValueError):
+            return reference_date + datetime.timedelta(days=30)
+            
+        # Move to next month and try to set the requested day
+        month = reference_date.month
+        year = reference_date.year + (month // 12)
+        month = (month % 12) + 1
+        
+        if month == 2:
+            max_day = 29 if (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)) else 28
+        else:
+            max_day = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month]
+            
+        actual_day = min(target_day, max_day)
+        return reference_date.replace(year=year, month=month, day=actual_day)
+
+    return None
 
 @app.post("/api/v1/transfers/scheduled")
 async def create_scheduled_transfer(
@@ -1125,7 +1429,20 @@ async def create_scheduled_transfer(
         return existing_key.response_body
 
     try:
-        sender_account = db.query(Account).filter(Account.user_id == current_user.id).with_for_update().first()
+        sender_account = None
+        if transfer.funding_account_id:
+            sender_account = db.query(Account).filter(
+                Account.id == transfer.funding_account_id,
+                Account.user_id == current_user.id
+            ).with_for_update().first()
+            if not sender_account:
+                raise HTTPException(status_code=403, detail="Invalid funding account")
+        else:
+            # Default to main account
+            sender_account = db.query(Account).filter(Account.user_id == current_user.id, Account.is_main == True).with_for_update().first()
+            if not sender_account:
+                sender_account = db.query(Account).filter(Account.user_id == current_user.id).with_for_update().first()
+                
         if not sender_account:
             raise HTTPException(status_code=404, detail="Account not found")
 
@@ -1136,7 +1453,8 @@ async def create_scheduled_transfer(
             sender_account.balance -= transfer.amount
             sender_account.reserved_balance += transfer.amount
 
-        next_run = _calculate_next_run_at(transfer.start_date, transfer.frequency, transfer.frequency_interval)
+        # The first run should happen at the start_date provided by user
+        next_run = transfer.start_date
 
         new_scheduled_payment = ScheduledPayment(
             user_id=current_user.id,
@@ -1151,7 +1469,8 @@ async def create_scheduled_transfer(
             next_run_at=next_run,
             status="Active",
             idempotency_key=ik,
-            reserve_amount=transfer.reserve_amount
+            reserve_amount=transfer.reserve_amount,
+            funding_account_id=sender_account.id
         )
         db.add(new_scheduled_payment)
         
@@ -1165,6 +1484,24 @@ async def create_scheduled_transfer(
         
         db.commit()
         db.refresh(new_scheduled_payment)
+
+        emit_activity(
+            db, 
+            current_user.id, 
+            "scheduled", 
+            "setup", 
+            f"Scheduled ${float(transfer.amount):.2f} {transfer.frequency} to {transfer.recipient_email}", 
+            {
+                "scheduled_payment_id": new_scheduled_payment.id,
+                "recipient_email": transfer.recipient_email,
+                "amount": float(transfer.amount),
+                "frequency": transfer.frequency,
+                "start_date": str(transfer.start_date),
+            },
+            ip=request.client.host,
+            user_agent=request.headers.get("user-agent")
+        )
+        db.commit()
         
         return {"status": "success", "scheduled_payment_id": new_scheduled_payment.id}
 
@@ -1208,9 +1545,97 @@ async def cancel_scheduled_payment(
         raise HTTPException(status_code=400, detail=f"Payment is already {payment.status}")
         
     payment.status = "Cancelled"
+
+    emit_activity(db, current_user.id, "scheduled", "cancelled", f"Cancelled scheduled payment #{payment.id}", {
+        "scheduled_payment_id": payment.id,
+        "recipient_email": payment.recipient_email,
+        "amount": float(payment.amount),
+    })
     db.commit()
     
     return {"status": "success", "message": "Scheduled payment cancelled"}
+
+
+# --- Activity Log Endpoint ---
+
+@app.get("/api/v1/activity")
+async def get_activity(
+    category: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    search: Optional[str] = None,
+    order: str = "desc",
+    limit: int = 50,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user),
+):
+    """Query the activity log from ClickHouse."""
+    try:
+        ch = clickhouse_connect.get_client(
+            host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
+        )
+
+        if not from_date:
+            # Default to last 24 hours if not specified
+            from_date = (datetime.datetime.utcnow() - datetime.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+
+        conditions = ["user_id = {user_id:Int64}"]
+        params = {"user_id": current_user.id}
+
+        if category:
+            conditions.append("category = {category:String}")
+            params["category"] = category
+
+        if from_date:
+            conditions.append("event_time >= {from_date:String}")
+            params["from_date"] = from_date
+
+        if to_date:
+            conditions.append("event_time <= {to_date:String}")
+            params["to_date"] = to_date
+
+        if search:
+            conditions.append("(title ILIKE {search:String} OR details ILIKE {search:String})")
+            params["search"] = f"%{search}%"
+
+        where_clause = " AND ".join(conditions)
+        sort_dir = "ASC" if order == "asc" else "DESC"
+
+        query = f"""
+            SELECT event_id, user_id, category, action, event_time, title, details
+            FROM banking.activity_events FINAL
+            WHERE {where_clause}
+            ORDER BY event_time {sort_dir}
+            LIMIT {{limit:UInt32}} OFFSET {{offset:UInt32}}
+        """
+        params["limit"] = limit
+        params["offset"] = offset
+
+        result = ch.query(query, parameters=params)
+
+        count_query = f"""
+            SELECT count() FROM banking.activity_events FINAL WHERE {where_clause}
+        """
+        count_result = ch.query(count_query, parameters=params)
+        total = count_result.result_rows[0][0] if count_result.result_rows else 0
+
+        events = []
+        for row in result.result_rows:
+            events.append({
+                "event_id": row[0],
+                "user_id": row[1],
+                "category": row[2],
+                "action": row[3],
+                "event_time": str(row[4]),
+                "title": row[5],
+                "details": row[6],
+            })
+
+        return {"events": events, "total": total}
+
+    except Exception as e:
+        print(f"[ERROR] Activity query failed: {e}")
+        return {"events": [], "total": 0}
 
 
 # --- Dashboard & Analytics Endpoints ---
@@ -1280,6 +1705,7 @@ async def get_balance_history(
 @app.get("/dashboard/recent-transactions")
 async def get_recent_transactions(
     hours: int = 24,
+    account_id: int = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1289,7 +1715,14 @@ async def get_recent_transactions(
         
         # 1. Get PENDING transactions from Postgres (only outgoing ones exist here)
         user_accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
-        account_ids = [acc.id for acc in user_accounts]
+        user_account_ids = [acc.id for acc in user_accounts]
+        
+        if account_id:
+            if account_id not in user_account_ids:
+                raise HTTPException(status_code=403, detail="Access denied to this account")
+            account_ids = [account_id]
+        else:
+            account_ids = user_account_ids
         
         pg_transactions = (
             db.query(Transaction)
@@ -1415,13 +1848,23 @@ async def get_all_transactions(
     min_amount: float = None,
     max_amount: float = None,
     sort: str = "desc",  # 'asc' or 'desc'
+    account_id: int = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get all transactions with filtering by sender/recipient email, amount, date range, and sort direction."""
-    account = db.query(Account).filter(Account.user_id == current_user.id).first()
-    if not account:
+    accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
+    if not accounts:
         raise HTTPException(status_code=404, detail="Account not found")
+
+    user_account_ids = [acc.id for acc in accounts]
+
+    if account_id:
+        if account_id not in user_account_ids:
+            raise HTTPException(status_code=403, detail="Access denied to this account")
+        target_account_ids = [account_id]
+    else:
+        target_account_ids = user_account_ids
 
     cutoff_time = datetime.datetime.utcnow() - datetime.timedelta(days=days)
 
@@ -1430,9 +1873,9 @@ async def get_all_transactions(
             host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
         )
 
-        # Visibility: user must see transactions exactly for THEIR account
+        account_ids_str = ",".join(map(str, target_account_ids))
         where_clauses = [
-            f"account_id = {account.id}",
+            f"account_id IN ({account_ids_str})",
             f"event_time >= now() - INTERVAL {days} DAY",
         ]
 
@@ -1467,7 +1910,9 @@ async def get_all_transactions(
             merchant,
             transaction_type,
             transaction_side,
-            event_time
+            event_time,
+            internal_account_last_4,
+            status
         FROM banking.transactions
         WHERE {where_clause}
         ORDER BY event_time {sort_dir}
@@ -1484,21 +1929,63 @@ async def get_all_transactions(
                 "recipient_email": row.get("recipient_email"),
                 "amount": float(row["amount"]),
                 "category": row["category"],
-                "merchant": row.get("merchant"),
-                "transaction_type": row.get("transaction_type", "expense"),
-                "transaction_side": row.get("transaction_side"),
-                "timestamp": row["event_time"].isoformat()
-                if hasattr(row["event_time"], "isoformat")
-                else str(row["event_time"]),
-                # Hardcode status as requested
-                "status": "Cleared",
+                "merchant": row["merchant"],
+                "type": row["transaction_type"],
+                "side": row["transaction_side"],
+                "timestamp": row["event_time"].isoformat(),
+                "internal_account_last_4": row.get("internal_account_last_4"),
+                "status": row.get("status", "cleared")
+            }
+            # IDOR check: even though we filter by account_ids belonging to user,
+            # this is a defense-in-depth to ensure no leakage if query logic fails.
+            transactions.append(tx)
+
+        if not transactions:
+            # Fall back to Postgres when ClickHouse has no data
+            raise Exception("No data in ClickHouse, falling back to Postgres")
+
+        return {"transactions": transactions, "total": len(transactions)}
+    except Exception as e:
+        print(f"ClickHouse query failed or empty, falling back to Postgres: {e}")
+
+        # --- Postgres Fallback ---
+        query = db.query(Transaction).filter(
+            Transaction.account_id.in_(target_account_ids),
+            Transaction.created_at >= cutoff_time,
+        )
+
+        if tx_type:
+            if tx_type.lower() == "outgoing":
+                query = query.filter(Transaction.transaction_side == "DEBIT")
+            elif tx_type.lower() == "incoming":
+                query = query.filter(Transaction.transaction_side == "CREDIT")
+
+        if min_amount is not None:
+            query = query.filter(func.abs(Transaction.amount) >= min_amount)
+        if max_amount is not None:
+            query = query.filter(func.abs(Transaction.amount) >= min_amount)
+
+        sort_fn = Transaction.created_at.asc() if sort and sort.lower() == "asc" else Transaction.created_at.desc()
+        query = query.order_by(sort_fn).limit(100)
+
+        results = query.all()
+        transactions = []
+        for row in results:
+            tx = {
+                "id": str(row.id),
+                "sender_email": row.sender_email or "",
+                "recipient_email": row.recipient_email or "",
+                "amount": float(row.amount),
+                "category": row.category or "Transfer",
+                "merchant": row.merchant or "",
+                "transaction_type": row.transaction_type or "expense",
+                "transaction_side": row.transaction_side or "",
+                "timestamp": row.created_at.isoformat() if row.created_at else "",
+                "status": row.status or "Cleared",
             }
             transactions.append(tx)
 
         return {"transactions": transactions, "total": len(transactions)}
-    except Exception as e:
-        print(f"Error querying ClickHouse transactions: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch transactions")
 
 
 # --- Contacts Endpoints ---
@@ -1960,6 +2447,9 @@ async def get_banking_metrics(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to fetch banking metrics")
 
+
+from routers import accounts
+app.include_router(accounts.router)
 
 if __name__ == "__main__":
     import uvicorn

@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
+import { useAuth } from '@/lib/AuthContext';
 
 interface BalanceHistoryChartProps {
     history: { date: string; balance: number; daily_change: number }[];
@@ -10,6 +11,7 @@ interface BalanceHistoryChartProps {
 }
 
 export default function BalanceHistoryChart({ history, loading, error }: BalanceHistoryChartProps) {
+    const { settings } = useAuth();
     const chartData = useMemo(() => {
         if (!history || history.length === 0) return [];
 
@@ -34,7 +36,7 @@ export default function BalanceHistoryChart({ history, loading, error }: Balance
 
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return date.toLocaleDateString(settings.useEUDates ? 'en-GB' : 'en-US', { month: 'short', day: 'numeric' });
     };
 
     if (error) {
@@ -76,9 +78,8 @@ export default function BalanceHistoryChart({ history, loading, error }: Balance
                 <div>
                     <h3 className="text-xl font-bold text-white mb-2">Balance Trend</h3>
                     <div className="flex items-center gap-2">
-                        <span className={`flex items-center gap-1 text-sm font-bold ${
-                            isGrowth ? 'text-emerald-400' : 'text-rose-400'
-                        }`}>
+                        <span className={`flex items-center gap-1 text-sm font-bold ${isGrowth ? 'text-emerald-400' : 'text-rose-400'
+                            }`}>
                             {isGrowth ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
                             {Math.abs(growthPercent).toFixed(1)}%
                         </span>
