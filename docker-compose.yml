@@ -62,15 +62,15 @@ services:
 
   api:
     build: ./backend
-    container_name: bank-api
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    # Removed container_name to allow scaling multiple instances
+    command: gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
     env_file: .env
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - PYTHONUNBUFFERED=1
-    ports:
-
-      - "8000:8000"
+    # Removed ports binding to avoid conflicts when scaling
+    # ports:
+    #   - "8000:8000"
     volumes:
       - ./backend:/app
     depends_on:
@@ -80,6 +80,16 @@ services:
         condition: service_started
       clickhouse:
         condition: service_healthy
+
+  proxy:
+    image: nginx:alpine
+    container_name: bank-proxy
+    ports:
+      - "8000:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
 
   consumer:
     build: ./backend
@@ -162,3 +172,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: bank-cloudflared
+    restart: unless-stopped
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate run
+    depends_on:
+      - proxy

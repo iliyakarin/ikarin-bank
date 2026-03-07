@@ -64,6 +64,7 @@ Thumbs.db
 htmlcov/
 .nyc_output/
 .tox/
+performance_tests/
 
 # AI & Internal Tooling
 .Jules/
@@ -78,3 +79,12 @@ init-db/*.xml
 *.MD
 !README.md
 !README.MD
+
+# Infrastructure & Cache
+backend/gunicorn.ctl
+backend/.pytest_cache/
+frontend/.next/
+docker-compose.prod.yml
+.env.prod
+init-db/*.prod.conf
+init-db/*.prod.xml

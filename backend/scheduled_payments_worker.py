@@ -5,64 +5,70 @@ import time
 from datetime import datetime, timedelta
 import uuid
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from database import SessionLocal, ScheduledPayment, Account, User, Transaction, Outbox
-from main import _execute_p2p_balances, _create_p2p_transactions, _create_p2p_outbox_entries, _calculate_next_run_at
+from main import _create_p2p_transactions, _create_p2p_outbox_entries, _calculate_next_run_at
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def process_scheduled_payments():
-    db: Session = SessionLocal()
-    try:
-        now = datetime.utcnow()
-        # Find due payments: (Active or Retrying) and next_run_at <= now
-        due_payments = db.query(ScheduledPayment).filter(
-            ScheduledPayment.status.in_(["Active", "Retrying"]),
-            ScheduledPayment.next_run_at <= now
-        ).all()
+async def process_scheduled_payments():
+    async with SessionLocal() as db:
+        try:
+            now = datetime.utcnow()
+            # Find due payments: (Active or Retrying) and next_run_at <= now
+            result = await db.execute(select(ScheduledPayment).filter(
+                ScheduledPayment.status.in_(["Active", "Retrying"]),
+                ScheduledPayment.next_run_at <= now
+            ))
+            due_payments = result.scalars().all()
 
-        if not due_payments:
-            return
+            if not due_payments:
+                return
 
-        logger.info(f"Process {len(due_payments)} due auto payments...")
+            logger.info(f"Process {len(due_payments)} due auto payments...")
 
-        for payment in due_payments:
-            try:
-                process_single_payment(db, payment, now)
-                db.commit()
-            except Exception as e:
-                db.rollback()
-                logger.error(f"Error processing payment {payment.id}: {e}")
+            for payment in due_payments:
+                try:
+                    await process_single_payment(db, payment, now)
+                    await db.commit()
+                except Exception as e:
+                    # rollback implicit
+                    logger.error(f"Error processing payment {payment.id}: {e}")
+        except Exception as e:
+            logger.error(f"Error checking scheduled payments: {e}")
 
-    finally:
-        db.close()
-
-def process_single_payment(db: Session, payment: ScheduledPayment, now: datetime):
+async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, now: datetime):
     # Retrieve the sender
-    sender_user = db.query(User).filter(User.id == payment.user_id).first()
+    result = await db.execute(select(User).filter(User.id == payment.user_id))
+    sender_user = result.scalars().first()
     if not sender_user:
         fail_payment(db, payment, "Sender not found", permanently=True)
         return
 
     # Determine Funding Account
     if payment.funding_account_id:
-        funding_account = db.query(Account).filter(Account.id == payment.funding_account_id).first()
+        result = await db.execute(select(Account).filter(Account.id == payment.funding_account_id))
+        funding_account = result.scalars().first()
     else:
-        funding_account = db.query(Account).filter(Account.user_id == payment.user_id, Account.is_main == True).first()
+        result = await db.execute(select(Account).filter(Account.user_id == payment.user_id, Account.is_main == True))
+        funding_account = result.scalars().first()
 
     if not funding_account:
         fail_payment(db, payment, "Funding account not found", permanently=True)
         return
 
     # Determine Recipient
-    recipient = db.query(User).filter(User.email == payment.recipient_email).first()
+    result = await db.execute(select(User).filter(User.email == payment.recipient_email))
+    recipient = result.scalars().first()
     if not recipient:
         fail_payment(db, payment, "Recipient not found", permanently=True)
         return
 
-    recipient_account = db.query(Account).filter(Account.user_id == recipient.id, Account.is_main == True).first()
+    result = await db.execute(select(Account).filter(Account.user_id == recipient.id, Account.is_main == True))
+    recipient_account = result.scalars().first()
     if not recipient_account:
         fail_payment(db, payment, "Recipient main account not found", permanently=True)
         return
@@ -71,8 +77,10 @@ def process_single_payment(db: Session, payment: ScheduledPayment, now: datetime
     try:
         # Sort IDs for deterministic locking
         first_id, second_id = sorted([funding_account.id, recipient_account.id])
-        acc1 = db.query(Account).filter(Account.id == first_id).with_for_update().first()
-        acc2 = db.query(Account).filter(Account.id == second_id).with_for_update().first()
+        result1 = await db.execute(select(Account).filter(Account.id == first_id).with_for_update())
+        acc1 = result1.scalars().first()
+        result2 = await db.execute(select(Account).filter(Account.id == second_id).with_for_update())
+        acc2 = result2.scalars().first()
         
         if first_id == funding_account.id:
             sender_locked = acc1
@@ -145,7 +153,7 @@ def process_single_payment(db: Session, payment: ScheduledPayment, now: datetime
         logger.error(f"Transfer error for scheduled payment {payment.id}: {e}")
         fail_payment(db, payment, str(e), permanently=False)
 
-def handle_insufficient_funds(db: Session, payment: ScheduledPayment, sender: User, funding_account: Account, recipient: User):
+async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment, sender: User, funding_account: Account, recipient: User):
     payment.retry_count += 1
     
     # Create a failed transaction record to notify the user
@@ -173,7 +181,7 @@ def handle_insufficient_funds(db: Session, payment: ScheduledPayment, sender: Us
         payment.next_run_at = datetime.utcnow() + timedelta(days=1)
         logger.info(f"Payment {payment.id} failed logic due to funds. Retry {payment.retry_count}/3 scheduled for +24h.")
 
-def fail_payment(db: Session, payment: ScheduledPayment, reason: str, permanently: bool = True):
+def fail_payment(db: AsyncSession, payment: ScheduledPayment, reason: str, permanently: bool = True):
     if permanently:
         payment.status = "Failed"
         payment.next_run_at = None
@@ -187,14 +195,14 @@ def fail_payment(db: Session, payment: ScheduledPayment, reason: str, permanentl
             payment.status = "Retrying"
             payment.next_run_at = datetime.utcnow() + timedelta(days=1)
 
-def main():
+async def main():
     logger.info("Starting Scheduled Payments Worker...")
     while True:
         try:
-            process_scheduled_payments()
+            await process_scheduled_payments()
         except Exception as e:
             logger.error(f"Worker crashed: {e}")
-        time.sleep(60) # Run every minute
+        await asyncio.sleep(60) # Run every minute
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

@@ -9,7 +9,7 @@ import json
 import asyncio
 from typing import Dict, Set
 from fastapi import WebSocket
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from database import Outbox
 
 # ─── WebSocket Connection Registry ──────────────────────────────────
@@ -49,7 +49,7 @@ async def broadcast_to_user(user_id: int, payload: dict):
 # ─── Activity Event Emitter ─────────────────────────────────────────
 
 def emit_activity(
-    db: Session,
+    db: AsyncSession,
     user_id: int,
     category: str,
     action: str,
