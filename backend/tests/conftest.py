@@ -63,12 +63,36 @@ def mock_db_dependency():
 
     if "backend.database" in sys.modules:
         del sys.modules["backend.database"]
+    if "database" in sys.modules:
+        del sys.modules["database"]
+
+
+    # Make mocks support comparisons for SQLAlchemy filter building
+    def mock_comp(*args, **kwargs): return MagicMock()
+    
+    # We can't easily add methods to single instances of MagicMock 
+    # if they are already created, but we can configure the return values of special methods.
+    
+    # Actually, the best way is to do this for the specific models
+    for model in [mock_database.Transaction, mock_database.Account, mock_database.User, mock_database.IdempotencyKey]:
+        for attr in ['created_at', 'id', 'user_id', 'account_id', 'transaction_side', 'email', 'balance']:
+            col = getattr(model, attr)
+            col.__ge__.side_effect = mock_comp
+            col.__le__.side_effect = mock_comp
+            col.__gt__.side_effect = mock_comp
+            col.__lt__.side_effect = mock_comp
+            col.__eq__.side_effect = mock_comp
+            col.__ne__.side_effect = mock_comp
+            # Support .in_()
+            col.in_.side_effect = mock_comp
 
     with patch.dict(sys.modules, modules_to_patch):
         yield mock_sqlalchemy
 
     if "backend.database" in sys.modules:
         del sys.modules["backend.database"]
+    if "database" in sys.modules:
+        del sys.modules["database"]
 
 @pytest.fixture
 def mock_fastapi_dependency():
@@ -76,11 +100,6 @@ def mock_fastapi_dependency():
     Patches sys.modules to inject mock fastapi and other dependencies for API testing.
     """
     mock_fastapi = MagicMock()
-
-    # --- IMPORTANT: Mock Decorators ---
-    # We must mock FastAPI methods like @app.get, @app.post, etc.
-    # to return the decorated function AS IS.
-    # Otherwise, they return a MagicMock, which is not callable/awaitable as the original function.
 
     def passthrough_decorator(*args, **kwargs):
         def wrapper(func):
@@ -108,7 +127,6 @@ def mock_fastapi_dependency():
 
     mock_fastapi.Depends = MagicMock()
 
-    # We need HTTPException to be a real exception so we can catch it
     class MockHTTPException(Exception):
         def __init__(self, status_code, detail=None, headers=None):
             self.status_code = status_code
@@ -143,8 +161,9 @@ def mock_fastapi_dependency():
     mock_database = MagicMock()
 
     mock_sqlalchemy = MagicMock()
-    mock_sqlalchemy.orm = MagicMock()
-    mock_sqlalchemy.func = MagicMock()
+    mock_sqlalchemy_orm = MagicMock()
+    mock_sqlalchemy_ext = MagicMock()
+    mock_sqlalchemy_ext_asyncio = MagicMock()
 
     mock_sync_checker = MagicMock()
 
@@ -163,13 +182,35 @@ def mock_fastapi_dependency():
         "backend.database": mock_database,
         "database": mock_database,
         "sqlalchemy": mock_sqlalchemy,
-        "sqlalchemy.orm": mock_sqlalchemy.orm,
+        "sqlalchemy.orm": mock_sqlalchemy_orm,
+        "sqlalchemy.ext": mock_sqlalchemy_ext,
+        "sqlalchemy.ext.asyncio": mock_sqlalchemy_ext_asyncio,
         "sync_checker": mock_sync_checker,
         "backend.sync_checker": mock_sync_checker
     }
 
     if "main" in sys.modules:
         del sys.modules["main"]
+
+
+    # Make mocks support comparisons for SQLAlchemy filter building
+    def mock_comp(*args, **kwargs): return MagicMock()
+    
+    # We can't easily add methods to single instances of MagicMock 
+    # if they are already created, but we can configure the return values of special methods.
+    
+    # Actually, the best way is to do this for the specific models
+    for model in [mock_database.Transaction, mock_database.Account, mock_database.User, mock_database.IdempotencyKey]:
+        for attr in ['created_at', 'id', 'user_id', 'account_id', 'transaction_side', 'email', 'balance']:
+            col = getattr(model, attr)
+            col.__ge__.side_effect = mock_comp
+            col.__le__.side_effect = mock_comp
+            col.__gt__.side_effect = mock_comp
+            col.__lt__.side_effect = mock_comp
+            col.__eq__.side_effect = mock_comp
+            col.__ne__.side_effect = mock_comp
+            # Support .in_()
+            col.in_.side_effect = mock_comp
 
     with patch.dict(sys.modules, modules_to_patch):
         import main

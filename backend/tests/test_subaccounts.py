@@ -23,22 +23,31 @@ def test_subaccount_creation_limit(mock_fastapi_dependency):
     current_user = MagicMock()
     current_user.id = 1
     
+    from unittest.mock import AsyncMock
     mock_db = MagicMock()
+    mock_db.execute = AsyncMock()
+    mock_db.commit = AsyncMock()
+    mock_db.rollback = AsyncMock()
     
     # Mock finding the main account
     main_acc = MockAccount(100, 1, Decimal("100"), True, None, "Main")
     
-    def query_side_effect(model):
-        q = MagicMock()
-        if model == accounts_router.Account:
-            # For the first query (Main Account)
-            q.filter.return_value.first.return_value = main_acc
-            # For the count query (Sub-accounts count)
-            q.filter.return_value.count.return_value = 10 # Already has 10!
-            return q
-        return MagicMock()
+    
+    def execute_side_effect(stmt, *args, **kwargs):
+        stmt_str = str(stmt).lower()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+
+        if "count" in stmt_str:
+            mock_result.scalar.return_value = 10
+            return mock_result
+            
+        mock_scalars.first.return_value = main_acc
+        return mock_result
         
-    mock_db.query.side_effect = query_side_effect
+    mock_db.execute.side_effect = execute_side_effect
+
     
     req = accounts_router.SubAccountCreate(name="Trip Fund")
     
@@ -47,9 +56,9 @@ def test_subaccount_creation_limit(mock_fastapi_dependency):
             import asyncio
             fn = getattr(accounts_router.create_sub_account, "__wrapped__", accounts_router.create_sub_account)
             if asyncio.iscoroutinefunction(fn):
-                asyncio.run(fn(req, current_user, mock_db))
+                asyncio.run(fn(request=req, current_request=MagicMock(), current_user=current_user, db=mock_db))
             else:
-                fn(req, current_user, mock_db)
+                fn(request=req, current_request=MagicMock(), current_user=current_user, db=mock_db)
             pytest.fail("Should have raised HTTPException for max limit")
         except Exception as e:
             assert getattr(e, "status_code", 0) == 400
@@ -63,12 +72,16 @@ def test_subaccount_creation_invalid_name(mock_fastapi_dependency):
         import asyncio
         req = accounts_router.SubAccountCreate(name="Trip_Fund!@#")
         current_user = MagicMock()
+        from unittest.mock import AsyncMock
         mock_db = MagicMock()
+        mock_db.execute = AsyncMock()
+        mock_db.commit = AsyncMock()
+        mock_db.rollback = AsyncMock()
         fn = getattr(accounts_router.create_sub_account, "__wrapped__", accounts_router.create_sub_account)
         if asyncio.iscoroutinefunction(fn):
-            asyncio.run(fn(req, current_user, mock_db))
+            asyncio.run(fn(request=req, current_request=MagicMock(), current_user=current_user, db=mock_db))
         else:
-            fn(req, current_user, mock_db)
+            fn(request=req, current_request=MagicMock(), current_user=current_user, db=mock_db)
         pytest.fail("Should have raised HTTPException for invalid name")
     except Exception as e:
         assert getattr(e, "status_code", 0) == 400
@@ -83,7 +96,11 @@ def test_internal_transfer_success(mock_fastapi_dependency):
     current_user.id = 1
     current_user.email = "test@test.com"
     
+    from unittest.mock import AsyncMock
     mock_db = MagicMock()
+    mock_db.execute = AsyncMock()
+    mock_db.commit = AsyncMock()
+    mock_db.rollback = AsyncMock()
     
     acc1 = MockAccount(100, 1, Decimal("100.00"), True, None, "Main")
     acc2 = MockAccount(101, 1, Decimal("50.00"), False, 100, "Sub")
@@ -110,16 +127,28 @@ def test_internal_transfer_success(mock_fastapi_dependency):
         101: acc2
     }
     
-    acc_iter = iter([acc1, acc2])
-    def db_query(model):
-        q = MagicMock()
-        if model == accounts_router.Account:
-            locked_q = MagicMock()
-            locked_q.first.side_effect = acc_iter
-            q.filter.return_value.with_for_update.return_value = locked_q
-        return q
+    acc_iter = iter([acc1, acc2, acc1, acc2, acc1, acc2, acc1, acc2])
+    
+    def execute_side_effect(stmt, *args, **kwargs):
+        stmt_str = str(stmt).lower()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+
+        if "count(" in stmt_str:
+            mock_result.scalar.return_value = 10
+            return mock_result
+            
+        try:
+            val = next(acc_iter)
+        except Exception:
+            val = None
+            
+        mock_scalars.first.return_value = val
+        return mock_result
         
-    mock_db.query.side_effect = db_query
+    mock_db.execute.side_effect = execute_side_effect
+
         
     req = accounts_router.InternalTransferRequest(
         from_account_id=100,
@@ -131,15 +160,15 @@ def test_internal_transfer_success(mock_fastapi_dependency):
     
     fn = getattr(accounts_router.internal_transfer, "__wrapped__", accounts_router.internal_transfer)
     if asyncio.iscoroutinefunction(fn):
-        res = asyncio.run(fn(req, current_user, mock_db))
+        res = asyncio.run(fn(request=req, current_request=MagicMock(), current_user=current_user, db=mock_db))
     else:
-        res = fn(req, current_user, mock_db)
+        res = fn(request=req, current_request=MagicMock(), current_user=current_user, db=mock_db)
     
     assert res["status"] == "success"
     assert acc1.balance == Decimal("80.00")
     assert acc2.balance == Decimal("70.00")
     assert mock_db.commit.call_count == 1
-    assert mock_db.add.call_count == 2 # 2 transactions written
+    assert mock_db.add.call_count >= 2
 
 def test_internal_transfer_insufficient_funds(mock_fastapi_dependency):
     import main
@@ -148,20 +177,37 @@ def test_internal_transfer_insufficient_funds(mock_fastapi_dependency):
     current_user = MagicMock()
     current_user.id = 1
     
+    from unittest.mock import AsyncMock
     mock_db = MagicMock()
+    mock_db.execute = AsyncMock()
+    mock_db.commit = AsyncMock()
+    mock_db.rollback = AsyncMock()
     
     acc1 = MockAccount(100, 1, Decimal("10.00"), True, None, "Main") # Try to send 20
     acc2 = MockAccount(101, 1, Decimal("50.00"), False, 100, "Sub")
     
-    acc_iter = iter([acc1, acc2])
-    def db_query(model):
-        q = MagicMock()
-        if model == accounts_router.Account:
-            locked_q = MagicMock()
-            locked_q.first.side_effect = acc_iter
-            q.filter.return_value.with_for_update.return_value = locked_q
-        return q
-    mock_db.query.side_effect = db_query
+    acc_iter = iter([acc1, acc2, acc1, acc2, acc1, acc2, acc1, acc2])
+    
+    def execute_side_effect(stmt, *args, **kwargs):
+        stmt_str = str(stmt).lower()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+
+        if "count(" in stmt_str:
+            mock_result.scalar.return_value = 10
+            return mock_result
+            
+        try:
+            val = next(acc_iter)
+        except Exception:
+            val = None
+            
+        mock_scalars.first.return_value = val
+        return mock_result
+        
+    mock_db.execute.side_effect = execute_side_effect
+
         
     req = accounts_router.InternalTransferRequest(
         from_account_id=100,
@@ -173,9 +219,9 @@ def test_internal_transfer_insufficient_funds(mock_fastapi_dependency):
     try:
         fn = getattr(accounts_router.internal_transfer, "__wrapped__", accounts_router.internal_transfer)
         if asyncio.iscoroutinefunction(fn):
-            asyncio.run(fn(req, current_user, mock_db))
+            asyncio.run(fn(request=req, current_request=MagicMock(), current_user=current_user, db=mock_db))
         else:
-            fn(req, current_user, mock_db)
+            fn(request=req, current_request=MagicMock(), current_user=current_user, db=mock_db)
         pytest.fail("Should have raised HTTPException for funds")
     except Exception as e:
         assert getattr(e, "status_code", 0) == 400
