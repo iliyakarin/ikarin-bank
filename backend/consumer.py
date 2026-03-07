@@ -103,6 +103,8 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                 msg.get("transaction_type") or "expense",
                 msg.get("transaction_side") or "",
                 msg["timestamp"],
+                msg.get("internal_account_last_4") or "",
+                msg.get("status") or "pending",
             ]
             for msg in batch
         ]
@@ -127,6 +129,8 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                         "transaction_type",
                         "transaction_side",
                         "event_time",
+                        "internal_account_last_4",
+                        "status",
                     ],
                 ),
             )
@@ -150,6 +154,8 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                     "transaction_type",
                     "transaction_side",
                     "event_time",
+                    "internal_account_last_4",
+                    "status",
                 ],
             )
             logger.info(f"📝 Sync flush completed in {time.time() - start_time:.2f}s")
