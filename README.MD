@@ -20,6 +20,21 @@ docker compose up -d
 
 This will initialize the database schema, spin up the Kafka broker, and launch the API, frontend, and all asynchronous workers.
 
+## Development & Testing
+
+### Running Backend Tests
+The backend test suite verifies core banking logic, P2P transfers, security checks, and background workers. Run them using Docker Compose:
+
+```bash
+docker compose exec -e PYTHONPATH=. api pytest tests/
+```
+
+### Deployment
+To rebuild and deploy the services after changes:
+```bash
+docker compose up --build -d
+```
+
 ## License
 
 This project is licensed under a non-commercial license. The code and its derivatives may **not** be used for commercial purposes.

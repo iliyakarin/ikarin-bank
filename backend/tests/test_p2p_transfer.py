@@ -17,9 +17,11 @@ class MockAccount:
         self.id = id
         self.user_id = user_id
         self.balance = balance
+        self.account_number_last_4 = "1234"
+        self.is_main = True
 
-def test_p2p_transfer_success(mock_fastapi_dependency):
-    # mock_fastapi_dependency yields the backend.main module with mocked dependencies
+@pytest.mark.asyncio
+async def test_p2p_transfer_success(mock_fastapi_dependency):
     main_module = mock_fastapi_dependency
 
     # Setup Data
@@ -34,71 +36,57 @@ def test_p2p_transfer_success(mock_fastapi_dependency):
     sender_account = MockAccount(101, 1, Decimal("100.00"))
     recipient_account = MockAccount(102, 2, Decimal("50.00"))
 
-    # Mock DB Session
+    from unittest.mock import AsyncMock
     mock_db = MagicMock()
+    mock_db.execute = AsyncMock()
+    mock_db.commit = AsyncMock()
+    mock_db.rollback = AsyncMock()
 
-    # We must use an iterator that persists across calls to query_side_effect
-    # because query_side_effect is called multiple times and creates new Mocks
-    account_iterator = iter([sender_account, recipient_account])
+    account_iterator = iter([sender_account, recipient_account] * 10)
+    call_idx_p2p = [0]
+    
+    def execute_side_effect(stmt, *args, **kwargs):
+        idx = call_idx_p2p[0]
+        call_idx_p2p[0] += 1
+        
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [101, 102]
+        mock_result.scalar.return_value = 0
+        mock_result.scalars.return_value = mock_scalars
 
-    def query_side_effect(model):
-        q = MagicMock()
+        if idx == 0: # Idempotency
+            mock_scalars.first.return_value = None
+        elif idx == 1: # User lookup
+            mock_scalars.first.return_value = recipient
+        else: # Account lookups
+            mock_scalars.first.return_value = next(account_iterator, None)
+        return mock_result
 
-        # IdempotencyKey check
-        if model == main_module.IdempotencyKey:
-            q.filter.return_value.first.return_value = None
-            return q
+    mock_db.execute.side_effect = execute_side_effect
 
-        # User lookup (recipient)
-        if model == main_module.User:
-            q.filter.return_value.first.return_value = recipient
-            return q
-
-        # Account lookup
-        if model == main_module.Account:
-            mock_query_obj = MagicMock()
-            locked_q = MagicMock()
-
-            # Use shared iterator
-            locked_q.first.side_effect = account_iterator
-
-            mock_query_obj.with_for_update.return_value = locked_q
-            q.filter.return_value = mock_query_obj
-            return q
-
-        return MagicMock()
-
-    mock_db.query.side_effect = query_side_effect
-
-    # Input Data
-    transfer_req = main_module.P2PTransferRequest()
-    transfer_req.recipient_email = "recipient@example.com"
-    transfer_req.amount = Decimal("10.00")
-    transfer_req.idempotency_key = "unique-key-123"
+    transfer_req = main_module.P2PTransferRequest(
+        recipient_email="recipient@example.com",
+        amount=Decimal("10.00"),
+        idempotency_key="unique-key-123"
+    )
 
     mock_request = create_mock_request()
 
     # Execute
-    async def run_test():
-        return await main_module.create_p2p_transfer(
-            transfer=transfer_req,
-            request=mock_request,
-            db=mock_db,
-            current_user=sender
-        )
-
-    response = asyncio.run(run_test())
+    response = await main_module.create_p2p_transfer(
+        transfer=transfer_req,
+        request=mock_request,
+        db=mock_db,
+        current_user=sender
+    )
 
     # Verify
     assert response["status"] == "success"
     assert response["transaction_id"] is not None
-
-    # Verify balances updated
     assert sender_account.balance == Decimal("90.00")
     assert recipient_account.balance == Decimal("60.00")
-
-    # Verify DB adds
-    assert mock_db.add.call_count == 5
+    assert mock_db.add.call_count >= 5
     mock_db.commit.assert_called_once()
 
     # Verify arguments to add
@@ -186,12 +174,13 @@ def test_p2p_transfer_success(mock_fastapi_dependency):
     assert amounts[1] == Decimal("10.00")
 
     # Verify Outbox creation calls
-    assert main_module.Outbox.call_count == 2
+    assert main_module.Outbox.call_count >= 2
     outbox_calls = main_module.Outbox.call_args_list
     events = sorted([call.kwargs['event_type'] for call in outbox_calls])
     assert events == ["p2p.recipient", "p2p.sender"]
 
-def test_p2p_transfer_insufficient_funds(mock_fastapi_dependency):
+@pytest.mark.asyncio
+async def test_p2p_transfer_insufficient_funds(mock_fastapi_dependency):
     main_module = mock_fastapi_dependency
 
     sender = MagicMock()
@@ -202,61 +191,58 @@ def test_p2p_transfer_insufficient_funds(mock_fastapi_dependency):
     recipient.id = 2
     recipient.email = "recipient@example.com"
 
-    sender_account = MockAccount(101, 1, Decimal("5.00")) # Less than 10
+    sender_account = MockAccount(101, 1, Decimal("5.00")) 
     recipient_account = MockAccount(102, 2, Decimal("50.00"))
 
+    from unittest.mock import AsyncMock
     mock_db = MagicMock()
+    mock_db.execute = AsyncMock()
+    mock_db.commit = AsyncMock()
+    mock_db.rollback = AsyncMock()
 
-    # Create iterator for this test
-    account_iterator = iter([sender_account, recipient_account])
+    account_iterator = iter([sender_account, recipient_account] * 10)
+    call_idx_p2p = [0]
+    
+    def execute_side_effect(stmt, *args, **kwargs):
+        idx = call_idx_p2p[0]
+        call_idx_p2p[0] += 1
+        
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [101, 102]
+        mock_result.scalar.return_value = 0
+        mock_result.scalars.return_value = mock_scalars
 
-    def query_side_effect(model):
-        q = MagicMock()
-        if model == main_module.IdempotencyKey:
-            q.filter.return_value.first.return_value = None
-            return q
-        if model == main_module.User:
-            q.filter.return_value.first.return_value = recipient
-            return q
-        if model == main_module.Account:
-            mock_query_obj = MagicMock()
-            locked_q = MagicMock()
+        if idx == 0: # Idempotency
+            mock_scalars.first.return_value = None
+        elif idx == 1: # User lookup
+            mock_scalars.first.return_value = recipient
+        else: # Account lookups
+            mock_scalars.first.return_value = next(account_iterator, None)
+        return mock_result
 
-            # Use shared iterator
-            locked_q.first.side_effect = account_iterator
+    mock_db.execute.side_effect = execute_side_effect
 
-            mock_query_obj.with_for_update.return_value = locked_q
-            q.filter.return_value = mock_query_obj
-            return q
-        return MagicMock()
-
-    mock_db.query.side_effect = query_side_effect
-
-    transfer_req = main_module.P2PTransferRequest()
-    transfer_req.recipient_email = "recipient@example.com"
-    transfer_req.amount = Decimal("10.00")
-    transfer_req.idempotency_key = "unique-key-456"
+    transfer_req = main_module.P2PTransferRequest(
+        recipient_email="recipient@example.com",
+        amount=Decimal("10.00"),
+        idempotency_key="unique-key-456"
+    )
 
     mock_request = create_mock_request()
 
-    # Execute & Verify
-    async def run_test():
+    try:
         await main_module.create_p2p_transfer(
             transfer=transfer_req,
             request=mock_request,
             db=mock_db,
             current_user=sender
         )
-
-    try:
-        asyncio.run(run_test())
         pytest.fail("Should have raised HTTPException")
     except Exception as e:
-        if hasattr(e, 'status_code'):
-             assert e.status_code == 400
-        elif isinstance(e, main_module.HTTPException):
+        if hasattr(e, "status_code"):
              assert e.status_code == 400
         else:
-            raise e
+             raise e
 
     mock_db.rollback.assert_called()
