@@ -72,3 +72,9 @@ htmlcov/
 # Local Database Configuration (Generated or Mocked)
 init-db/*.conf
 init-db/*.xml
+
+# Markdown Files
+*.md
+*.MD
+!README.md
+!README.MD
