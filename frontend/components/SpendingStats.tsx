@@ -13,19 +13,21 @@ interface SpendingStatsProps {
 export default function SpendingStats({ transactions, period }: SpendingStatsProps) {
     const stats = useMemo(() => {
         const totalIncome = transactions
-            .filter(t => t.transaction_type === 'income')
+            .filter(t => t.transaction_type === 'income' && t.category !== 'Internal Transfer')
             .reduce((sum, t) => sum + t.amount, 0);
 
         const totalExpenses = transactions
-            .filter(t => t.transaction_type === 'expense' || t.transaction_type === 'transfer')
-            .reduce((sum, t) => sum + t.amount, 0);
+            .filter(t => (t.transaction_type === 'expense' || t.transaction_type === 'transfer') && t.category !== 'Internal Transfer' && t.amount < 0)
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
         const netFlow = totalIncome - totalExpenses;
 
         const spendingByCategory = transactions
-            .filter(t => t.transaction_type === 'expense')
+            .filter(t => (t.transaction_type === 'expense' || t.transaction_type === 'transfer') && t.category !== 'Internal Transfer' && t.amount < 0)
             .reduce((acc, t) => {
-                acc[t.category] = (acc[t.category] || 0) + t.amount;
+                const category = t.transaction_type === 'transfer' ? 'Transfers' : t.category;
+                const amount = Math.abs(t.amount);
+                acc[category] = (acc[category] || 0) + amount;
                 return acc;
             }, {} as Record<string, number>);
 
@@ -87,16 +89,14 @@ export default function SpendingStats({ transactions, period }: SpendingStatsPro
 
             {/* Net Flow */}
             <div className="glass-panel p-6 rounded-[2rem] space-y-4 hover:scale-105 transition-transform duration-300">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-                    stats.netFlow >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
-                }`}>
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${stats.netFlow >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+                    }`}>
                     {stats.netFlow >= 0 ? <TrendingUp size={24} /> : <TrendingDown size={24} />}
                 </div>
                 <div>
                     <p className="text-white/40 text-sm font-medium mb-1">Net Flow</p>
-                    <p className={`text-2xl lg:text-3xl font-bold ${
-                        stats.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                    }`}>
+                    <p className={`text-2xl lg:text-3xl font-bold ${stats.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                        }`}>
                         {stats.netFlow >= 0 ? '+' : ''}{formatCurrency(stats.netFlow)}
                     </p>
                     <p className="text-white/30 text-xs mt-1">{period}</p>
@@ -130,9 +130,11 @@ interface SpendingByCategoryProps {
 export function SpendingByCategory({ transactions, limit = 5 }: SpendingByCategoryProps) {
     const spendingData = useMemo(() => {
         const spendingByCategory = transactions
-            .filter(t => t.transaction_type === 'expense')
+            .filter(t => (t.transaction_type === 'expense' || t.transaction_type === 'transfer') && t.category !== 'Internal Transfer' && t.amount < 0)
             .reduce((acc, t) => {
-                acc[t.category] = (acc[t.category] || 0) + t.amount;
+                const category = t.transaction_type === 'transfer' ? 'Transfers' : t.category;
+                const amount = Math.abs(t.amount);
+                acc[category] = (acc[category] || 0) + amount;
                 return acc;
             }, {} as Record<string, number>);
 
@@ -203,9 +205,9 @@ interface QuickSummaryProps {
 export function QuickSummary({ balance, transactions, loading }: QuickSummaryProps) {
     const recentSpending = useMemo(() => {
         const recent = transactions
-            .filter(t => t.transaction_type === 'expense')
+            .filter(t => (t.transaction_type === 'expense' || t.transaction_type === 'transfer') && t.category !== 'Internal Transfer' && t.amount < 0)
             .slice(0, 5)
-            .reduce((sum, t) => sum + t.amount, 0);
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
         return recent;
     }, [transactions]);
 

@@ -11,6 +11,7 @@ export interface Transaction {
     recipient_email?: string;
     status: TransactionStatus;
     transaction_type: TransactionType;
+    transaction_side?: 'DEBIT' | 'CREDIT';
     created_at: string; // ISO string
 }
 

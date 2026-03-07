@@ -14,6 +14,8 @@ export const getTransactionStatus = (status: string) => {
             return 'pending';
         case 'cleared':
             return 'cleared';
+        case 'failed':
+            return 'failed';
         default:
             return 'unknown';
     }
@@ -25,6 +27,8 @@ export const getStatusLabel = (status: string) => {
             return 'Pending';
         case 'cleared':
             return 'Cleared';
+        case 'failed':
+            return 'Failed';
         default:
             return 'Unknown Status';
     }

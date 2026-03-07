@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # Configuration from .env
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
+KAFKA_ACTIVITY_TOPIC = os.getenv("KAFKA_ACTIVITY_TOPIC")
 KAFKA_USER = os.getenv("KAFKA_USER")
 KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD", "")
 CH_HOST = os.getenv("CLICKHOUSE_HOST")
@@ -94,14 +95,16 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                 msg["transaction_id"],
                 msg.get("parent_id") or "00000000-0000-0000-0000-000000000000",
                 msg["account_id"],
-                msg.get("sender_email", ""),
-                msg.get("recipient_email", ""),
+                msg.get("sender_email") or "",
+                msg.get("recipient_email") or "",
                 msg["amount"],
                 msg["category"],
                 msg["merchant"],
-                msg.get("transaction_type", "expense"),
-                msg.get("transaction_side", ""),
+                msg.get("transaction_type") or "expense",
+                msg.get("transaction_side") or "",
                 msg["timestamp"],
+                msg.get("internal_account_last_4") or "",
+                msg.get("status") or "pending",
             ]
             for msg in batch
         ]
@@ -126,6 +129,8 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                         "transaction_type",
                         "transaction_side",
                         "event_time",
+                        "internal_account_last_4",
+                        "status",
                     ],
                 ),
             )
@@ -149,6 +154,8 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                     "transaction_type",
                     "transaction_side",
                     "event_time",
+                    "internal_account_last_4",
+                    "status",
                 ],
             )
             logger.info(f"📝 Sync flush completed in {time.time() - start_time:.2f}s")
@@ -159,6 +166,69 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
         return False
 
 
+async def flush_activity_to_clickhouse(batch: List[Dict[str, Any]]) -> bool:
+    """Flush activity events to ClickHouse banking_log.activity_events"""
+    if not batch:
+        return True
+
+    try:
+        start_time = time.time()
+        client = get_clickhouse_client()
+
+        data_to_insert = [
+            [
+                msg["event_id"],
+                msg["user_id"],
+                msg["category"],
+                msg["action"],
+                datetime.strptime(msg["event_time"], "%Y-%m-%d %H:%M:%S") if isinstance(msg["event_time"], str) and "T" not in msg["event_time"] else (datetime.fromisoformat(msg["event_time"].replace("Z", "+00:00")) if isinstance(msg["event_time"], str) else msg["event_time"]),
+                msg["title"],
+                msg.get("details", "{}"),
+            ]
+            for msg in batch
+        ]
+
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: client.insert(
+                    "banking.activity_events",
+                    data_to_insert,
+                    column_names=[
+                        "event_id",
+                        "user_id",
+                        "category",
+                        "action",
+                        "event_time",
+                        "title",
+                        "details",
+                    ],
+                ),
+            )
+            logger.info(f"📋 Activity flush completed in {time.time() - start_time:.2f}s ({len(batch)} events)")
+            return True
+        except Exception as e:
+            logger.warning(f"⚠️ Async activity flush failed, sync fallback: {e}")
+            client.insert(
+                "banking.activity_events",
+                data_to_insert,
+                column_names=[
+                    "event_id",
+                    "user_id",
+                    "category",
+                    "action",
+                    "event_time",
+                    "title",
+                    "details",
+                ],
+            )
+            return True
+    except Exception as e:
+        logger.error(f"❌ Activity ClickHouse flush failed: {e}")
+        return False
+
+
 async def run_consumer():
     """Optimized Kafka consumer with better batching and async processing"""
     logger.info("🚀 Starting optimized Kafka consumer...")
@@ -166,8 +236,8 @@ async def run_consumer():
     # OPTIMIZED Kafka Consumer Config
     conf = {
         "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
-        "group.id": "clickhouse-bi-group",
-        "auto.offset.reset": "latest",  # Start from latest, not beginning!
+        "group.id": "clickhouse-bi-group-v3",
+        "auto.offset.reset": "earliest",  # Start from earliest to process old events
         "enable.auto.commit": False,  # Manual commit control
         "session.timeout.ms": OPTIMAL_SESSION_TIMEOUT,
         "metadata.max.age.ms": 600000,  # 10 minutes instead of 30 seconds
@@ -189,9 +259,10 @@ async def run_consumer():
         )
 
     consumer = Consumer(conf)
-    consumer.subscribe([KAFKA_TOPIC])
+    consumer.subscribe([KAFKA_TOPIC, KAFKA_ACTIVITY_TOPIC])
 
     buffer = []
+    activity_buffer = []
     last_flush_time = time.time()
     processed_count = 0
     malformed_batch = []
@@ -210,12 +281,17 @@ async def run_consumer():
 
             if msg is None:
                 # Still check flush interval even if no messages
-                if buffer and (time.time() - last_flush_time >= OPTIMAL_FLUSH_INTERVAL):
-                     logger.info(f"⏱️ Time-based flush of {len(buffer)} messages...")
-                     if await flush_to_clickhouse_async(buffer):
-                        consumer.commit()
-                        buffer = []
-                        last_flush_time = time.time()
+                if (buffer or activity_buffer) and (time.time() - last_flush_time >= OPTIMAL_FLUSH_INTERVAL):
+                     if buffer:
+                         logger.info(f"⏱️ Time-based flush of {len(buffer)} transaction messages...")
+                         if await flush_to_clickhouse_async(buffer):
+                            buffer = []
+                     if activity_buffer:
+                         logger.info(f"⏱️ Time-based flush of {len(activity_buffer)} activity events...")
+                         if await flush_activity_to_clickhouse(activity_buffer):
+                            activity_buffer = []
+                     consumer.commit()
+                     last_flush_time = time.time()
                 await asyncio.sleep(0.01) # Yield to event loop
                 continue
 
@@ -246,23 +322,22 @@ async def run_consumer():
                     consumer.commit()  # Commit offset even for malformed messages
                     continue
 
-                # Validate required fields
-                # Note: 'timestamp' might be 'event_time' or similar depending on producer.
-                # The original consumer used 'timestamp'.
-                # Let's be flexible or ensure it matches.
-                # Original consumer expected: transaction_id, account_id, amount, category, merchant, timestamp
-                required_fields = [
-                    "transaction_id",
-                    "account_id",
-                    "amount",
-                    "category",
-                    "merchant",
-                    "timestamp",
-                ]
+                msg_topic = msg.topic()
+                if msg_topic == KAFKA_ACTIVITY_TOPIC:
+                    required_fields = ["event_id", "user_id", "category", "action", "event_time", "title"]
+                else:
+                    required_fields = [
+                        "transaction_id",
+                        "account_id",
+                        "amount",
+                        "category",
+                        "merchant",
+                        "timestamp",
+                    ]
                 missing_fields = [f for f in required_fields if f not in val]
 
                 if missing_fields:
-                    logger.warning(f"⚠️  Missing fields: {missing_fields}")
+                    logger.warning(f"⚠️  Missing fields: {missing_fields} (topic: '{msg_topic}', expected: '{KAFKA_ACTIVITY_TOPIC}')")
                     malformed_batch.append(
                         {
                             "partition": msg.partition(),
@@ -275,18 +350,21 @@ async def run_consumer():
                     continue
 
                 # Add to buffer with minimal processing
-                buffer.append(val)
+                if msg_topic == KAFKA_ACTIVITY_TOPIC:
+                    activity_buffer.append(val)
+                else:
+                    buffer.append(val)
                 processed_count += 1
 
                 # Flush conditions
                 should_flush = (
-                    len(buffer) >= OPTIMAL_BATCH_SIZE
+                    len(buffer) + len(activity_buffer) >= OPTIMAL_BATCH_SIZE
                     or time.time() - last_flush_time >= OPTIMAL_FLUSH_INTERVAL
                 )
 
                 if should_flush:
                     logger.info(
-                        f"📊 Flushing {len(buffer)} messages (total processed: {processed_count})"
+                        f"📊 Flushing {len(buffer)} tx + {len(activity_buffer)} activity (total processed: {processed_count})"
                     )
 
                     # Process malformed messages first
@@ -294,12 +372,14 @@ async def run_consumer():
                         log_malformed_message_batch(malformed_batch)
                         malformed_batch = []
 
-                    # Flush valid messages asynchronously
-                    success = await flush_to_clickhouse_async(buffer)
+                    # Flush valid messages
+                    tx_success = await flush_to_clickhouse_async(buffer) if buffer else True
+                    act_success = await flush_activity_to_clickhouse(activity_buffer) if activity_buffer else True
 
-                    if success:
-                        consumer.commit()  # Commit Kafka offsets
+                    if tx_success and act_success:
+                        consumer.commit()
                         buffer = []
+                        activity_buffer = []
                         last_flush_time = time.time()
 
                         if processed_count % 1000 == 0:
@@ -321,6 +401,10 @@ async def run_consumer():
         if buffer:
             logger.info(f"🏁 Final flush of {len(buffer)} messages")
             await flush_to_clickhouse_async(buffer)
+
+        if activity_buffer:
+            logger.info(f"🏁 Final flush of {len(activity_buffer)} activity events")
+            await flush_activity_to_clickhouse(activity_buffer)
 
         if malformed_batch:
             log_malformed_message_batch(malformed_batch)
