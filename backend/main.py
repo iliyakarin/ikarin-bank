@@ -45,6 +45,7 @@ CH_HOST = os.getenv("CLICKHOUSE_HOST")
 CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
 CH_USER = os.getenv("CLICKHOUSE_USER")
 CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
+CH_DB = os.getenv("CLICKHOUSE_DB")
 
 CORS_ORIGINS = os.getenv("CORS_ORIGINS").split(",")
 
@@ -1649,7 +1650,7 @@ async def get_activity(
 
         query = f"""
             SELECT event_id, user_id, category, action, event_time, title, details
-            FROM banking.activity_events FINAL
+            FROM {CH_DB}.activity_events FINAL
             WHERE {where_clause}
             ORDER BY event_time {sort_dir}
             LIMIT {{limit:UInt32}} OFFSET {{offset:UInt32}}
@@ -1660,7 +1661,7 @@ async def get_activity(
         result = ch.query(query, parameters=params)
 
         count_query = f"""
-            SELECT count() FROM banking.activity_events FINAL WHERE {where_clause}
+            SELECT count() FROM {CH_DB}.activity_events FINAL WHERE {where_clause}
         """
         count_result = ch.query(count_query, parameters=params)
         total = count_result.result_rows[0][0] if count_result.result_rows else 0
@@ -1710,7 +1711,7 @@ async def get_balance_history(
             toDate(event_time) as date,
             account_id,
             sum(amount) as daily_change
-        FROM banking.transactions
+        FROM {CH_DB}.transactions
         WHERE account_id = {account.id} 
             AND event_time >= now() - INTERVAL {days} DAY
         GROUP BY toDate(event_time), account_id
@@ -1806,7 +1807,7 @@ async def get_recent_transactions(
                 transaction_type,
                 transaction_side,
                 event_time
-            FROM banking.transactions
+            FROM {CH_DB}.transactions
             WHERE account_id IN ({account_ids_str})
             AND event_time >= now() - INTERVAL {hours} HOUR
             ORDER BY event_time DESC
@@ -1962,7 +1963,7 @@ async def get_all_transactions(
             event_time,
             internal_account_last_4,
             status
-        FROM banking.transactions
+        FROM {CH_DB}.transactions
         WHERE {where_clause}
         ORDER BY event_time {sort_dir}
         LIMIT 100
@@ -2388,7 +2389,7 @@ async def get_banking_metrics(
             SUM(amount) as total_volume,
             COUNT(*) as transaction_count,
             AVG(amount) as avg_transaction_size
-        FROM banking.transactions 
+        FROM {CH_DB}.transactions 
         WHERE event_time >= now() - INTERVAL 1 DAY
         """
 
@@ -2402,7 +2403,7 @@ async def get_banking_metrics(
         # Top transactions in last 24h
         top_transactions_query = """
         SELECT merchant, amount, account_id, event_time as created_at
-        FROM banking.transactions 
+        FROM {CH_DB}.transactions 
         WHERE event_time >= now() - INTERVAL 1 DAY
         ORDER BY amount DESC 
         LIMIT 10
@@ -2426,8 +2427,8 @@ async def get_banking_metrics(
             toHour(created_at) as hour,
             COUNT(*) as count,
             SUM(amount) as total
-        FROM bank_transactions 
-        WHERE created_at >= now() - INTERVAL 1 DAY
+        FROM {CH_DB}.transactions 
+        WHERE event_time >= now() - INTERVAL 1 DAY
         GROUP BY hour 
         ORDER BY hour
         """

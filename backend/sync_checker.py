@@ -16,6 +16,7 @@ CH_HOST = os.getenv("CLICKHOUSE_HOST")
 CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
 CH_USER = os.getenv("CLICKHOUSE_USER")
 CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
+CH_DB = os.getenv("CLICKHOUSE_DB")
 
 CHECK_INTERVAL_SECONDS = 86400 # Run every 24 hours
 
@@ -52,7 +53,7 @@ async def run_sync_check():
                 chunk = pg_ids[i:i + chunk_size]
                 query = f"""
                     SELECT toString(transaction_id) as id 
-                    FROM banking.transactions 
+                    FROM {CH_DB}.transactions 
                     WHERE transaction_id IN ({','.join([f"'{tid}'" for tid in chunk])})
                 """
                 ch_results = ch_client.query(query).result_rows

@@ -23,6 +23,7 @@ CH_HOST = os.getenv("CLICKHOUSE_HOST")
 CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
 CH_USER = os.getenv("CLICKHOUSE_USER")
 CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
+CH_DB = os.getenv("CLICKHOUSE_DB")
 
 # OPTIMIZED CONFIGURATION
 OPTIMAL_BATCH_SIZE = 1000
@@ -113,9 +114,8 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
         try:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
-                None,
                 lambda: client.insert(
-                    "banking.transactions",
+                    f"{CH_DB}.transactions",
                     data_to_insert,
                     column_names=[
                         "transaction_id",
@@ -140,7 +140,7 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
             logger.warning(f"⚠️ Async flush failed, falling back to sync: {e}")
             # Fallback to sync insert
             client.insert(
-                "banking.transactions",
+                f"{CH_DB}.transactions",
                 data_to_insert,
                 column_names=[
                     "transaction_id",
@@ -193,7 +193,7 @@ async def flush_activity_to_clickhouse(batch: List[Dict[str, Any]]) -> bool:
             await loop.run_in_executor(
                 None,
                 lambda: client.insert(
-                    "banking.activity_events",
+                    f"{CH_DB}.activity_events",
                     data_to_insert,
                     column_names=[
                         "event_id",
@@ -211,7 +211,7 @@ async def flush_activity_to_clickhouse(batch: List[Dict[str, Any]]) -> bool:
         except Exception as e:
             logger.warning(f"⚠️ Async activity flush failed, sync fallback: {e}")
             client.insert(
-                "banking.activity_events",
+                f"{CH_DB}.activity_events",
                 data_to_insert,
                 column_names=[
                     "event_id",

@@ -54,7 +54,7 @@ class TestConsumer(unittest.IsolatedAsyncioTestCase):
 
         # Verify correct table and columns
         args, kwargs = self.mock_ch_client.insert.call_args
-        self.assertEqual(args[0], "banking.transactions")
+        self.assertEqual(args[0], f"{consumer.CH_DB}.transactions")
         self.assertIn("transaction_id", kwargs['column_names'])
         self.assertIn("parent_id", kwargs['column_names'])
     async def test_flush_to_clickhouse_async_failure_fallback(self):
