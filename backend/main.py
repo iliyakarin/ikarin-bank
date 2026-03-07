@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest, Contact
 from activity import emit_activity, ws_register, ws_unregister
 from security_checks import check_velocity, check_anomaly
+from account_service import assign_account_credentials, mask_account_number, decrypt_account_number
 import clickhouse_connect
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -253,7 +254,8 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(new_user)
 
     # Auto-create an account for the new user
-    new_account = Account(user_id=new_user.id, balance=0.00)
+    new_account = Account(user_id=new_user.id, balance=0.00, name="Main Account", is_main=True)
+    assign_account_credentials(db, new_account)
     db.add(new_account)
     db.commit()
 
@@ -481,7 +483,9 @@ async def get_account_balance(
         "name": acc.name,
         "balance": float(acc.balance),
         "reserved_balance": float(acc.reserved_balance or 0.0),
-        "is_main": acc.is_main
+        "is_main": acc.is_main,
+        "routing_number": acc.routing_number,
+        "masked_account_number": mask_account_number(decrypt_account_number(acc.account_number_encrypted)) if acc.account_number_encrypted else None
     } for acc in accounts]
 
     return {
@@ -761,6 +765,10 @@ async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_d
     tx_id = str(uuid.uuid4())
     try:
 
+        account = db.query(Account).filter(Account.id == transfer.account_id).first()
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+
         new_tx = Transaction(
             id=tx_id,
             account_id=transfer.account_id,
@@ -775,6 +783,7 @@ async def create_transfer(transfer: TransferRequest, db: Session = Depends(get_d
         payload = {
             "transaction_id": tx_id,
             "account_id": transfer.account_id,
+            "internal_reference_id": account.internal_reference_id,
             "amount": transfer.amount,
             "category": transfer.category,
             "merchant": transfer.merchant,

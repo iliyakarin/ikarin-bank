@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from database import Account, User, Transaction, SessionLocal
 from activity import emit_activity
+from account_service import assign_account_credentials, decrypt_account_number, mask_account_number
 import datetime
 import uuid
 
@@ -72,6 +73,7 @@ async def create_sub_account(
         balance=Decimal("0.00"),
         reserved_balance=Decimal("0.00")
     )
+    assign_account_credentials(db, new_sub)
     db.add(new_sub)
 
     emit_activity(db, current_user.id, "sub_account", "created", f"Created sub-account '{name}'", {
@@ -206,4 +208,32 @@ async def internal_transfer(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail="Internal transfer failed")
+
+
+@router.get("/{account_id}/credentials")
+async def get_account_credentials(
+    account_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Securely retrieve unmasked account credentials."""
+    account = db.query(Account).filter(
+        Account.id == account_id,
+        Account.user_id == current_user.id
+    ).first()
+
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    if not account.account_number_encrypted:
+        raise HTTPException(status_code=400, detail="Credentials not assigned to this account")
+
+    full_account_number = decrypt_account_number(account.account_number_encrypted)
+    
+    return {
+        "routing_number": account.routing_number,
+        "account_number": full_account_number,
+        "internal_reference_id": account.internal_reference_id,
+        "masked_account_number": mask_account_number(full_account_number)
+    }
 
