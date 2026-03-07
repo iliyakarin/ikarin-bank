@@ -40,7 +40,10 @@ async def process_outbox():
                         tx_id = payload_data.get("transaction_id")
                         
                         # Route to the correct topic based on event type
-                        target_topic = KAFKA_ACTIVITY_TOPIC if event.event_type == "activity_event" else KAFKA_TOPIC
+                        if event.event_type == "activity_event":
+                            target_topic = "bank_activity_events"
+                        else:
+                            target_topic = KAFKA_TOPIC
                         
                         # Send to Kafka
                         await producer.send_and_wait(
