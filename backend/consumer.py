@@ -181,7 +181,7 @@ async def flush_activity_to_clickhouse(batch: List[Dict[str, Any]]) -> bool:
                 msg["user_id"],
                 msg["category"],
                 msg["action"],
-                msg["event_time"],
+                datetime.strptime(msg["event_time"], "%Y-%m-%d %H:%M:%S") if isinstance(msg["event_time"], str) and "T" not in msg["event_time"] else (datetime.fromisoformat(msg["event_time"].replace("Z", "+00:00")) if isinstance(msg["event_time"], str) else msg["event_time"]),
                 msg["title"],
                 msg.get("details", "{}"),
             ]
@@ -236,8 +236,8 @@ async def run_consumer():
     # OPTIMIZED Kafka Consumer Config
     conf = {
         "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
-        "group.id": "clickhouse-bi-group",
-        "auto.offset.reset": "latest",  # Start from latest, not beginning!
+        "group.id": "clickhouse-bi-group-v3",
+        "auto.offset.reset": "earliest",  # Start from earliest to process old events
         "enable.auto.commit": False,  # Manual commit control
         "session.timeout.ms": OPTIMAL_SESSION_TIMEOUT,
         "metadata.max.age.ms": 600000,  # 10 minutes instead of 30 seconds
@@ -322,23 +322,22 @@ async def run_consumer():
                     consumer.commit()  # Commit offset even for malformed messages
                     continue
 
-                # Validate required fields
-                # Note: 'timestamp' might be 'event_time' or similar depending on producer.
-                # The original consumer used 'timestamp'.
-                # Let's be flexible or ensure it matches.
-                # Original consumer expected: transaction_id, account_id, amount, category, merchant, timestamp
-                required_fields = [
-                    "transaction_id",
-                    "account_id",
-                    "amount",
-                    "category",
-                    "merchant",
-                    "timestamp",
-                ]
+                msg_topic = msg.topic()
+                if msg_topic == KAFKA_ACTIVITY_TOPIC:
+                    required_fields = ["event_id", "user_id", "category", "action", "event_time", "title"]
+                else:
+                    required_fields = [
+                        "transaction_id",
+                        "account_id",
+                        "amount",
+                        "category",
+                        "merchant",
+                        "timestamp",
+                    ]
                 missing_fields = [f for f in required_fields if f not in val]
 
                 if missing_fields:
-                    logger.warning(f"⚠️  Missing fields: {missing_fields}")
+                    logger.warning(f"⚠️  Missing fields: {missing_fields} (topic: '{msg_topic}', expected: '{KAFKA_ACTIVITY_TOPIC}')")
                     malformed_batch.append(
                         {
                             "partition": msg.partition(),
@@ -351,8 +350,6 @@ async def run_consumer():
                     continue
 
                 # Add to buffer with minimal processing
-                # Route based on topic
-                msg_topic = msg.topic()
                 if msg_topic == KAFKA_ACTIVITY_TOPIC:
                     activity_buffer.append(val)
                 else:
