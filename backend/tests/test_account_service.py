@@ -1,4 +1,7 @@
-import pytest
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from account_service import calculate_aba_checksum, generate_aba, generate_account_number, encrypt_account_number, decrypt_account_number, mask_account_number
 import secrets
 

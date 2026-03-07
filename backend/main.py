@@ -7,11 +7,12 @@ import asyncio
 from typing import Dict, Any, Optional, Tuple, List
 from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Request, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text, or_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, text, or_, select
 from decimal import Decimal
 from aiokafka import AIOKafkaProducer
 from pydantic import BaseModel
-from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest, Contact
+from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest, Contact, Base, engine
 from activity import emit_activity, ws_register, ws_unregister
 from security_checks import check_velocity, check_anomaly
 from account_service import assign_account_credentials, mask_account_number, decrypt_account_number
@@ -195,16 +196,13 @@ def create_access_token(data: dict):
     return encoded_jwt
 
 
-def get_db():
-    db = SessionLocal()
-    try:
+async def get_db():
+    async with SessionLocal() as db:
         yield db
-    finally:
-        db.close()
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
+    token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)
 ):
     credentials_exception = HTTPException(
         status_code=401,
@@ -218,7 +216,8 @@ async def get_current_user(
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    user = db.query(User).filter(User.email == email).first()
+    result = await db.execute(select(User).filter(User.email == email))
+    user = result.scalars().first()
     if user is None:
         raise credentials_exception
     return user
@@ -244,8 +243,9 @@ support_only = RoleChecker(["admin", "support"])
 
 
 @app.post("/auth/register", response_model=UserResponse)
-async def register(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.email == user.email).first()
+async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).filter(User.email == user.email))
+    db_user = result.scalars().first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -257,14 +257,14 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
         password_hash=hashed_password,
     )
     db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    await db.commit()
+    await db.refresh(new_user)
 
     # Auto-create an account for the new user
     new_account = Account(user_id=new_user.id, balance=0.00, name="Main Account", is_main=True)
-    assign_account_credentials(db, new_account)
+    await assign_account_credentials(db, new_account)
     db.add(new_account)
-    db.commit()
+    await db.commit()
 
     emit_activity(
         db, 
@@ -276,7 +276,7 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
         ip=None, # No request object here yet, but we could pass it if register had it
         user_agent=None
     )
-    db.commit()
+    await db.commit()
 
     return new_user
 
@@ -284,9 +284,10 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
 @app.post("/auth/login", response_model=Token)
 async def login(
     request: Request,
-    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
+    form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
 ):
-    user = db.query(User).filter(User.email == form_data.username).first()
+    result = await db.execute(select(User).filter(User.email == form_data.username))
+    user = result.scalars().first()
     if not user or not verify_password(form_data.password, user.password_hash):
         if user:
             emit_activity(
@@ -299,7 +300,7 @@ async def login(
                 ip=request.client.host,
                 user_agent=request.headers.get("user-agent")
             )
-            db.commit()
+            await db.commit()
         raise HTTPException(status_code=401, detail="Incorrect email or password")
 
     access_token = create_access_token(data={"sub": user.email, "role": user.role})
@@ -314,7 +315,7 @@ async def login(
         ip=request.client.host,
         user_agent=request.headers.get("user-agent")
     )
-    db.commit()
+    await db.commit()
 
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -327,14 +328,15 @@ async def read_users_me(current_user: User = Depends(get_current_user)):
 async def update_backup_email(
     update_data: UserBackupUpdate,
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     # Check if this email is already used by someone else
-    existing = db.query(User).filter(
+    result = await db.execute(select(User).filter(
         (User.email == update_data.backup_email) | 
         (User.backup_email == update_data.backup_email)
-    ).first()
+    ))
+    existing = result.scalars().first()
     
     if existing and existing.id != current_user.id:
         raise HTTPException(status_code=400, detail="This email is already in use by another user")
@@ -353,8 +355,8 @@ async def update_backup_email(
         ip=request.client.host,
         user_agent=request.headers.get("user-agent")
     )
-    db.commit()
-    db.refresh(current_user)
+    await db.commit()
+    await db.refresh(current_user)
     
     return current_user
 
@@ -385,7 +387,7 @@ async def update_password(
         ip=request.client.host,
         user_agent=request.headers.get("user-agent")
     )
-    db.commit()
+    await db.commit()
     
     return {"status": "success"}
 
@@ -393,7 +395,7 @@ async def update_password(
 @app.post("/auth/logout")
 async def logout(
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Server-side logout: logs the event and invalidates the session."""
@@ -413,7 +415,7 @@ async def logout(
         ip=client_ip,
         user_agent=user_agent
     )
-    db.commit()
+    await db.commit()
 
     # Note: JWTs are stateless. True invalidation requires a token blacklist.
     # For now we log the event; the client must delete the token.
@@ -436,12 +438,13 @@ async def ws_activity(websocket: WebSocket, token: str):
 
     db = SessionLocal()
     try:
-        user = db.query(User).filter(User.email == email).first()
+        result = await db.execute(select(User).filter(User.email == email))
+        user = result.scalars().first()
         if not user:
             await websocket.close(code=4001)
             return
     finally:
-        db.close()
+        await db.close()
 
     await websocket.accept()
     ws_register(user.id, websocket)
@@ -458,19 +461,23 @@ async def ws_activity(websocket: WebSocket, token: str):
 
 @app.get("/api/v1/users/me/notifications", response_model=List[NotificationResponse])
 async def get_notifications(
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get the latest 10 notifications (transactions & payment requests)."""
     notifications = []
     
     # 1. Transactions
-    account_ids = [acc.id for acc in db.query(Account).filter(Account.user_id == current_user.id).all()]
+    result = await db.execute(select(Account).filter(Account.user_id == current_user.id))
+    account_ids = [acc.id for acc in result.scalars().all()]
     if account_ids:
-        transactions = db.query(Transaction).filter(
-            Transaction.account_id.in_(account_ids),
-            Transaction.status != "cancelled"
-        ).order_by(Transaction.created_at.desc()).limit(10).all()
+        result = await db.execute(
+            select(Transaction).filter(
+                Transaction.account_id.in_(account_ids),
+                Transaction.status != "cancelled"
+            ).order_by(Transaction.created_at.desc()).limit(10)
+        )
+        transactions = result.scalars().all()
         
         for tx in transactions:
             if tx.status == "failed":
@@ -499,12 +506,15 @@ async def get_notifications(
             })
             
     # 2. Payment Requests
-    requests = db.query(PaymentRequest).filter(
-        or_(
-            PaymentRequest.requester_id == current_user.id,
-            PaymentRequest.target_email == current_user.email
-        )
-    ).order_by(PaymentRequest.created_at.desc()).limit(10).all()
+    result = await db.execute(
+        select(PaymentRequest).filter(
+            or_(
+                PaymentRequest.requester_id == current_user.id,
+                PaymentRequest.target_email == current_user.email
+            )
+        ).order_by(PaymentRequest.created_at.desc()).limit(10)
+    )
+    requests = result.scalars().all()
     
     for req in requests:
         is_requester = req.requester_id == current_user.id
@@ -534,7 +544,7 @@ async def get_notifications(
 @app.get("/accounts/{user_id}")
 async def get_account_balance(
     user_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     if current_user.id != user_id and current_user.role not in ["admin", "support"]:
@@ -543,7 +553,8 @@ async def get_account_balance(
             detail="You do not have permission to access these accounts"
         )
     
-    accounts = db.query(Account).filter(Account.user_id == user_id).all()
+    result = await db.execute(select(Account).filter(Account.user_id == user_id))
+    accounts = result.scalars().all()
     if not accounts:
         raise HTTPException(status_code=404, detail="Account not found")
 
@@ -573,10 +584,11 @@ async def get_account_balance(
 
 @app.get("/admin/stats")
 async def get_stats(
-    db: Session = Depends(get_db), current_user: User = Depends(admin_only)
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_only)
 ):
     # 1. Postgres Count
-    pg_count = db.query(func.count(Transaction.id)).scalar()
+    result = await db.execute(select(func.count(Transaction.id)))
+    pg_count = result.scalar()
 
     # 2. ClickHouse Count
     ch_client = clickhouse_connect.get_client(
@@ -610,12 +622,12 @@ async def get_stats(
     # 5. System Volume (24h)
     today = datetime.datetime.utcnow()
     yesterday = today - datetime.timedelta(days=1)
-    system_volume = (
-        db.query(func.sum(Transaction.amount))
+    
+    result = await db.execute(
+        select(func.sum(Transaction.amount))
         .filter(Transaction.category == "P2P", Transaction.created_at >= yesterday)
-        .scalar()
-        or 0.0
     )
+    system_volume = result.scalar() or 0.0
 
     return {
         "postgres_count": pg_count,
@@ -630,12 +642,13 @@ async def get_stats(
 
 @app.get("/admin/traces")
 async def get_traces(
-    db: Session = Depends(get_db), current_user: User = Depends(admin_only)
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_only)
 ):
     # Get last 20 transactions from Postgres
-    pg_txs = (
-        db.query(Transaction).order_by(Transaction.created_at.desc()).limit(20).all()
+    result = await db.execute(
+        select(Transaction).order_by(Transaction.created_at.desc()).limit(20)
     )
+    pg_txs = result.scalars().all()
     tx_ids = [tx.id for tx in pg_txs]
 
     # Get matching records from ClickHouse
@@ -705,7 +718,7 @@ async def run_simulation(tps: int, count: int):
                 status="pending",
             )
             db.add(new_tx)
-            db.commit()
+            await db.commit()
 
             payload = {
                 "transaction_id": tx_id,
@@ -721,11 +734,11 @@ async def run_simulation(tps: int, count: int):
 
             # Update status to sent_to_kafka
             new_tx.status = "sent_to_kafka"
-            db.commit()
+            await db.commit()
         except Exception as e:
             print(f"Simulation error: {e}")
         finally:
-            db.close()
+            await db.close()
 
         if i % tps == 0:
             await asyncio.sleep(1)  # Simple rate limiting
@@ -749,10 +762,11 @@ def get_kafka_status(current_user: User = Depends(admin_only)):
 
 
 @app.get("/admin/postgres-logs")
-def get_postgres_logs(
-    db: Session = Depends(get_db), current_user: User = Depends(admin_only)
+async def get_postgres_logs(
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_only)
 ):
-    return db.query(Transaction).order_by(Transaction.created_at.desc()).limit(10).all()
+    result = await db.execute(select(Transaction).order_by(Transaction.created_at.desc()).limit(10))
+    return result.scalars().all()
 
 
 @app.get("/admin/clickhouse-logs")
@@ -786,6 +800,14 @@ producer = None
 
 @app.on_event("startup")
 async def startup_event():
+    # Ensure database tables exist
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        print("[INFO] Database tables verified/created")
+    except Exception as e:
+        print(f"[ERROR] Failed to initialize database: {e}")
+
     global producer
     max_retries = 30
     retry_count = 0
@@ -844,7 +866,8 @@ async def create_transfer(
     user_agent = request.headers.get("user-agent", "unknown")
     try:
 
-        account = db.query(Account).filter(Account.id == transfer.account_id, Account.user_id == current_user.id).first()
+        result = await db.execute(select(Account).filter(Account.id == transfer.account_id, Account.user_id == current_user.id))
+        account = result.scalars().first()
         if not account:
             raise HTTPException(status_code=403, detail="Account not found or access denied")
 
@@ -879,22 +902,23 @@ async def create_transfer(
 
         db.add(outbox_entry)
         
-        db.commit()
+        await db.commit()
         return {"status": "success", "transaction_id": tx_id}
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         print(f"[ERROR] Transfer failed: {e}")
         raise HTTPException(status_code=500, detail=f"Transaction failed: {str(e)}")
 
 
-def _validate_p2p_transfer(
+async def _validate_p2p_transfer(
     transfer: P2PTransferRequest,
     current_user: User,
-    db: Session
+    db: AsyncSession
 ) -> User:
     """Validates the transfer request and returns the recipient user."""
     # Recipient Lookup
-    recipient = db.query(User).filter(User.email == transfer.recipient_email).first()
+    result = await db.execute(select(User).filter(User.email == transfer.recipient_email))
+    recipient = result.scalars().first()
     if not recipient:
         raise HTTPException(status_code=404, detail="Recipient not found")
 
@@ -903,8 +927,8 @@ def _validate_p2p_transfer(
 
     return recipient
 
-def _execute_p2p_balances(
-    db: Session,
+async def _execute_p2p_balances(
+    db: AsyncSession,
     sender_account_id: int,
     recipient_account_id: int,
     amount: Decimal
@@ -913,8 +937,10 @@ def _execute_p2p_balances(
     # Order by ID to prevent deadlocks.
     first_id, second_id = sorted([sender_account_id, recipient_account_id])
 
-    acc1 = db.query(Account).filter(Account.id == first_id).with_for_update().first()
-    acc2 = db.query(Account).filter(Account.id == second_id).with_for_update().first()
+    result1 = await db.execute(select(Account).filter(Account.id == first_id).with_for_update())
+    acc1 = result1.scalars().first()
+    result2 = await db.execute(select(Account).filter(Account.id == second_id).with_for_update())
+    acc2 = result2.scalars().first()
 
     if first_id == sender_account_id:
         sender_account = acc1
@@ -1059,29 +1085,31 @@ async def create_p2p_transfer(
 
     # 1. Idempotency Check
     if transfer.idempotency_key:
-        existing_key = db.query(IdempotencyKey).filter(
+        result = await db.execute(select(IdempotencyKey).filter(
             IdempotencyKey.key == transfer.idempotency_key,
             IdempotencyKey.user_id == current_user.id
-        ).first()
+        ))
+        existing_key = result.scalars().first()
         if existing_key:
             return existing_key.response_body
 
     # 2. Validation & Recipient Lookup
-    recipient = _validate_p2p_transfer(transfer, current_user, db)
+    recipient = await _validate_p2p_transfer(transfer, current_user, db)
 
     # 2.5 Security Checks
-    if not check_velocity(db, current_user.id):
+    if not await check_velocity(db, current_user.id):
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded: too many transactions in the last minute. Please try again shortly."
         )
 
-    anomaly_flagged = check_anomaly(db, current_user.id, Decimal(str(transfer.amount)))
+    anomaly_flagged = await check_anomaly(db, current_user.id, Decimal(str(transfer.amount)))
 
     # Validate Payment Request if paying one
     payment_request = None
     if transfer.payment_request_id:
-        payment_request = db.query(PaymentRequest).filter(PaymentRequest.id == transfer.payment_request_id).first()
+        result = await db.execute(select(PaymentRequest).filter(PaymentRequest.id == transfer.payment_request_id))
+        payment_request = result.scalars().first()
         if not payment_request:
             raise HTTPException(status_code=404, detail="Payment request not found")
         # Ensure that the current_user is the target of the request
@@ -1094,24 +1122,26 @@ async def create_p2p_transfer(
             raise HTTPException(status_code=400, detail=f"Transfer amount must be at least the requested amount (${payment_request.amount})")
 
     # Resolve Sender Account
-    sender_account_query = db.query(Account).filter(Account.user_id == current_user.id)
+    sender_account_query = select(Account).filter(Account.user_id == current_user.id)
     if transfer.source_account_id:
         sender_account_query = sender_account_query.filter(Account.id == transfer.source_account_id)
     else:
         sender_account_query = sender_account_query.filter(Account.is_main == True)
         
-    resolved_sender_account = sender_account_query.first()
+    result = await db.execute(sender_account_query)
+    resolved_sender_account = result.scalars().first()
     if not resolved_sender_account:
         raise HTTPException(status_code=404, detail="Source account not found or access denied")
 
     # Resolve Recipient Main Account
-    resolved_recipient_account = db.query(Account).filter(Account.user_id == recipient.id, Account.is_main == True).first()
+    result = await db.execute(select(Account).filter(Account.user_id == recipient.id, Account.is_main == True))
+    resolved_recipient_account = result.scalars().first()
     if not resolved_recipient_account:
         raise HTTPException(status_code=404, detail="Recipient main account not found")
 
     try:
         # 3. Atomic Locking & Balance Verification (ACID)
-        sender_account, recipient_account = _execute_p2p_balances(
+        sender_account, recipient_account = await _execute_p2p_balances(
             db, resolved_sender_account.id, resolved_recipient_account.id, transfer.amount
         )
 
@@ -1192,14 +1222,14 @@ async def create_p2p_transfer(
             user_agent=user_agent
         )
 
-        db.commit()
+        await db.commit()
         return response_body
 
     except HTTPException:
-        db.rollback()
+        await db.rollback()
         raise
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         print(f"[ERROR] P2P Transfer failed: {e}")
         raise HTTPException(status_code=500, detail="Internal financial processing error")
 
@@ -1218,7 +1248,8 @@ async def create_payment_request(
     if request_data.target_email == current_user.email:
         raise HTTPException(status_code=400, detail="Cannot request money from yourself")
         
-    target_user = db.query(User).filter(User.email == request_data.target_email).first()
+    result = await db.execute(select(User).filter(User.email == request_data.target_email))
+    target_user = result.scalars().first()
     if not target_user:
         raise HTTPException(status_code=404, detail="Target user not found")
 
@@ -1237,8 +1268,8 @@ async def create_payment_request(
         "amount": float(request_data.amount),
         "purpose": request_data.purpose,
     })
-    db.commit()
-    db.refresh(new_request)
+    await db.commit()
+    await db.refresh(new_request)
     
     return {"status": "success", "request_id": new_request.id}
 
@@ -1249,15 +1280,17 @@ async def get_payment_requests(
     current_user: User = Depends(get_current_user),
 ):
     # Fetch requests where user is requester or target
-    requests = db.query(PaymentRequest).filter(
+    result = await db.execute(select(PaymentRequest).filter(
         (PaymentRequest.requester_id == current_user.id) | 
         (PaymentRequest.target_email == current_user.email)
-    ).order_by(PaymentRequest.updated_at.desc()).all()
+    ).order_by(PaymentRequest.updated_at.desc()))
+    requests = result.scalars().all()
     
     # Enrich with requester info
     result = []
     for req in requests:
-        requester = db.query(User).filter(User.id == req.requester_id).first()
+        res = await db.execute(select(User).filter(User.id == req.requester_id))
+        requester = res.scalars().first()
         result.append({
             "id": req.id,
             "requester_id": req.requester_id,
@@ -1284,7 +1317,8 @@ async def counter_payment_request(
     if counter_data.amount <= 0:
         raise HTTPException(status_code=400, detail="Counter amount must be greater than 0")
 
-    req = db.query(PaymentRequest).filter(PaymentRequest.id == request_id).first()
+    result = await db.execute(select(PaymentRequest).filter(PaymentRequest.id == request_id))
+    req = result.scalars().first()
     if not req:
         raise HTTPException(status_code=404, detail="Payment request not found")
 
@@ -1308,7 +1342,7 @@ async def counter_payment_request(
     req.status = "pending_requester" if is_target else "pending_target"
     req.updated_at = datetime.datetime.utcnow()
     
-    db.commit()
+    await db.commit()
     return {"status": "success", "request_id": req.id, "new_amount": float(req.amount), "new_status": req.status}
 
 
@@ -1318,7 +1352,8 @@ async def decline_payment_request(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    req = db.query(PaymentRequest).filter(PaymentRequest.id == request_id).first()
+    result = await db.execute(select(PaymentRequest).filter(PaymentRequest.id == request_id))
+    req = result.scalars().first()
     if not req:
         raise HTTPException(status_code=404, detail="Payment request not found")
 
@@ -1335,7 +1370,7 @@ async def decline_payment_request(
         "request_id": req.id,
         "amount": float(req.amount),
     })
-    db.commit()
+    await db.commit()
     return {"status": "success", "request_id": req.id, "new_status": req.status}
 def _calculate_next_run_at(reference_date: datetime.datetime, frequency: str, interval: str = None) -> Optional[datetime.datetime]:
     """Calculates the next execution date based on frequency and reference date."""
@@ -1421,27 +1456,31 @@ async def create_scheduled_transfer(
         raise HTTPException(status_code=400, detail="Start date must be in the future.")
 
     ik = transfer.idempotency_key or str(uuid.uuid4())
-    existing_key = db.query(IdempotencyKey).filter(
+    result = await db.execute(select(IdempotencyKey).filter(
         IdempotencyKey.key == ik,
         IdempotencyKey.user_id == current_user.id
-    ).first()
+    ))
+    existing_key = result.scalars().first()
     if existing_key:
         return existing_key.response_body
 
     try:
         sender_account = None
         if transfer.funding_account_id:
-            sender_account = db.query(Account).filter(
+            result = await db.execute(select(Account).filter(
                 Account.id == transfer.funding_account_id,
                 Account.user_id == current_user.id
-            ).with_for_update().first()
+            ).with_for_update())
+            sender_account = result.scalars().first()
             if not sender_account:
                 raise HTTPException(status_code=403, detail="Invalid funding account")
         else:
             # Default to main account
-            sender_account = db.query(Account).filter(Account.user_id == current_user.id, Account.is_main == True).with_for_update().first()
+            result = await db.execute(select(Account).filter(Account.user_id == current_user.id, Account.is_main == True).with_for_update())
+            sender_account = result.scalars().first()
             if not sender_account:
-                sender_account = db.query(Account).filter(Account.user_id == current_user.id).with_for_update().first()
+                result = await db.execute(select(Account).filter(Account.user_id == current_user.id).with_for_update())
+                sender_account = result.scalars().first()
                 
         if not sender_account:
             raise HTTPException(status_code=404, detail="Account not found")
@@ -1482,8 +1521,8 @@ async def create_scheduled_transfer(
             response_body=response_body
         ))
         
-        db.commit()
-        db.refresh(new_scheduled_payment)
+        await db.commit()
+        await db.refresh(new_scheduled_payment)
 
         emit_activity(
             db, 
@@ -1501,15 +1540,15 @@ async def create_scheduled_transfer(
             ip=request.client.host,
             user_agent=request.headers.get("user-agent")
         )
-        db.commit()
+        await db.commit()
         
         return {"status": "success", "scheduled_payment_id": new_scheduled_payment.id}
 
     except HTTPException:
-        db.rollback()
+        await db.rollback()
         raise
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         print(f"[ERROR] Scheduled Transfer failed: {e}")
         raise HTTPException(status_code=500, detail="Internal processing error")
 
@@ -1520,9 +1559,10 @@ async def get_scheduled_payments(
     current_user: User = Depends(get_current_user)
 ):
     """Get all scheduled payments for the current user."""
-    payments = db.query(ScheduledPayment).filter(
+    result = await db.execute(select(ScheduledPayment).filter(
         ScheduledPayment.user_id == current_user.id
-    ).order_by(ScheduledPayment.id.desc()).all()
+    ).order_by(ScheduledPayment.id.desc()))
+    payments = result.scalars().all()
     
     return payments
 
@@ -1533,10 +1573,11 @@ async def cancel_scheduled_payment(
     current_user: User = Depends(get_current_user)
 ):
     """Cancel a scheduled payment."""
-    payment = db.query(ScheduledPayment).filter(
+    result = await db.execute(select(ScheduledPayment).filter(
         ScheduledPayment.id == payment_id,
         ScheduledPayment.user_id == current_user.id
-    ).first()
+    ))
+    payment = result.scalars().first()
     
     if not payment:
         raise HTTPException(status_code=404, detail="Scheduled payment not found")
@@ -1551,7 +1592,7 @@ async def cancel_scheduled_payment(
         "recipient_email": payment.recipient_email,
         "amount": float(payment.amount),
     })
-    db.commit()
+    await db.commit()
     
     return {"status": "success", "message": "Scheduled payment cancelled"}
 
@@ -1648,7 +1689,8 @@ async def get_balance_history(
     db: Session = Depends(get_db),
 ):
     """Get balance history for a user for the given day range."""
-    account = db.query(Account).filter(Account.user_id == current_user.id).first()
+    result = await db.execute(select(Account).filter(Account.user_id == current_user.id))
+    account = result.scalars().first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
@@ -1714,7 +1756,8 @@ async def get_recent_transactions(
         user_email = current_user.email.lower()
         
         # 1. Get PENDING transactions from Postgres (only outgoing ones exist here)
-        user_accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
+        result = await db.execute(select(Account).filter(Account.user_id == current_user.id))
+        user_accounts = result.scalars().all()
         user_account_ids = [acc.id for acc in user_accounts]
         
         if account_id:
@@ -1724,16 +1767,16 @@ async def get_recent_transactions(
         else:
             account_ids = user_account_ids
         
-        pg_transactions = (
-            db.query(Transaction)
+        result = await db.execute(
+            select(Transaction)
             .filter(Transaction.account_id.in_(account_ids))
             .filter(
                 Transaction.created_at >= datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
             )
             .order_by(Transaction.created_at.desc())
             .limit(10)
-            .all()
         )
+        pg_transactions = result.scalars().all()
         
         # 2. Get CLEARED/HISTORY transactions from ClickHouse (incoming AND outgoing)
         ch_client = clickhouse_connect.get_client(
@@ -1853,7 +1896,8 @@ async def get_all_transactions(
     db: Session = Depends(get_db),
 ):
     """Get all transactions with filtering by sender/recipient email, amount, date range, and sort direction."""
-    accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
+    result = await db.execute(select(Account).filter(Account.user_id == current_user.id))
+    accounts = result.scalars().all()
     if not accounts:
         raise HTTPException(status_code=404, detail="Account not found")
 
@@ -1949,7 +1993,7 @@ async def get_all_transactions(
         print(f"ClickHouse query failed or empty, falling back to Postgres: {e}")
 
         # --- Postgres Fallback ---
-        query = db.query(Transaction).filter(
+        query = select(Transaction).filter(
             Transaction.account_id.in_(target_account_ids),
             Transaction.created_at >= cutoff_time,
         )
@@ -1963,12 +2007,13 @@ async def get_all_transactions(
         if min_amount is not None:
             query = query.filter(func.abs(Transaction.amount) >= min_amount)
         if max_amount is not None:
-            query = query.filter(func.abs(Transaction.amount) >= min_amount)
+            query = query.filter(func.abs(Transaction.amount) <= max_amount)
 
         sort_fn = Transaction.created_at.asc() if sort and sort.lower() == "asc" else Transaction.created_at.desc()
         query = query.order_by(sort_fn).limit(100)
 
-        results = query.all()
+        result = await db.execute(query)
+        results = result.scalars().all()
         transactions = []
         for row in results:
             tx = {
@@ -1995,7 +2040,8 @@ async def get_contacts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    contacts = db.query(Contact).filter(Contact.user_id == current_user.id).order_by(Contact.contact_name).all()
+    result = await db.execute(select(Contact).filter(Contact.user_id == current_user.id).order_by(Contact.contact_name))
+    contacts = result.scalars().all()
     return contacts
 
 @app.post("/api/v1/contacts", response_model=ContactResponse)
@@ -2008,10 +2054,11 @@ async def create_contact(
         raise HTTPException(status_code=400, detail="Name and Email are required")
         
     # Check if duplicate email exists for user
-    existing = db.query(Contact).filter(
+    result = await db.execute(select(Contact).filter(
         Contact.user_id == current_user.id, 
         Contact.contact_email == contact_data.contact_email
-    ).first()
+    ))
+    existing = result.scalars().first()
     
     if existing:
         raise HTTPException(status_code=400, detail="Contact with this email already exists")
@@ -2023,8 +2070,8 @@ async def create_contact(
     )
     
     db.add(new_contact)
-    db.commit()
-    db.refresh(new_contact)
+    await db.commit()
+    await db.refresh(new_contact)
     
     return new_contact
 
@@ -2035,10 +2082,11 @@ async def update_contact(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    contact = db.query(Contact).filter(
+    result = await db.execute(select(Contact).filter(
         Contact.id == contact_id, 
         Contact.user_id == current_user.id
-    ).first()
+    ))
+    contact = result.scalars().first()
     
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -2047,11 +2095,12 @@ async def update_contact(
         raise HTTPException(status_code=400, detail="Name and Email are required")
         
     # Check if duplicate email exists for user (excluding self)
-    existing = db.query(Contact).filter(
+    result = await db.execute(select(Contact).filter(
         Contact.user_id == current_user.id, 
         Contact.contact_email == contact_data.contact_email,
         Contact.id != contact_id
-    ).first()
+    ))
+    existing = result.scalars().first()
     
     if existing:
         raise HTTPException(status_code=400, detail="Another contact with this email already exists")
@@ -2059,8 +2108,8 @@ async def update_contact(
     contact.contact_name = contact_data.contact_name
     contact.contact_email = contact_data.contact_email
     
-    db.commit()
-    db.refresh(contact)
+    await db.commit()
+    await db.refresh(contact)
     
     return contact
 
@@ -2070,16 +2119,17 @@ async def delete_contact(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    contact = db.query(Contact).filter(
+    result = await db.execute(select(Contact).filter(
         Contact.id == contact_id, 
         Contact.user_id == current_user.id
-    ).first()
+    ))
+    contact = result.scalars().first()
     
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
         
-    db.delete(contact)
-    db.commit()
+    await db.delete(contact)
+    await db.commit()
     
     return {"status": "success"}
 
@@ -2138,12 +2188,12 @@ def _execute_clickhouse_query(request: QueryRequest) -> Tuple[List, List]:
     return result.result_rows, result.column_names
 
 
-def _execute_postgres_query(request: QueryRequest, db: Session) -> Tuple[List, List]:
+async def _execute_postgres_query(request: QueryRequest, db: AsyncSession) -> Tuple[List, List]:
     """Executes a query against PostgreSQL."""
     _validate_sql_query(request.query)
 
     # Execute PostgreSQL query with parameter binding to prevent SQL injection
-    result = db.execute(text(request.query), request.params)
+    result = await db.execute(text(request.query), request.params)
     data = [dict(row._mapping) for row in result]
     columns = list(data[0].keys()) if data else []
     return data, columns
@@ -2279,7 +2329,7 @@ async def execute_admin_query(
         if source == "clickhouse":
             data, columns = _execute_clickhouse_query(request)
         elif source == "postgres":
-            data, columns = _execute_postgres_query(request, db)
+            data, columns = await _execute_postgres_query(request, db)
         elif source == "kafka":
             data, columns = _execute_kafka_query(request)
         else:
@@ -2311,15 +2361,16 @@ async def get_banking_metrics(
     """Get comprehensive banking metrics for admin dashboard"""
     try:
         # PostgreSQL queries for user/account data
-        total_balance = db.query(func.sum(Account.balance)).scalar() or 0
-        active_users_24h = (
-            db.query(User)
-            .filter(
+        total_balance_result = await db.execute(select(func.sum(Account.balance)))
+        total_balance = total_balance_result.scalar() or 0
+        active_users_result = await db.execute(
+            select(func.count(User.id)).filter(
                 User.created_at >= datetime.datetime.now() - datetime.timedelta(days=1)
             )
-            .count()
         )
-        total_users = db.query(User).count()
+        active_users_24h = active_users_result.scalar() or 0
+        total_users_result = await db.execute(select(func.count(User.id)))
+        total_users = total_users_result.scalar() or 0
 
         # ClickHouse queries for transaction data
         ch_client = clickhouse_connect.get_client(

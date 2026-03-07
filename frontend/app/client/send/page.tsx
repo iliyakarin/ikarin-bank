@@ -81,6 +81,15 @@ export default function SendMoneyPage() {
   const [instantHistory, setInstantHistory] = useState<any[]>([]);
   const [instantHistoryLoading, setInstantHistoryLoading] = useState(false);
 
+  // Repeat Transfer State
+  const [repeatModalOpen, setRepeatModalOpen] = useState(false);
+  const [selectedRepeatTx, setSelectedRepeatTx] = useState<any>(null);
+  const [repeatAmount, setRepeatAmount] = useState("");
+  const [repeatCommentary, setRepeatCommentary] = useState("");
+  const [repeatSourceAccountId, setRepeatSourceAccountId] = useState<number | "">("");
+  const [repeatLoading, setRepeatLoading] = useState(false);
+  const [isRepeatSourceDropdownOpen, setIsRepeatSourceDropdownOpen] = useState(false);
+
   // Mock Vendors from Simulator
   const [vendors, setVendors] = useState<any[]>([]);
 
@@ -217,6 +226,51 @@ export default function SendMoneyPage() {
       }
     } catch (err) {
       console.error("Failed to load payment requests", err);
+    }
+  };
+
+  const handleConfirmRepeat = async () => {
+    if (!selectedRepeatTx) return;
+    setRepeatLoading(true);
+    setError("");
+    setSuccess(false);
+
+    try {
+      const isOutgoing = selectedRepeatTx.amount < 0;
+      const targetEmail = isOutgoing
+        ? selectedRepeatTx.recipient_email
+        : selectedRepeatTx.sender_email;
+
+      const cleanCommentary = DOMPurify.sanitize(repeatCommentary);
+      const res = await fetch("http://localhost:8000/p2p-transfer", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          recipient_email: targetEmail,
+          amount: parseFloat(repeatAmount),
+          commentary: cleanCommentary || null,
+          source_account_id: repeatSourceAccountId || undefined,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setSuccess(true);
+        setTxId(data.transaction_id);
+        fetchInstantHistory();
+        setRepeatModalOpen(false);
+        setTimeout(() => setSuccess(false), 5000);
+      } else {
+        const data = await res.json();
+        setError(data.detail || "Transfer failed");
+      }
+    } catch (err) {
+      setError("Connection error. Please try again.");
+    } finally {
+      setRepeatLoading(false);
     }
   };
 
@@ -813,6 +867,135 @@ export default function SendMoneyPage() {
         )}
       </AnimatePresence>
 
+      {/* Repeat Transaction Modal */}
+      <AnimatePresence>
+        {repeatModalOpen && selectedRepeatTx && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                setRepeatModalOpen(false);
+                setRepeatLoading(false);
+              }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="relative bg-[#2a1f42] border border-white/10 w-full max-w-md rounded-[2rem] p-8 shadow-2xl overflow-visible"
+            >
+              <div className="space-y-6">
+                <div className="space-y-2 text-center">
+                  <h3 className="text-2xl font-bold text-white">Repeat Transfer</h3>
+                  <p className="text-white/60">
+                    To: <span className="text-white font-medium">{selectedRepeatTx.amount < 0 ? selectedRepeatTx.recipient_email : selectedRepeatTx.sender_email}</span>
+                  </p>
+                </div>
+
+                <div className="bg-white/5 rounded-xl border border-white/10 p-5 space-y-4">
+                  <div className="space-y-3 relative">
+                    <label className="block text-white/60 text-sm">Source Account</label>
+                    <div className="relative">
+                      <div
+                        onClick={() => accountsLoading ? null : setIsRepeatSourceDropdownOpen(!isRepeatSourceDropdownOpen)}
+                        className={`w-full bg-white/5 border ${isRepeatSourceDropdownOpen ? 'border-purple-400' : 'border-white/10'} rounded-xl px-4 py-3 text-white cursor-pointer transition-colors flex items-center justify-between shadow-inner`}
+                      >
+                        <span className="truncate">
+                          {repeatSourceAccountId === "" ? (
+                            `Main Account - ${accounts.find(a => a.is_main)?.masked_account_number || ''} - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
+                          ) : (
+                            `${accounts.find(a => a.id === repeatSourceAccountId)?.name} - ${accounts.find(a => a.id === repeatSourceAccountId)?.masked_account_number || ''} - $${accounts.find(a => a.id === repeatSourceAccountId)?.balance.toFixed(2) || '0.00'}`
+                          )}
+                        </span>
+                        <ChevronDown className={`text-white/40 transition-transform ${isRepeatSourceDropdownOpen ? 'rotate-180' : ''}`} size={20} />
+                      </div>
+
+                      <AnimatePresence>
+                        {isRepeatSourceDropdownOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="absolute z-[110] w-full mt-2 bg-[#1a1132] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-48 overflow-y-auto"
+                          >
+                            <div className="p-2 space-y-1">
+                              <div
+                                onClick={() => { setRepeatSourceAccountId(""); setIsRepeatSourceDropdownOpen(false); }}
+                                className={`px-4 py-2 hover:bg-white/10 rounded-lg cursor-pointer ${repeatSourceAccountId === "" ? "bg-purple-500/20 text-purple-300 font-bold" : "text-white"}`}
+                              >
+                                Main Account - {accounts.find(a => a.is_main)?.masked_account_number || ''} - ${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}
+                              </div>
+                              {accounts.filter(acc => !acc.is_main).map(acc => (
+                                <div
+                                  key={acc.id}
+                                  onClick={() => { setRepeatSourceAccountId(acc.id); setIsRepeatSourceDropdownOpen(false); }}
+                                  className={`px-4 py-2 hover:bg-white/10 rounded-lg cursor-pointer ${repeatSourceAccountId === acc.id ? "bg-purple-500/20 text-purple-300 font-bold" : "text-white"}`}
+                                >
+                                  {acc.name} - {acc.masked_account_number || ''} - ${acc.balance.toFixed(2)}
+                                </div>
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="block text-white/60 text-sm">Amount (USD)</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-3 text-white font-semibold">$</span>
+                      <input
+                        type="number"
+                        value={repeatAmount}
+                        onChange={(e) => setRepeatAmount(e.target.value)}
+                        placeholder="0.00"
+                        step="0.01"
+                        className="w-full bg-white/10 border border-white/20 rounded-xl pl-8 pr-4 py-3 text-white focus:outline-none focus:border-purple-400"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="block text-white/60 text-sm">Commentary (Optional)</label>
+                    <input
+                      type="text"
+                      value={repeatCommentary}
+                      onChange={(e) => setRepeatCommentary(e.target.value)}
+                      placeholder="What is this for?"
+                      className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      setRepeatModalOpen(false);
+                      setRepeatLoading(false);
+                    }}
+                    className="flex-1 py-3 px-4 rounded-xl font-bold text-white/80 hover:text-white hover:bg-white/10 transition-colors border border-white/20"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmRepeat}
+                    disabled={repeatLoading || !repeatAmount || parseFloat(repeatAmount) <= 0}
+                    className="flex-1 py-3 px-4 rounded-xl font-bold text-white bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 shadow-lg disabled:opacity-50"
+                  >
+                    {repeatLoading ? "Processing..." : "Confirm Send"}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Form Container */}
       <motion.div
         key={activeTab} // re-animate on tab switch
@@ -842,11 +1025,11 @@ export default function SendMoneyPage() {
                 >
                   <span className="truncate">
                     {sourceAccountId === "" ? (
-                      `Main Account (primary) ${accounts.find(a => a.is_main)?.masked_account_number || ''} - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
+                      `Main Account - ${accounts.find(a => a.is_main)?.masked_account_number || ''} - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
                     ) : (
                       (() => {
                         const acc = accounts.find(a => a.id === sourceAccountId);
-                        return `${acc?.name} ${acc?.masked_account_number || ''} - $${acc?.balance.toFixed(2) || '0.00'}`;
+                        return `${acc?.name} - ${acc?.masked_account_number || ''} - $${acc?.balance.toFixed(2) || '0.00'}`;
                       })()
                     )}
                   </span>
@@ -873,7 +1056,7 @@ export default function SendMoneyPage() {
                           }}
                           className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === "" ? 'bg-purple-500/20 text-purple-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                         >
-                          <span className="block truncate">Main Account (primary) {accounts.find(a => a.is_main)?.masked_account_number || ''}</span>
+                          <span className="block truncate">Main Account - {accounts.find(a => a.is_main)?.masked_account_number || ''}</span>
                           <span className="text-xs opacity-70">${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}</span>
                         </div>
                         {accounts.filter(acc => !acc.is_main).map(acc => (
@@ -885,7 +1068,7 @@ export default function SendMoneyPage() {
                             }}
                             className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === acc.id ? 'bg-purple-500/20 text-purple-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                           >
-                            <span className="block truncate">{acc.name} {acc.masked_account_number || ''}</span>
+                            <span className="block truncate">{acc.name} - {acc.masked_account_number || ''}</span>
                             <span className="text-xs opacity-70">${acc.balance.toFixed(2)}</span>
                           </div>
                         ))}
@@ -1097,13 +1280,11 @@ export default function SendMoneyPage() {
                           <td className="py-4 text-right">
                             <button
                               onClick={() => {
-                                if (isOutgoing) {
-                                  setRecipient(tx.recipient_email);
-                                  setAmount(Math.abs(tx.amount).toString());
-                                } else {
-                                  setRecipient(tx.sender_email);
-                                  setAmount(Math.abs(tx.amount).toString());
-                                }
+                                setSelectedRepeatTx(tx);
+                                setRepeatAmount(Math.abs(tx.amount).toString());
+                                setRepeatCommentary("");
+                                setRepeatSourceAccountId("");
+                                setRepeatModalOpen(true);
                               }}
                               className="text-xs bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg border border-purple-500/30 transition-all font-bold"
                             >
@@ -1147,11 +1328,11 @@ export default function SendMoneyPage() {
                 >
                   <span className="truncate">
                     {sourceAccountId === "" ? (
-                      `Main Account (primary) ${accounts.find(a => a.is_main)?.masked_account_number || ''} - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
+                      `Main Account - ${accounts.find(a => a.is_main)?.masked_account_number || ''} - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
                     ) : (
                       (() => {
                         const acc = accounts.find(a => a.id === sourceAccountId);
-                        return `${acc?.name} ${acc?.masked_account_number || ''} - $${acc?.balance.toFixed(2) || '0.00'}`;
+                        return `${acc?.name} - ${acc?.masked_account_number || ''} - $${acc?.balance.toFixed(2) || '0.00'}`;
                       })()
                     )}
                   </span>
@@ -1178,7 +1359,7 @@ export default function SendMoneyPage() {
                           }}
                           className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === "" ? 'bg-indigo-500/20 text-indigo-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                         >
-                          <span className="block truncate">Main Account (primary) {accounts.find(a => a.is_main)?.masked_account_number || ''}</span>
+                          <span className="block truncate">Main Account - {accounts.find(a => a.is_main)?.masked_account_number || ''}</span>
                           <span className="text-xs opacity-70">${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}</span>
                         </div>
                         {accounts.filter(acc => !acc.is_main).map(acc => (
@@ -1190,7 +1371,7 @@ export default function SendMoneyPage() {
                             }}
                             className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === acc.id ? 'bg-indigo-500/20 text-indigo-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                           >
-                            <span className="block truncate">{acc.name} {acc.masked_account_number || ''}</span>
+                            <span className="block truncate">{acc.name} - {acc.masked_account_number || ''}</span>
                             <span className="text-xs opacity-70">${acc.balance.toFixed(2)}</span>
                           </div>
                         ))}
