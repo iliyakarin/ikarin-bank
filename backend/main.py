@@ -29,6 +29,11 @@ from sync_checker import run_sync_check
 
 app = FastAPI(title="Simple Bank API")
 
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+
 # Configuration
 # Admins are defined by role="admin" in the database
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
