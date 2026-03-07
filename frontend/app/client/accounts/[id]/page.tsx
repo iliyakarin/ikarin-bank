@@ -47,7 +47,7 @@ export default function SubAccountDetailPage() {
             setTxLoading(true);
             try {
                 const authToken = token || localStorage.getItem("bank_token");
-                const res = await fetch(`http://localhost:8000/transactions?account_id=${accountId}&days=30`, {
+                const res = await fetch(`/api/transactions?account_id=${accountId}&days=30`, {
                     headers: { Authorization: `Bearer ${authToken}` }
                 });
                 if (res.ok) {
@@ -88,7 +88,7 @@ export default function SubAccountDetailPage() {
         setTransferLoading(true);
         try {
             const authToken = token || localStorage.getItem('bank_token');
-            const res = await fetch("http://localhost:8000/api/v1/accounts/transfer/internal", {
+            const res = await fetch("/api/api/v1/accounts/transfer/internal", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -106,7 +106,7 @@ export default function SubAccountDetailPage() {
             setTransferAmount("");
             refreshBalance();
             // Reload txs
-            const fetchTx = await fetch(`http://localhost:8000/transactions?account_id=${accountId}&days=30`, {
+            const fetchTx = await fetch(`/api/transactions?account_id=${accountId}&days=30`, {
                 headers: { Authorization: `Bearer ${authToken}` }
             });
             const txData = await fetchTx.json();
@@ -128,7 +128,7 @@ export default function SubAccountDetailPage() {
         setCredentialsLoading(true);
         try {
             const authToken = token || localStorage.getItem("bank_token");
-            const res = await fetch(`http://localhost:8000/api/v1/accounts/${accountId}/credentials`, {
+            const res = await fetch(`/api/api/v1/accounts/${accountId}/credentials`, {
                 headers: { Authorization: `Bearer ${authToken}` }
             });
             if (res.ok) {

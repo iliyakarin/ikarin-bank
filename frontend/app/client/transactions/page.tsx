@@ -39,7 +39,7 @@ export default function TransactionsPage() {
         params.set("sort", sortAsc ? "asc" : "desc");
 
         const res = await fetch(
-          `http://localhost:8000/transactions?${params.toString()}`,
+          `/api/transactions?${params.toString()}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           },

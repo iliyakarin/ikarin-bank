@@ -90,7 +90,7 @@ export default function AdminPage() {
 
   const loadBankingMetrics = async () => {
     try {
-      const response = await fetch('http://localhost:8000/admin/banking-metrics');
+      const response = await fetch('/api/admin/banking-metrics');
       if (response.ok) {
         const metrics = await response.json();
         setBankingMetrics(metrics);
@@ -168,7 +168,7 @@ export default function AdminPage() {
   const handleQuery = async (query: string, params: any) => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/admin/query', {
+      const response = await fetch('/api/admin/query', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

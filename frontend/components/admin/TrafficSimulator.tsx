@@ -9,7 +9,7 @@ export default function TrafficSimulator() {
     const handleInject = async (count: number) => {
         setLoading(true);
         try {
-            const res = await fetch('http://localhost:8000/admin/simulate', {
+            const res = await fetch('/api/admin/simulate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tps, count }),

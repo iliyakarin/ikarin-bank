@@ -9,7 +9,7 @@ export default function TransferForm() {
         setLoading(true);
 
         // We send data to our FastAPI backend
-        await fetch('http://localhost:8000/transfer', {
+        await fetch('/api/transfer', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

@@ -150,7 +150,7 @@ export default function ActivityPage() {
             params.set("offset", String(offset));
 
             const res = await fetch(
-                `http://localhost:8000/api/v1/activity?${params.toString()}`,
+                `/api/api/v1/activity?${params.toString()}`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             if (res.ok) {

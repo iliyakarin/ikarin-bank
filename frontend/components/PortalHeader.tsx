@@ -19,7 +19,7 @@ export default function PortalHeader() {
 
   useEffect(() => {
     if (token) {
-      fetch("http://localhost:8000/api/v1/users/me/notifications", {
+      fetch("/api/api/v1/users/me/notifications", {
         headers: { Authorization: `Bearer ${token}` },
       })
         .then((res) => res.json())

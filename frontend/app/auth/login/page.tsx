@@ -27,7 +27,7 @@ export default function LoginPage() {
             params.append('username', formData.email);
             params.append('password', formData.password);
 
-            const res = await fetch('http://localhost:8000/auth/login', {
+            const res = await fetch('/api/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: params,
