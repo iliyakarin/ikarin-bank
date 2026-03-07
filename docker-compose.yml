@@ -18,14 +18,11 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:latest
     container_name: bank-clickhouse
-    environment:
-      - CLICKHOUSE_DB=banking_log
-
+    env_file: .env
     ports:
       - "8123:8123"
     volumes:
       - ./init-db/clickhouse_init.sql:/docker-entrypoint-initdb.d/init.sql
-      - ./init-db/readonly-user.xml:/etc/clickhouse-server/users.d/readonly-user.xml
       - ./data/clickhouse:/var/lib/clickhouse
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "localhost:8123/ping"]
@@ -38,6 +35,7 @@ services:
     container_name: bank-kafka
     ports:
       - "9092:9092"
+    env_file: .env
     environment:
       - KAFKA_NODE_ID=1
       - KAFKA_PROCESS_ROLES=broker,controller
@@ -49,11 +47,9 @@ services:
       - KAFKA_INTER_BROKER_LISTENER_NAME=SASL_PLAINTEXT
       - KAFKA_SASL_ENABLED_MECHANISMS=PLAIN
       - KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL=PLAIN
-      - KAFKA_LISTENER_NAME_SASL_PLAINTEXT_SASL_JAAS_CONFIG=org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="REDACTED" user_admin="REDACTED" user_kafka="REDACTED";
       - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
-      - CLUSTER_ID=[REDACTED]
       - KAFKA_OPTS=-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf
     volumes:
       - ./data/kafka:/var/lib/kafka/data
@@ -101,8 +97,6 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - PYTHONUNBUFFERED=1
-      - CLICKHOUSE_USER=writer
-      - CLICKHOUSE_PASSWORD=writer_secure_2025
 
     depends_on:
       kafka:
@@ -176,9 +170,7 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: bank-cloudflared
-    restart: unless-stopped
-    environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    env_file: .env
     command: tunnel --no-autoupdate run
     depends_on:
       - proxy
