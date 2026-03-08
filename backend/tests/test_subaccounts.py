@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 from decimal import Decimal
 import datetime
 from fastapi import HTTPException
+import asyncio
 
 # Need to import our routers and models. Since we mock dependencies, we'll
 # use the same structure as in test_p2p_transfer.
@@ -28,22 +29,27 @@ def test_subaccount_creation_limit(mock_fastapi_dependency):
     mock_db.execute = AsyncMock()
     mock_db.commit = AsyncMock()
     mock_db.rollback = AsyncMock()
+    mock_db.refresh = AsyncMock()
+    mock_db.add = MagicMock()
     
     # Mock finding the main account
     main_acc = MockAccount(100, 1, Decimal("100"), True, None, "Main")
     
     
+    call_count = 0
     def execute_side_effect(stmt, *args, **kwargs):
-        stmt_str = str(stmt).lower()
+        nonlocal call_count
+        call_count += 1
         mock_result = MagicMock()
         mock_scalars = MagicMock()
         mock_result.scalars.return_value = mock_scalars
 
-        if "count" in stmt_str:
+        if call_count == 1:
             mock_result.scalar.return_value = 10
             return mock_result
             
         mock_scalars.first.return_value = main_acc
+        mock_result.scalar.return_value = 0
         return mock_result
         
     mock_db.execute.side_effect = execute_side_effect
@@ -51,41 +57,43 @@ def test_subaccount_creation_limit(mock_fastapi_dependency):
     
     req = accounts_router.SubAccountCreate(name="Trip Fund")
     
-    with patch("routers.accounts.assign_account_credentials") as mock_assign:
-        try:
-            import asyncio
-            fn = getattr(accounts_router.create_sub_account, "__wrapped__", accounts_router.create_sub_account)
+    with patch("routers.accounts.assign_account_credentials", new_callable=AsyncMock) as mock_assign, \
+         patch("account_service.assign_account_credentials", new_callable=AsyncMock):
+        import asyncio
+        fn = getattr(accounts_router.create_sub_account, "__wrapped__", accounts_router.create_sub_account)
+        
+        with pytest.raises(accounts_router.HTTPException) as excinfo:
             if asyncio.iscoroutinefunction(fn):
                 asyncio.run(fn(request=req, current_request=MagicMock(), current_user=current_user, db=mock_db))
             else:
                 fn(request=req, current_request=MagicMock(), current_user=current_user, db=mock_db)
-            pytest.fail("Should have raised HTTPException for max limit")
-        except Exception as e:
-            assert getattr(e, "status_code", 0) == 400
-            assert "Maximum of 10 sub-accounts reached" in str(getattr(e, "detail", ""))
+        
+        assert excinfo.value.status_code == 400
+        assert "Maximum of 10 sub-accounts reached" in str(excinfo.value.detail)
 
 def test_subaccount_creation_invalid_name(mock_fastapi_dependency):
     import main
     import routers.accounts as accounts_router
     
-    try:
-        import asyncio
-        req = accounts_router.SubAccountCreate(name="Trip_Fund!@#")
-        current_user = MagicMock()
-        from unittest.mock import AsyncMock
-        mock_db = MagicMock()
-        mock_db.execute = AsyncMock()
-        mock_db.commit = AsyncMock()
-        mock_db.rollback = AsyncMock()
-        fn = getattr(accounts_router.create_sub_account, "__wrapped__", accounts_router.create_sub_account)
+    import asyncio
+    req = accounts_router.SubAccountCreate(name="Trip_Fund!@#")
+    current_user = MagicMock()
+    from unittest.mock import AsyncMock
+    mock_db = MagicMock()
+    mock_db.execute = AsyncMock()
+    mock_db.commit = AsyncMock()
+    mock_db.rollback = AsyncMock()
+    mock_db.refresh = AsyncMock()
+    mock_db.add = MagicMock()
+    fn = getattr(accounts_router.create_sub_account, "__wrapped__", accounts_router.create_sub_account)
+    with pytest.raises(accounts_router.HTTPException) as excinfo:
         if asyncio.iscoroutinefunction(fn):
             asyncio.run(fn(request=req, current_request=MagicMock(), current_user=current_user, db=mock_db))
         else:
             fn(request=req, current_request=MagicMock(), current_user=current_user, db=mock_db)
-        pytest.fail("Should have raised HTTPException for invalid name")
-    except Exception as e:
-        assert getattr(e, "status_code", 0) == 400
-        assert "Name can only contain letters, numbers, and spaces" in str(getattr(e, "detail", ""))
+    
+    assert excinfo.value.status_code == 400
+    assert "Name can only contain letters, numbers, and spaces" in str(excinfo.value.detail)
 
 def test_internal_transfer_success(mock_fastapi_dependency):
     import main
@@ -215,15 +223,13 @@ def test_internal_transfer_insufficient_funds(mock_fastapi_dependency):
         amount=Decimal("20.00")
     )
     
-    import asyncio
-    try:
+    with pytest.raises(accounts_router.HTTPException) as excinfo:
         fn = getattr(accounts_router.internal_transfer, "__wrapped__", accounts_router.internal_transfer)
         if asyncio.iscoroutinefunction(fn):
             asyncio.run(fn(request=req, current_request=MagicMock(), current_user=current_user, db=mock_db))
         else:
             fn(request=req, current_request=MagicMock(), current_user=current_user, db=mock_db)
-        pytest.fail("Should have raised HTTPException for funds")
-    except Exception as e:
-        assert getattr(e, "status_code", 0) == 400
-        assert "Insufficient funds in source account" in str(getattr(e, "detail", ""))
-        assert mock_db.rollback.call_count == 1
+    
+    assert excinfo.value.status_code == 400
+    assert "Insufficient funds in source account" in str(excinfo.value.detail)
+    assert mock_db.rollback.call_count == 1

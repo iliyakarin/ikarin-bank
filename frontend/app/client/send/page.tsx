@@ -113,7 +113,7 @@ export default function SendMoneyPage() {
 
     // Fetch contacts
     if (token) {
-      fetch("/api/api/v1/contacts", {
+      fetch("/api/v1/contacts", {
         headers: { Authorization: `Bearer ${token}` },
       })
         .then((res) => res.json())
@@ -160,7 +160,7 @@ export default function SendMoneyPage() {
     setScheduledHistoryLoading(true);
     try {
       const res = await fetch(
-        "/api/api/v1/transfers/scheduled",
+        "/api/v1/transfers/scheduled",
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -187,7 +187,7 @@ export default function SendMoneyPage() {
     setCancelModalOpen(false);
     try {
       const res = await fetch(
-        `/api/api/v1/transfers/scheduled/${cancelPaymentId}/cancel`,
+        `/api/v1/transfers/scheduled/${cancelPaymentId}/cancel`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
@@ -217,7 +217,7 @@ export default function SendMoneyPage() {
 
   const fetchRequests = async () => {
     try {
-      const res = await fetch("/api/api/v1/requests", {
+      const res = await fetch("/api/v1/requests", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -399,7 +399,7 @@ export default function SendMoneyPage() {
       };
 
       const res = await fetch(
-        "/api/api/v1/transfers/scheduled",
+        "/api/v1/transfers/scheduled",
         {
           method: "POST",
           headers: {
@@ -450,7 +450,7 @@ export default function SendMoneyPage() {
 
     try {
       const cleanPurpose = DOMPurify.sanitize(requestPurpose);
-      const res = await fetch("/api/api/v1/requests/create", {
+      const res = await fetch("/api/v1/requests/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -487,7 +487,7 @@ export default function SendMoneyPage() {
     setLoading(true);
     setError("");
     setSuccess(false);
-    let endpoint = `/api/api/v1/requests/${requestId}/${action}`;
+    let endpoint = `/api/v1/requests/${requestId}/${action}`;
     let method = "POST";
     let body: any = {};
 
