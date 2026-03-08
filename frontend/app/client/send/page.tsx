@@ -69,6 +69,7 @@ export default function SendMoneyPage() {
   const [isVendorDropdownOpen, setIsVendorDropdownOpen] = useState(false);
   const [isSourceDropdownOpen, setIsSourceDropdownOpen] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showInstantConfirmation, setShowInstantConfirmation] = useState(false);
 
   // Scheduled History State
   const [scheduledHistory, setScheduledHistory] = useState<any[]>([]);
@@ -123,10 +124,8 @@ export default function SendMoneyPage() {
         .catch((err) => console.error("Failed to load contacts", err));
     }
 
-    // Set tomorrow as default start date
-    const tmrw = new Date();
-    tmrw.setDate(tmrw.getDate() + 1);
-    setStartDate(tmrw.toISOString().split("T")[0]);
+    // Set today as default start date
+    setStartDate(new Date().toISOString().split("T")[0]);
 
     fetchRequests();
     if (activeTab === "scheduled") {
@@ -274,17 +273,24 @@ export default function SendMoneyPage() {
     }
   };
 
-  const handleInstantSubmit = async (e: React.FormEvent) => {
+  const handleInstantSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError("");
     setSuccess(false);
 
     if (!recipient.trim() || !amount || parseFloat(amount) <= 0) {
       setError("Please provide a valid recipient and an amount greater than 0");
-      setLoading(false);
       return;
     }
+
+    setShowInstantConfirmation(true);
+  };
+
+  const confirmAndSendInstant = async () => {
+    setShowInstantConfirmation(false);
+    setLoading(true);
+    setError("");
+    setSuccess(false);
 
     try {
       const cleanCommentary = DOMPurify.sanitize(commentary);
@@ -340,12 +346,12 @@ export default function SendMoneyPage() {
       return;
     }
 
-    // Validation: No past dates or today
+    // Validation: No past dates
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const startD = new Date(startDate);
-    if (startD <= today) {
-      setError("Start date must be in the future.");
+    if (startD < today) {
+      setError("Start date must be today or in the future.");
       setLoading(false);
       return;
     }
@@ -859,6 +865,80 @@ export default function SendMoneyPage() {
                     className="flex-1 py-3 px-4 rounded-xl font-bold text-white bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 shadow-lg"
                   >
                     Confirm
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Instant Transfer Confirmation Modal */}
+      <AnimatePresence>
+        {showInstantConfirmation && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                setShowInstantConfirmation(false);
+              }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="relative bg-[#2a1f42] border border-white/10 w-full max-w-md rounded-[2rem] p-8 shadow-2xl overflow-hidden"
+            >
+              <div className="space-y-6">
+                <div className="space-y-2 text-center">
+                  <h3 className="text-2xl font-bold text-white">
+                    Confirm Instant Transfer
+                  </h3>
+                  <p className="text-white/60">
+                    Please review your transfer details below.
+                  </p>
+                </div>
+
+                <div className="bg-white/5 rounded-xl border border-white/10 p-5 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-white/60 text-sm">Recipient</span>
+                    <span className="text-white font-medium text-right break-all ml-4">
+                      {recipient}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-white/60 text-sm">Amount</span>
+                    <span className="text-white font-bold text-lg text-emerald-400">
+                      ${parseFloat(amount || "0").toFixed(2)}
+                    </span>
+                  </div>
+                  {commentary && (
+                    <div className="flex justify-between items-start">
+                      <span className="text-white/60 text-sm">Comment</span>
+                      <span className="text-white font-medium text-right ml-4 italic text-sm">
+                        "{commentary}"
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      setShowInstantConfirmation(false);
+                    }}
+                    className="flex-1 py-3 px-4 rounded-xl font-bold text-white/80 hover:text-white hover:bg-white/10 transition-colors border border-white/20"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmAndSendInstant}
+                    className="flex-1 py-3 px-4 rounded-xl font-bold text-white bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 shadow-lg"
+                  >
+                    Send Now
                   </button>
                 </div>
               </div>
