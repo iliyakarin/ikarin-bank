@@ -35,6 +35,14 @@ To rebuild and deploy the services after changes:
 docker compose up --build -d
 ```
 
+
+### 📝 Roadmap / Future Features (Mock Service)
+- [ ] **mTLS Implementation**: Transition from API Keys to Mutual TLS for certificate-based handshakes.
+- [ ] **Signed JWS**: Implement JWS (JSON Web Signatures) for payload integrity.
+- [ ] **Debit Card Rail**: Add ISO 8583 simulation for real-time merchant authorization.
+- [ ] **Webhooks**: Implement push notifications for asynchronous ACH settlement status.
+
+
 ## License
 
 This project is licensed under a non-commercial license. The code and its derivatives may **not** be used for commercial purposes.
