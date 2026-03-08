@@ -29,6 +29,7 @@ CH_CLIENT = clickhouse_connect.get_client(
     username=os.getenv("CLICKHOUSE_USER"),
     password=os.getenv("CLICKHOUSE_PASSWORD")
 )
+CH_DB = os.getenv("CLICKHOUSE_DB")
 
 # User and account data
 USERS = {
@@ -253,7 +254,7 @@ def insert_to_clickhouse(transactions):
         ]
         
         CH_CLIENT.insert(
-            'banking.transactions',
+            f'{CH_DB}.transactions',
             data_to_insert,
             column_names=[
                 'transaction_id',
