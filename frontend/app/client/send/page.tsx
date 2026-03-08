@@ -346,11 +346,11 @@ export default function SendMoneyPage() {
       return;
     }
 
-    // Validation: No past dates
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const startD = new Date(startDate);
-    if (startD < today) {
+    // Validation: No past dates (local comparison)
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    if (startDate < todayStr) {
       setError("Start date must be today or in the future.");
       setLoading(false);
       return;
@@ -368,7 +368,11 @@ export default function SendMoneyPage() {
       }
     } else if (
       endCondition !== "End Date" &&
-      new Date(startD.setFullYear(startD.getFullYear() + 2)) > mockExpiry
+      (() => {
+        const d = new Date(startDate);
+        d.setFullYear(d.getFullYear() + 2);
+        return d > mockExpiry;
+      })()
     ) {
       // Rough heuristic for "Until Cancelled"
       setError(

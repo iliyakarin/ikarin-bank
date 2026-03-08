@@ -1404,7 +1404,8 @@ async def create_scheduled_transfer(
     if start_date.tzinfo is not None:
         start_date = start_date.astimezone(datetime.timezone.utc).replace(tzinfo=None)
     
-    if start_date.date() < now_utc.date():
+    # Validation: allow today in user's timezone even if UTC is tomorrow
+    if start_date.date() < (now_utc.date() - datetime.timedelta(days=1)):
         raise HTTPException(status_code=400, detail="Start date must be today or in the future.")
 
     ik = transfer.idempotency_key or str(uuid.uuid4())
