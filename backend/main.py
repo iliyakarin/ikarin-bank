@@ -1398,7 +1398,13 @@ async def create_scheduled_transfer(
         raise HTTPException(status_code=400, detail="Amount exceeds maximum scheduled transfer limit of $5000.")
 
     # Validation: start date in future
-    if transfer.start_date.date() <= datetime.datetime.utcnow().date():
+    now_utc = datetime.datetime.utcnow()
+    # Ensure start_date is naive UTC if it comes with tzinfo
+    start_date = transfer.start_date
+    if start_date.tzinfo is not None:
+        start_date = start_date.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    
+    if start_date.date() <= now_utc.date():
         raise HTTPException(status_code=400, detail="Start date must be in the future.")
 
     ik = transfer.idempotency_key or str(uuid.uuid4())
@@ -1439,7 +1445,11 @@ async def create_scheduled_transfer(
             sender_account.reserved_balance += transfer.amount
 
         # The first run should happen at the start_date provided by user
-        next_run = transfer.start_date
+        next_run = start_date
+        
+        end_date = transfer.end_date
+        if end_date and end_date.tzinfo is not None:
+            end_date = end_date.astimezone(datetime.timezone.utc).replace(tzinfo=None)
 
         new_scheduled_payment = ScheduledPayment(
             user_id=current_user.id,
@@ -1447,9 +1457,9 @@ async def create_scheduled_transfer(
             amount=transfer.amount,
             frequency=transfer.frequency,
             frequency_interval=transfer.frequency_interval,
-            start_date=transfer.start_date,
+            start_date=start_date,
             end_condition=transfer.end_condition,
-            end_date=transfer.end_date,
+            end_date=end_date,
             target_payments=transfer.target_payments,
             next_run_at=next_run,
             status="Active",
