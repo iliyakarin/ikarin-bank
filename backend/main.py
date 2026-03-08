@@ -85,6 +85,8 @@ class UserResponse(BaseModel):
     email: str
     backup_email: Optional[str] = None
     role: str
+    time_format: str
+    date_format: str
 
     class Config:
         from_attributes = True
@@ -107,6 +109,10 @@ class UserBackupUpdate(BaseModel):
 class UserPasswordUpdate(BaseModel):
     current_password: str
     new_password: str
+
+class UserPreferencesUpdate(BaseModel):
+    time_format: Optional[str] = None
+    date_format: Optional[str] = None
 
 
 class P2PTransferRequest(BaseModel):
@@ -336,6 +342,21 @@ async def update_password(
     await db.commit()
     
     return {"status": "success"}
+
+@app.patch("/v1/users/me/preferences", response_model=UserResponse)
+async def update_preferences(
+    pref_data: UserPreferencesUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if pref_data.time_format:
+        current_user.time_format = pref_data.time_format
+    if pref_data.date_format:
+        current_user.date_format = pref_data.date_format
+    
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
 
 
 @app.post("/auth/logout")

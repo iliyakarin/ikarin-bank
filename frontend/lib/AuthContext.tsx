@@ -9,6 +9,8 @@ interface User {
     email: string;
     backup_email?: string;
     role: string;
+    time_format: string;
+    date_format: string;
 }
 
 interface Settings {
@@ -36,13 +38,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
 
     useEffect(() => {
-        const savedSettings = localStorage.getItem('bank_settings');
-        if (savedSettings) {
-            try {
-                setSettings(JSON.parse(savedSettings));
-            } catch (e) { }
-        }
-
         const savedToken = localStorage.getItem('bank_token');
         if (savedToken) {
             setToken(savedToken);
@@ -62,6 +57,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (res.ok) {
                 const userData = await res.json();
                 setUser(userData);
+                // Sync settings from db
+                setSettings({
+                    use24Hour: userData.time_format === '24h',
+                    useEUDates: userData.date_format === 'EU'
+                });
             } else {
                 logout();
             }
@@ -99,10 +99,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         router.push('/auth/login');
     };
 
-    const updateSettings = (newSettings: Partial<Settings>) => {
+    const updateSettings = async (newSettings: Partial<Settings>) => {
         const updated = { ...settings, ...newSettings };
         setSettings(updated);
-        localStorage.setItem('bank_settings', JSON.stringify(updated));
+
+        // Persist to DB if logged in
+        if (token) {
+            try {
+                await fetch('/api/v1/users/me/preferences', {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        time_format: updated.use24Hour ? '24h' : '12h',
+                        date_format: updated.useEUDates ? 'EU' : 'US'
+                    })
+                });
+            } catch (err) {
+                console.error("Failed to persist settings", err);
+            }
+        }
     };
 
     return (
