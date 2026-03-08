@@ -114,6 +114,7 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
         try:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
+                None,
                 lambda: client.insert(
                     f"{CH_DB}.transactions",
                     data_to_insert,
