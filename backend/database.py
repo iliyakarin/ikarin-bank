@@ -43,6 +43,8 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     # Use server_default to ensure existing rows get a value during migration
     role = Column(String(20), default="user", server_default="user", nullable=False)
+    time_format = Column(String(10), default="12h", server_default="12h", nullable=False)
+    date_format = Column(String(10), default="US", server_default="US", nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class Account(Base):
