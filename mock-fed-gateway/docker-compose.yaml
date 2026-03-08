@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  fed-gateway-db:
+    image: postgres:16-alpine
+    container_name: fed-gateway-db
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+      - POSTGRES_DB=fed_gateway_db
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d fed_gateway_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mock-fed-gateway:
+    build: .
+    container_name: mock-fed-gateway
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://admin:admin@fed-gateway-db:5432/fed_gateway_db
+      - GATEWAY_API_KEY=[REDACTED]
+    ports:
+      - "8002:8002"
+    depends_on:
+      fed-gateway-db:
+        condition: service_healthy
