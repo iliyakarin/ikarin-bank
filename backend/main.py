@@ -58,15 +58,11 @@ app.add_middleware(
 )
 
 # Auth Configuration
-SECRET_KEY = os.getenv("SECRET_KEY")
-if not SECRET_KEY:
-    raise ValueError("SECRET_KEY environment variable is not set. Cannot start application securely.")
-ALGORITHM = "HS256"
-
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+from auth_utils import (
+    SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, 
+    pwd_context, oauth2_scheme, verify_password, get_password_hash, 
+    create_access_token, get_db, get_current_user, RoleChecker
+)
 
 
 # Pydantic Models for Auth
@@ -184,63 +180,7 @@ class ContactUpdate(BaseModel):
     contact_email: str
 
 # Helper Functions
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.datetime.utcnow() + datetime.timedelta(
-        minutes=ACCESS_TOKEN_EXPIRE_MINUTES
-    )
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-
-async def get_db():
-    async with SessionLocal() as db:
-        yield db
-
-
-async def get_current_user(
-    token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)
-):
-    credentials_exception = HTTPException(
-        status_code=401,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-    result = await db.execute(select(User).filter(User.email == email))
-    user = result.scalars().first()
-    if user is None:
-        raise credentials_exception
-    return user
-
-
-class RoleChecker:
-    def __init__(self, allowed_roles: List[str]):
-        self.allowed_roles = allowed_roles
-
-    def __call__(self, current_user: User = Depends(get_current_user)):
-        if current_user.role not in self.allowed_roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have the required permissions for this operation"
-            )
-        return current_user
-
+# Role Checkers
 admin_only = RoleChecker(["admin"])
 support_only = RoleChecker(["admin", "support"])
 
@@ -330,7 +270,7 @@ async def login(
 async def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
-@app.post("/api/v1/users/me/backup", response_model=UserResponse)
+@app.post("/v1/users/me/backup", response_model=UserResponse)
 async def update_backup_email(
     update_data: UserBackupUpdate,
     request: Request,
@@ -366,7 +306,7 @@ async def update_backup_email(
     
     return current_user
 
-@app.post("/api/v1/users/me/password")
+@app.post("/v1/users/me/password")
 async def update_password(
     password_data: UserPasswordUpdate,
     request: Request,
@@ -465,7 +405,7 @@ async def ws_activity(websocket: WebSocket, token: str):
         ws_unregister(user.id, websocket)
 
 
-@app.get("/api/v1/users/me/notifications", response_model=List[NotificationResponse])
+@app.get("/v1/users/me/notifications", response_model=List[NotificationResponse])
 async def get_notifications(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -1242,7 +1182,7 @@ async def create_p2p_transfer(
 
 # --- Payment Requests Endpoints ---
 
-@app.post("/api/v1/requests/create")
+@app.post("/v1/requests/create")
 async def create_payment_request(
     request_data: PaymentRequestCreate,
     db: Session = Depends(get_db),
@@ -1280,7 +1220,7 @@ async def create_payment_request(
     return {"status": "success", "request_id": new_request.id}
 
 
-@app.get("/api/v1/requests")
+@app.get("/v1/requests")
 async def get_payment_requests(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -1313,7 +1253,7 @@ async def get_payment_requests(
     return result
 
 
-@app.post("/api/v1/requests/{request_id}/counter")
+@app.post("/v1/requests/{request_id}/counter")
 async def counter_payment_request(
     request_id: int,
     counter_data: PaymentRequestCounter,
@@ -1352,7 +1292,7 @@ async def counter_payment_request(
     return {"status": "success", "request_id": req.id, "new_amount": float(req.amount), "new_status": req.status}
 
 
-@app.post("/api/v1/requests/{request_id}/decline")
+@app.post("/v1/requests/{request_id}/decline")
 async def decline_payment_request(
     request_id: int,
     db: Session = Depends(get_db),
@@ -1446,7 +1386,7 @@ def _calculate_next_run_at(reference_date: datetime.datetime, frequency: str, in
 
     return None
 
-@app.post("/api/v1/transfers/scheduled")
+@app.post("/v1/transfers/scheduled")
 async def create_scheduled_transfer(
     transfer: ScheduledTransferCreate,
     request: Request,
@@ -1559,7 +1499,7 @@ async def create_scheduled_transfer(
         raise HTTPException(status_code=500, detail="Internal processing error")
 
 
-@app.get("/api/v1/transfers/scheduled", response_model=List[ScheduledPaymentResponse])
+@app.get("/v1/transfers/scheduled", response_model=List[ScheduledPaymentResponse])
 async def get_scheduled_payments(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -1572,7 +1512,7 @@ async def get_scheduled_payments(
     
     return payments
 
-@app.post("/api/v1/transfers/scheduled/{payment_id}/cancel")
+@app.post("/v1/transfers/scheduled/{payment_id}/cancel")
 async def cancel_scheduled_payment(
     payment_id: int,
     db: Session = Depends(get_db),
@@ -1605,7 +1545,7 @@ async def cancel_scheduled_payment(
 
 # --- Activity Log Endpoint ---
 
-@app.get("/api/v1/activity")
+@app.get("/v1/activity")
 async def get_activity(
     category: Optional[str] = None,
     from_date: Optional[str] = None,
@@ -2041,7 +1981,7 @@ async def get_all_transactions(
 
 # --- Contacts Endpoints ---
 
-@app.get("/api/v1/contacts", response_model=List[ContactResponse])
+@app.get("/v1/contacts", response_model=List[ContactResponse])
 async def get_contacts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -2050,7 +1990,7 @@ async def get_contacts(
     contacts = result.scalars().all()
     return contacts
 
-@app.post("/api/v1/contacts", response_model=ContactResponse)
+@app.post("/v1/contacts", response_model=ContactResponse)
 async def create_contact(
     contact_data: ContactCreate,
     db: Session = Depends(get_db),
@@ -2081,7 +2021,7 @@ async def create_contact(
     
     return new_contact
 
-@app.put("/api/v1/contacts/{contact_id}", response_model=ContactResponse)
+@app.put("/v1/contacts/{contact_id}", response_model=ContactResponse)
 async def update_contact(
     contact_id: int,
     contact_data: ContactUpdate,
@@ -2119,7 +2059,7 @@ async def update_contact(
     
     return contact
 
-@app.delete("/api/v1/contacts/{contact_id}")
+@app.delete("/v1/contacts/{contact_id}")
 async def delete_contact(
     contact_id: int,
     db: Session = Depends(get_db),
@@ -2480,7 +2420,7 @@ async def get_banking_metrics(
         ORDER BY date DESC
         """
 
-        user_growth_result = db.execute(text(user_growth_query))
+        user_growth_result = await db.execute(text(user_growth_query))
         user_growth = [
             {"date": str(row[0]), "count": int(row[1])} for row in user_growth_result
         ]

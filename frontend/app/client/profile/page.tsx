@@ -50,7 +50,7 @@ export default function ProfilePage() {
         setBackupLoading(true);
 
         try {
-            const res = await fetch("/api/api/v1/users/me/backup", {
+            const res = await fetch("/api/v1/users/me/backup", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -98,7 +98,7 @@ export default function ProfilePage() {
 
         try {
             const res = await fetch(
-                "/api/api/v1/users/me/password",
+                "/api/v1/users/me/password",
                 {
                     method: "POST",
                     headers: {

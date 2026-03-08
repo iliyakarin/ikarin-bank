@@ -12,10 +12,10 @@ import datetime
 import uuid
 
 # Assume these dependencies are imported from main or structured accordingly
-from main import get_db, get_current_user
+from auth_utils import get_db, get_current_user
 
 router = APIRouter(
-    prefix="/api/v1/accounts",
+    prefix="/v1/accounts",
     tags=["Accounts"],
 )
 
@@ -84,7 +84,7 @@ async def create_sub_account(
         balance=Decimal("0.00"),
         reserved_balance=Decimal("0.00")
     )
-    assign_account_credentials(db, new_sub)
+    await assign_account_credentials(db, new_sub)
     db.add(new_sub)
 
     emit_activity(
@@ -118,7 +118,7 @@ async def rename_account(
     if not is_valid_name(name):
         raise HTTPException(status_code=400, detail="Name can only contain letters, numbers, and spaces")
 
-    account = check_account_owner(account_id, current_user.id, db)
+    account = await check_account_owner(account_id, current_user.id, db)
 
     old_name = account.name
     account.name = name
