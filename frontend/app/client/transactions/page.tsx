@@ -47,17 +47,20 @@ export default function TransactionsPage() {
 
         if (res.ok) {
           const data = await res.json();
+          console.log(`[TransactionsPage] Fetched ${data.transactions?.length || 0} transactions`);
           setTransactions(data.transactions || []);
         } else {
-          console.error("Failed to load transactions", await res.text());
+          const errorText = await res.text();
+          console.error("[TransactionsPage] Failed to load transactions", errorText);
         }
       } catch (error) {
-        console.error("Error fetching transactions:", error);
+        console.error("[TransactionsPage] Error fetching transactions:", error);
       } finally {
         setLoading(false);
       }
     };
 
+    console.log("[TransactionsPage] Effect triggered with token:", !!token);
     if (token) fetchTransactions();
   }, [token, dayRange, txType, minAmount, maxAmount, sortAsc]);
 
@@ -298,9 +301,28 @@ export default function TransactionsPage() {
                         {Math.abs(tx.amount).toFixed(2)}
                       </td>
                       <td className="px-6 py-4 text-white/60 text-sm text-right">
-                        {new Date(tx.timestamp + "Z").toLocaleString(settings.useEUDates ? "en-GB" : "en-US", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: !settings.use24Hour })}
+                        {(() => {
+                          try {
+                            const date = new Date(tx.timestamp + "Z");
+                            return date.toLocaleString(
+                              settings?.useEUDates ? "en-GB" : "en-US",
+                              {
+                                year: "numeric",
+                                month: "2-digit",
+                                day: "2-digit",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                                hour12: !settings?.use24Hour
+                              }
+                            );
+                          } catch (e) {
+                            console.error("[TransactionsPage] Error formatting date:", e);
+                            return tx.timestamp;
+                          }
+                        })()}
                       </td>
-                      <td className="px-6 py-4 text-right text-white/70">
+                      <td className="px-6 py-4 text-white/60 text-sm text-right">
                         {tx.status || "Cleared"}
                       </td>
                     </tr>
@@ -310,7 +332,7 @@ export default function TransactionsPage() {
             </div>
 
             {/* Stats Footer */}
-            <div className="border-t border-white/10 bg-white/5 px-6 py-6 grid grid-cols-3 gap-8">
+            <div className="border-t border-white/10 bg-white/5 px-6 py-6 grid grid-cols-1 md:grid-cols-3 gap-8">
               <div>
                 <p className="text-white/60 text-sm mb-2">Total Transactions</p>
                 <p className="text-white text-2xl font-bold">{stats.total}</p>
