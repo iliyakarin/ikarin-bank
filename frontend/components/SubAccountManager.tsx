@@ -100,7 +100,7 @@ export default function SubAccountManager({ accounts, refresh }: SubAccountManag
                                                 <span className="font-semibold text-white">{mainAccount.name}</span>
                                                 <span className="px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold bg-emerald-500/20 text-emerald-400 rounded-full">Primary</span>
                                             </div>
-                                            <p className="text-sm text-white/50 pt-1">ID: ****{mainAccount.id.toString().padStart(4, '0')}</p>
+                                            <p className="text-sm text-white/50 pt-1">Account: {mainAccount.masked_account_number || `****${mainAccount.id.toString().padStart(4, '0')}`}</p>
                                         </div>
                                         <div className="text-right flex items-center gap-4">
                                             <p className="text-lg font-bold text-white">{formatCurrency(mainAccount.balance)}</p>
@@ -116,7 +116,7 @@ export default function SubAccountManager({ accounts, refresh }: SubAccountManag
                                     <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between hover:bg-white/10 transition-colors group">
                                         <div>
                                             <span className="font-semibold text-white">{acc.name}</span>
-                                            <p className="text-sm text-white/50 pt-1">ID: ****{acc.id.toString().padStart(4, '0')}</p>
+                                            <p className="text-sm text-white/50 pt-1">Account: {acc.masked_account_number || `****${acc.id.toString().padStart(4, '0')}`}</p>
                                         </div>
                                         <div className="flex items-center gap-4">
                                             <div className="text-right">
