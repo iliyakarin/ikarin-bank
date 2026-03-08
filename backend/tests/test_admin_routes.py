@@ -30,8 +30,8 @@ async def test_admin_only_dependency_logic(mock_fastapi_dependency):
         else:
             admin_only(regular_user)
         pytest.fail("Should have raised HTTPException")
-    except main.HTTPException as e:
-        assert e.status_code == 403
+    except Exception as e:
+        assert getattr(e, "status_code", 0) == 403
 
 @pytest.mark.asyncio
 async def test_get_ch_logs_requires_admin(mock_fastapi_dependency):
