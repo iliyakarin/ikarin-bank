@@ -1473,6 +1473,27 @@ async def decline_payment_request(
         "request_id": req.id,
         "amount": float(req.amount),
     })
+
+    # If this request was tied to a transaction (e.g. pending), update its status in ClickHouse
+    # Fetch original transaction if exists
+    res = await db.execute(select(Transaction).filter(Transaction.payment_request_id == req.id))
+    txs = res.scalars().all()
+    for tx in txs:
+        # Emit a status update for each related transaction record
+        from activity import emit_transaction_status_update
+        emit_transaction_status_update(
+            db,
+            transaction_id=str(tx.id),
+            account_id=tx.account_id,
+            status="declined",
+            amount=float(tx.amount),
+            category=tx.category,
+            merchant=tx.merchant,
+            transaction_type=tx.transaction_type,
+            transaction_side=tx.transaction_side,
+            commentary=f"Payment request #{req.id} declined"
+        )
+
     await db.commit()
     return {"status": "success", "request_id": req.id, "new_status": req.status}
 def _calculate_next_run_at(reference_date: datetime.datetime, frequency: str, interval: str = None) -> Optional[datetime.datetime]:
@@ -1900,51 +1921,62 @@ async def get_recent_transactions(
         account_ids_str = ",".join([str(aid) for aid in account_ids])
         
         query = f"""
-            SELECT 
-                toString(transaction_id) as id,
-                amount,
-                category,
-                merchant,
-                sender_email,
-                recipient_email,
-                transaction_type,
-                transaction_side,
-                event_time,
-                subscriber_id,
-                failure_reason
-            FROM {CH_DB}.transactions
-            WHERE account_id IN ({account_ids_str})
-            AND event_time >= now() - INTERVAL {hours} HOUR
+            SELECT * FROM (
+                SELECT 
+                    toString(transaction_id) as id,
+                    amount,
+                    category,
+                    merchant,
+                    sender_email,
+                    recipient_email,
+                    transaction_type,
+                    transaction_side,
+                    event_time,
+                    subscriber_id,
+                    failure_reason,
+                    status
+                FROM {CH_DB}.transactions
+                WHERE account_id IN ({account_ids_str})
+                AND event_time >= now() - INTERVAL {hours} HOUR
+                ORDER BY event_time DESC
+                LIMIT 1 BY transaction_id
+            )
             ORDER BY event_time DESC
-            LIMIT 20
         """
         
         ch_results = ch_client.query(query).result_rows
         
         # 3. Merge and formatting
-        # We prefer ClickHouse data (status='cleared'), but keep Postgres data if it's not in CH yet (status='pending')
+        # We prefer ClickHouse data (confirmed history), but keep Postgres data if it's not in CH yet (pending)
         
         final_txs = []
         ch_ids = set()
         
         # Process ClickHouse results first (Confirmed transactions)
+        # Use a temporary dict to keep only the LATEST row for each transaction_id
+        # (Since we ORDER BY event_time DESC, the first one encountered is the latest)
+        latest_ch_txs = {}
         for row in ch_results:
             tx_id = row[0]
+            if tx_id not in latest_ch_txs:
+                latest_ch_txs[tx_id] = {
+                    "id": tx_id,
+                    "amount": float(row[1]),
+                    "category": row[2],
+                    "merchant": row[3],
+                    "sender_email": row[4],
+                    "recipient_email": row[5],
+                    "transaction_type": row[6],
+                    "transaction_side": row[7],
+                    "created_at": row[8].isoformat() if row[8] else None,
+                    "subscriber_id": row[9],
+                    "failure_reason": row[10],
+                    "status": row[11] # Use the actual status from CH
+                }
+        
+        for tx_id, tx_data in latest_ch_txs.items():
             ch_ids.add(tx_id)
-            final_txs.append({
-                "id": tx_id,
-                "amount": float(row[1]),
-                "category": row[2],
-                "merchant": row[3],
-                "sender_email": row[4],
-                "recipient_email": row[5],
-                "transaction_type": row[6],
-                "transaction_side": row[7],
-                "created_at": row[8].isoformat() if row[8] else None,
-                "subscriber_id": row[9],
-                "failure_reason": row[10],
-                "status": "cleared"
-            })
+            final_txs.append(tx_data)
             
         # Process Postgres results (Pending/In-flight)
         for tx in pg_transactions:
@@ -2056,22 +2088,26 @@ async def get_all_transactions(
         sort_dir = "ASC" if sort and sort.lower() == "asc" else "DESC"
 
         query = f"""
-        SELECT
-            transaction_id,
-            sender_email,
-            recipient_email,
-            amount,
-            category,
-            merchant,
-            transaction_type,
-            transaction_side,
-            event_time,
-            internal_account_last_4,
-            subscriber_id,
-            failure_reason,
-            status
-        FROM {CH_DB}.transactions
-        WHERE {where_clause}
+        SELECT * FROM (
+            SELECT
+                transaction_id,
+                sender_email,
+                recipient_email,
+                amount,
+                category,
+                merchant,
+                transaction_type,
+                transaction_side,
+                event_time,
+                internal_account_last_4,
+                subscriber_id,
+                failure_reason,
+                status
+            FROM {CH_DB}.transactions
+            WHERE {where_clause}
+            ORDER BY event_time DESC
+            LIMIT 1 BY transaction_id
+        )
         ORDER BY event_time {sort_dir}
         LIMIT 100
         """

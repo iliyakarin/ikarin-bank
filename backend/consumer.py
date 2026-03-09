@@ -27,8 +27,8 @@ CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
 CH_DB = os.getenv("CLICKHOUSE_DB", "banking_log")
 
 # OPTIMIZED CONFIGURATION
-OPTIMAL_BATCH_SIZE = 1000
-OPTIMAL_FLUSH_INTERVAL = 30
+OPTIMAL_BATCH_SIZE = 100
+OPTIMAL_FLUSH_INTERVAL = 5
 OPTIMAL_SESSION_TIMEOUT = 10000
 MAX_RETRIES = 3
 
@@ -132,6 +132,7 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                 ),
             )
             logger.info(f"🚀 Async flush completed in {time.time() - start_time:.2f}s")
+            return True
             return True
         except Exception as e:
             logger.warning(f"⚠️ Async flush failed, falling back to sync: {e}")
