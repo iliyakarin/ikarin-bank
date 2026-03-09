@@ -266,6 +266,27 @@ async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment,
         created_at=datetime.utcnow()
     )
     db.add(failed_tx)
+    
+    # Emit to ClickHouse via Outbox
+    from main import _create_p2p_outbox_entries
+    from database import Account
+    # We only need the sender's side for a failed funding attempt
+    db.add(Outbox(
+        event_type="p2p.sender",
+        payload={
+            "transaction_id": failed_tx.id,
+            "account_id": funding_account.id,
+            "amount": float(failed_tx.amount),
+            "category": failed_tx.category,
+            "merchant": failed_tx.merchant,
+            "transaction_type": failed_tx.transaction_type,
+            "transaction_side": failed_tx.transaction_side,
+            "status": "failed",
+            "failure_reason": failed_tx.failure_reason,
+            "timestamp": datetime.utcnow().isoformat(),
+            "commentary": failed_tx.commentary
+        }
+    ))
 
     if payment.retry_count >= 3:
         payment.status = "Failed" # Terminal state
