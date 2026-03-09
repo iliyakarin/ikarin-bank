@@ -95,7 +95,7 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                 msg["merchant"],
                 msg.get("transaction_type") or "expense",
                 msg.get("transaction_side") or "",
-                msg["timestamp"],
+                datetime.fromisoformat(msg["timestamp"].replace("Z", "+00:00")) if isinstance(msg["timestamp"], str) else msg["timestamp"],
                 msg.get("internal_account_last_4") or "",
                 msg.get("subscriber_id"),
                 msg.get("failure_reason"),

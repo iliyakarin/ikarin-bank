@@ -893,13 +893,39 @@ def get_ch_logs(current_user: User = Depends(admin_only)):
     return logs
 
 
-@app.post("/admin/sync-clickhouse")
+@app.post("/v1/admin/sync-clickhouse")
 def manual_sync_clickhouse(
     background_tasks: BackgroundTasks,
     current_user: User = Depends(admin_only)
 ):
     background_tasks.add_task(run_sync_check)
     return {"status": "success", "message": "Manual ClickHouse sync started in the background."}
+
+
+@app.get("/v1/admin/config")
+async def get_admin_config(current_user: User = Depends(admin_only)):
+    """Returns masked configuration for database connectivity."""
+    from database import POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER, POSTGRES_DB
+    
+    return {
+        "clickhouse": {
+            "host": CH_HOST,
+            "port": CH_PORT,
+            "username": CH_USER,
+            "database": "banking"
+        },
+        "postgres": {
+            "host": POSTGRES_HOST,
+            "port": POSTGRES_PORT,
+            "username": POSTGRES_USER,
+            "database": POSTGRES_DB
+        },
+        "kafka": {
+            "bootstrap_servers": KAFKA_BOOTSTRAP_SERVERS,
+            "username": KAFKA_USER,
+            "topic": KAFKA_TOPIC
+        }
+    }
 
 
 # Kafka Producer state
@@ -2636,7 +2662,7 @@ async def get_banking_metrics(
         """
 
 
-        volume_result = ch_client.query(volume_query)
+        volume_result = ch_client.query(volume_query.format(CH_DB=CH_DB))
         volume_data = volume_result.result_rows[0]
         total_volume = float(volume_data[0]) if volume_data[0] else 0
         transaction_count = int(volume_data[1]) if volume_data[1] else 0
@@ -2652,7 +2678,7 @@ async def get_banking_metrics(
         """
 
 
-        top_result = ch_client.query(top_transactions_query)
+        top_result = ch_client.query(top_transactions_query.format(CH_DB=CH_DB))
         top_transactions = [
             {
                 "merchant": row[0],
@@ -2666,7 +2692,7 @@ async def get_banking_metrics(
         # Hourly volume for last 24h
         hourly_query = """
         SELECT 
-            toHour(created_at) as hour,
+            toHour(event_time) as hour,
             COUNT(*) as count,
             SUM(amount) as total
         FROM {CH_DB}.transactions 
@@ -2675,7 +2701,7 @@ async def get_banking_metrics(
         ORDER BY hour
         """
 
-        hourly_result = ch_client.query(hourly_query)
+        hourly_result = ch_client.query(hourly_query.format(CH_DB=CH_DB))
         hourly_volume = [
             {
                 "hour": int(row[0]),
@@ -2691,15 +2717,15 @@ async def get_banking_metrics(
             merchant,
             COUNT(*) as transaction_count,
             SUM(amount) as total_amount
-        FROM bank_transactions 
-        WHERE created_at >= now() - INTERVAL 7 DAY
+        FROM {CH_DB}.transactions 
+        WHERE event_time >= now() - INTERVAL 7 DAY
             AND merchant != ''
         GROUP BY merchant 
         ORDER BY total_amount DESC 
         LIMIT 10
         """
 
-        merchant_result = ch_client.query(merchant_query)
+        merchant_result = ch_client.query(merchant_query.format(CH_DB=CH_DB))
         merchant_stats = [
             {
                 "merchant": row[0],

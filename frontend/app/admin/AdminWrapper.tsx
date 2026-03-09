@@ -31,6 +31,12 @@ export function AdminWrapper({ children }: { children: React.ReactNode }) {
         );
     }
 
+    // Guard: Do not render anything if not logged in or not an admin
+    // The useEffect will handle the actual redirection or notFound error
+    if (!token || user?.role !== 'admin') {
+        return null;
+    }
+
     return (
         <AdminRouteBoundary>
             <div className="min-h-screen bg-[#020617] text-slate-200">

@@ -2,10 +2,11 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, BarChart3, Settings } from 'lucide-react';
+import { Search, BarChart3, Settings, Users } from 'lucide-react';
 import QueryBuilder from '@/components/admin/QueryBuilder';
 import BankingDashboard from '@/components/admin/BankingDashboard';
 import DatabaseConfig from '@/components/admin/DatabaseConfig';
+import UserManagement from '@/components/admin/UserManagement';
 import { DataErrorBoundary } from '@/components/ErrorBoundaryWrapper';
 
 interface QueryResults {
@@ -51,7 +52,7 @@ interface BankingMetrics {
 
 export default function AdminPage() {
   const { token } = useAuth();
-  const [activeTab, setActiveTab] = useState<'query' | 'dashboard'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'query' | 'dashboard' | 'users'>('dashboard');
   const [activeQueryTab, setActiveQueryTab] = useState<'builder' | 'config'>('builder');
   const [queryResults, setQueryResults] = useState<QueryResults | null>(null);
   const [bankingMetrics, setBankingMetrics] = useState<BankingMetrics | null>(null);
@@ -83,14 +84,35 @@ export default function AdminPage() {
     kafka: 'idle'
   });
 
-  // Load banking metrics on component mount
+  // Load banking metrics and system config on component mount
   React.useEffect(() => {
     if (token) {
       loadBankingMetrics();
+      fetchConfig();
       const interval = setInterval(loadBankingMetrics, 30000); // Refresh every 30 seconds
       return () => clearInterval(interval);
     }
   }, [token]);
+
+  const fetchConfig = async () => {
+    try {
+      const response = await fetch('/api/v1/admin/config', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const config = await response.json();
+        // Merge with existing defaults to preserve any fields not returned by API
+        setDbConfig(prev => ({
+          ...prev,
+          clickhouse: { ...prev.clickhouse, ...config.clickhouse, password: '' },
+          postgres: { ...prev.postgres, ...config.postgres, password: '' },
+          kafka: { ...prev.kafka, ...config.kafka, password: '' }
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to fetch system config:', error);
+    }
+  };
 
   const loadBankingMetrics = async () => {
     try {
@@ -222,9 +244,6 @@ export default function AdminPage() {
   return (
     <DataErrorBoundary>
       <div className="min-h-screen font-sans text-slate-200">
-        {/* Ambient background blobs matching client portal */}
-
-
         {/* Header with Tabs */}
         <div className="sticky top-0 z-40 glass-panel border-b border-white/5 bg-slate-950/20 backdrop-blur-2xl">
           <div className="max-w-[1600px] mx-auto px-6 py-4">
@@ -247,8 +266,8 @@ export default function AdminPage() {
                   <button
                     onClick={() => setActiveTab('dashboard')}
                     className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2.5 ${activeTab === 'dashboard'
-                        ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/20'
-                        : 'text-white/40 hover:text-white hover:bg-white/5'
+                      ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/20'
+                      : 'text-white/40 hover:text-white hover:bg-white/5'
                       }`}
                   >
                     <BarChart3 className="w-4 h-4" />
@@ -257,12 +276,22 @@ export default function AdminPage() {
                   <button
                     onClick={() => setActiveTab('query')}
                     className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2.5 ${activeTab === 'query'
-                        ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/20'
-                        : 'text-white/40 hover:text-white hover:bg-white/5'
+                      ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/20'
+                      : 'text-white/40 hover:text-white hover:bg-white/5'
                       }`}
                   >
                     <Search className="w-4 h-4" />
                     Engine
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('users')}
+                    className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2.5 ${activeTab === 'users'
+                      ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/20'
+                      : 'text-white/40 hover:text-white hover:bg-white/5'
+                      }`}
+                  >
+                    <Users className="w-4 h-4" />
+                    Directory
                   </button>
                 </div>
               </div>
@@ -289,6 +318,16 @@ export default function AdminPage() {
               >
                 <BankingDashboard metrics={bankingMetrics!} loading={!bankingMetrics} />
               </motion.div>
+            ) : activeTab === 'users' ? (
+              <motion.div
+                key="users"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3 }}
+              >
+                <UserManagement token={token!} />
+              </motion.div>
             ) : (
               <motion.div
                 key="query"
@@ -305,8 +344,8 @@ export default function AdminPage() {
                     <button
                       onClick={() => setActiveQueryTab('builder')}
                       className={`flex-1 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all ${activeQueryTab === 'builder'
-                          ? 'bg-white/10 text-white shadow-sm'
-                          : 'text-white/40 hover:text-white hover:bg-white/5'
+                        ? 'bg-white/10 text-white shadow-sm'
+                        : 'text-white/40 hover:text-white hover:bg-white/5'
                         }`}
                     >
                       Workspace
@@ -314,8 +353,8 @@ export default function AdminPage() {
                     <button
                       onClick={() => setActiveQueryTab('config')}
                       className={`flex-1 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all ${activeQueryTab === 'config'
-                          ? 'bg-white/10 text-white shadow-sm'
-                          : 'text-white/40 hover:text-white hover:bg-white/5'
+                        ? 'bg-white/10 text-white shadow-sm'
+                        : 'text-white/40 hover:text-white hover:bg-white/5'
                         }`}
                     >
                       Connectivity
