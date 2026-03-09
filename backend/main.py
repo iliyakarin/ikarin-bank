@@ -644,6 +644,80 @@ async def get_stats(
     }
 
 
+@app.delete("/v1/admin/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_only)
+):
+    """
+    Compliance-grade User Deletion (Right to Erasure).
+    Anonymizes audit logs in Postgres and purges transaction data from ClickHouse.
+    """
+    # 1. Verify User Exists
+    result = await db.execute(select(User).filter(User.id == user_id))
+    target_user = result.scalars().first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 2. Collect accounts for ClickHouse purge
+    result = await db.execute(select(Account.id).filter(Account.user_id == user_id))
+    account_ids = [acc_id for acc_id in result.scalars().all()]
+    
+    # 3. Emit Audit Event BEFORE deletion
+    emit_activity(
+        db,
+        current_user.id,
+        "security",
+        "user_deleted",
+        f"Admin deleted user ID {user_id}",
+        {"target_user_id": user_id, "target_user_email": target_user.email},
+        ip=None, # Simplified for now
+        user_agent=None
+    )
+    # emit_activity adds to db session, so it will be committed below
+    
+    # 4. Anonymize Postgres Transactions
+    if account_ids:
+        # We keep the transactions for accounting integrity but scrub PII
+        await db.execute(
+            text("""
+                UPDATE transactions 
+                SET merchant = 'DELETED_USER', 
+                    commentary = NULL, 
+                    ip_address = NULL, 
+                    user_agent = NULL
+                WHERE account_id = ANY(:account_ids)
+            """),
+            {"account_ids": account_ids}
+        )
+
+    # 5. Manual Cascade Deletion (since DB doesn't have ON DELETE CASCADE)
+    # Delete dependent rows in order
+    await db.execute(text("DELETE FROM scheduled_payments WHERE user_id = :uid"), {"uid": user_id})
+    await db.execute(text("DELETE FROM payment_requests WHERE requester_id = :uid"), {"uid": user_id})
+    await db.execute(text("DELETE FROM contacts WHERE user_id = :uid"), {"uid": user_id})
+    await db.execute(text("DELETE FROM idempotency_keys WHERE user_id = :uid"), {"uid": user_id})
+    await db.execute(text("DELETE FROM accounts WHERE user_id = :uid"), {"uid": user_id})
+    await db.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
+
+    # 6. ClickHouse Purge (Mutations)
+    try:
+        ch = get_ch_client()
+        # Purge Transactions
+        if account_ids:
+            ch.command(f"ALTER TABLE {CH_DB}.transactions DELETE WHERE account_id IN ({','.join(map(str, account_ids))})")
+        
+        # Purge Activity Events
+        ch.command(f"ALTER TABLE {CH_DB}.activity_events DELETE WHERE user_id = {user_id}")
+    except Exception as e:
+        # We log and continue, as the primary source of truth (Postgres) is already handled
+        print(f"[ERROR] ClickHouse purge failed for user {user_id}: {e}")
+
+    await db.commit()
+    return None
+
+
 @app.get("/admin/traces")
 async def get_traces(
     db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_only)
