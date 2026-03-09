@@ -1,42 +1,99 @@
 import os
-from fastapi import FastAPI
+import uuid
+from datetime import date, timedelta
+from fastapi import FastAPI, HTTPException, Header, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy import select
+
+from models import Base, Merchant
+from schemas import (
+    BillPayValidationRequest,
+    BillPayExecuteRequest,
+    StatusResponse,
+    BillPayExecuteResponse,
+    VendorListResponse,
+    VendorInfo
+)
+
+# Configuration
+DATABASE_URL = os.getenv("DATABASE_URL")
+SIMULATOR_API_KEY = os.getenv("SIMULATOR_API_KEY")
+
+# Engine & Session
+engine = create_async_engine(DATABASE_URL)
+AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 app = FastAPI(title="Vendor Simulator API")
 
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000,*").split(",")
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-VENDORS = [
-    {"id": "apple", "name": "Apple Music", "email": "subscriptions@apple.com", "category": "Entertainment"},
-    {"id": "pharmacy", "name": "Local Pharmacy", "email": "billing@pharmacy.test", "category": "Healthcare"},
-    {"id": "netflix", "name": "Netflix", "email": "billing@netflix.com", "category": "Entertainment"},
-    {"id": "gym", "name": "FitZone Gym", "email": "dues@fitzone.test", "category": "Fitness"},
-]
+# Middleware for API Key Auth (optional for some endpoints)
+async def verify_api_key(x_api_key: str = Header(...)):
+    if x_api_key != SIMULATOR_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API Key"
+        )
+    return x_api_key
 
-@app.get("/vendors")
-async def get_vendors():
-    return {"vendors": VENDORS}
+# DB Dependency
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        yield session
 
-class WebhookPayload(BaseModel):
-    transaction_id: str
-    amount: float
-    user_email: str
-    vendor_email: str
+@app.get("/vendors", response_model=VendorListResponse)
+async def get_vendors(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Merchant))
+    merchants = result.scalars().all()
+    
+    return VendorListResponse(
+        vendors=[
+            VendorInfo(
+                id=m.merchant_id,
+                name=m.name,
+                category=m.category,
+                email=f"billing@{m.name.lower().replace(' ', '').replace('(', '').replace(')', '')}.com"
+            ) for m in merchants
+        ]
+    )
 
-@app.post("/webhook/payment")
-async def receive_payment(payload: WebhookPayload):
-    # Simulates receiving a scheduled payment
-    print(f"[Vendor Simulator] Received {payload.amount} for {payload.vendor_email} from {payload.user_email}")
-    return {"status": "accepted"}
+@app.post("/billpay/validate-subscriber", response_model=StatusResponse, dependencies=[Depends(verify_api_key)])
+async def validate_subscriber(payload: BillPayValidationRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Merchant).where(Merchant.merchant_id == payload.merchant_id))
+    merchant = result.scalar_one_or_none()
+    
+    if not merchant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error_code": "INVALID_MERCHANT", "message": "Merchant not found"}
+        )
+
+    if "00000" in payload.subscriber_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error_code": "INVALID_SUBSCRIBER", "message": "Subscriber account not found"}
+        )
+
+    return StatusResponse(status="VALIDATED", message=f"Subscriber valid for {merchant.name}")
+
+@app.post("/billpay/execute", response_model=BillPayExecuteResponse, dependencies=[Depends(verify_api_key)])
+async def execute_billpay(payload: BillPayExecuteRequest):
+    return BillPayExecuteResponse(
+        trace_id=str(uuid.uuid4()),
+        settlement_date=date.today() + timedelta(days=1)
+    )
+
+@app.on_event("startup")
+async def startup_event():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 if __name__ == "__main__":
     import uvicorn

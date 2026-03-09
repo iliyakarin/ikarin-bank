@@ -4,6 +4,7 @@ import os
 import re
 import datetime
 import asyncio
+import httpx
 from typing import Dict, Any, Optional, Tuple, List
 from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Request, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
@@ -71,6 +72,7 @@ class UserCreate(BaseModel):
     last_name: str
     email: str
     password: str
+    captcha_token: Optional[str] = None
 
 
 class Token(BaseModel):
@@ -190,12 +192,38 @@ class ContactUpdate(BaseModel):
 admin_only = RoleChecker(["admin"])
 support_only = RoleChecker(["admin", "support"])
 
+TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY", "1x0000000000000000000000000000000AA")
+ENV = os.getenv("ENV", "development")
+
+async def verify_turnstile(token: str, ip: Optional[str] = None):
+    # Skip verification in development
+    if ENV != "production":
+        return True
+    
+    if not token:
+        return False
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            data={
+                "secret": TURNSTILE_SECRET_KEY,
+                "response": token,
+                "remoteip": ip
+            }
+        )
+        data = response.json()
+        return data.get("success", False)
+
 
 # --- Auth Endpoints ---
 
 
 @app.post("/auth/register", response_model=UserResponse)
-async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
+async def register(request: Request, user: UserCreate, db: AsyncSession = Depends(get_db)):
+    # Verify Turnstile in production (if secret key is set and not using test key)
+    if not await verify_turnstile(user.captcha_token, request.client.host):
+         raise HTTPException(status_code=400, detail="Invalid captcha")
+
     result = await db.execute(select(User).filter(User.email == user.email))
     db_user = result.scalars().first()
     if db_user:
@@ -238,6 +266,14 @@ async def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
 ):
+    # Turnstile token is usually passed in the body or as a separate header/form field
+    # For OAuth2PasswordRequestForm, we check for a custom field or form parameter
+    form = await request.form()
+    captcha_token = form.get("captcha_token") or form.get("cf-turnstile-response")
+    
+    if not await verify_turnstile(captcha_token, request.client.host):
+        raise HTTPException(status_code=400, detail="Invalid captcha")
+
     result = await db.execute(select(User).filter(User.email == form_data.username))
     user = result.scalars().first()
     if not user or not verify_password(form_data.password, user.password_hash):
