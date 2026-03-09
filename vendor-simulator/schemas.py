@@ -1,6 +1,6 @@
 from pydantic import BaseModel
-from typing import Optional
-from datetime import date
+from typing import Optional, List
+from datetime import date, datetime
 
 class BillPayValidationRequest(BaseModel):
     merchant_id: str
@@ -19,6 +19,8 @@ class StatusResponse(BaseModel):
 class BillPayExecuteResponse(BaseModel):
     trace_id: str
     settlement_date: date
+    status: str
+    failure_reason: Optional[str] = None
 
 class VendorInfo(BaseModel):
     id: str
@@ -27,4 +29,17 @@ class VendorInfo(BaseModel):
     email: str
 
 class VendorListResponse(BaseModel):
-    vendors: list[VendorInfo]
+    vendors: List[VendorInfo]
+
+class TransactionResponse(BaseModel):
+    id: int
+    merchant_id: str
+    subscriber_id: str
+    amount: float
+    status: str
+    trace_id: str
+    failure_reason: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

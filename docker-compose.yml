@@ -157,13 +157,13 @@ services:
       postgres:
         condition: service_healthy
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: bank-cloudflared
-    env_file: .env
-    command: tunnel --no-autoupdate run
-    depends_on:
-      - proxy
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: bank-cloudflared
+  #   env_file: .env
+  #   command: tunnel --no-autoupdate run
+  #   depends_on:
+  #     - proxy
 
   vendor-simulator:
     build: ./vendor-simulator

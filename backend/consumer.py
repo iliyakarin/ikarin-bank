@@ -7,6 +7,7 @@ from typing import List, Dict, Any
 
 import logging
 import clickhouse_connect
+from clickhouse_utils import get_ch_client
 from confluent_kafka import Consumer, KafkaError
 
 # Configure logging
@@ -37,16 +38,7 @@ ch_client = None
 
 def get_clickhouse_client():
     """Get or create ClickHouse client with connection pooling"""
-    global ch_client
-    if ch_client is None:
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST,
-            port=CH_PORT,
-            username=CH_USER,
-            password=CH_PASSWORD
-        )
-        logger.info("🚀 ClickHouse client connected with performance optimizations")
-    return ch_client
+    return get_ch_client()
 
 
 def log_malformed_message_batch(malformed_messages):
@@ -105,6 +97,8 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                 msg.get("transaction_side") or "",
                 msg["timestamp"],
                 msg.get("internal_account_last_4") or "",
+                msg.get("subscriber_id"),
+                msg.get("failure_reason"),
                 msg.get("status") or "pending",
             ]
             for msg in batch
@@ -131,6 +125,8 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                         "transaction_side",
                         "event_time",
                         "internal_account_last_4",
+                        "subscriber_id",
+                        "failure_reason",
                         "status",
                     ],
                 ),
@@ -156,6 +152,8 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                     "transaction_side",
                     "event_time",
                     "internal_account_last_4",
+                    "subscriber_id",
+                    "failure_reason",
                     "status",
                 ],
             )

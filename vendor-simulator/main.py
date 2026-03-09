@@ -6,15 +6,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import select
 
-from models import Base, Merchant
+from models import Base, Merchant, Transaction
 from schemas import (
     BillPayValidationRequest,
     BillPayExecuteRequest,
     StatusResponse,
     BillPayExecuteResponse,
     VendorListResponse,
-    VendorInfo
+    VendorInfo,
+    TransactionResponse
 )
+from typing import List
 
 # Configuration
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -84,11 +86,49 @@ async def validate_subscriber(payload: BillPayValidationRequest, db: AsyncSessio
     return StatusResponse(status="VALIDATED", message=f"Subscriber valid for {merchant.name}")
 
 @app.post("/billpay/execute", response_model=BillPayExecuteResponse, dependencies=[Depends(verify_api_key)])
-async def execute_billpay(payload: BillPayExecuteRequest):
-    return BillPayExecuteResponse(
-        trace_id=str(uuid.uuid4()),
-        settlement_date=date.today() + timedelta(days=1)
+async def execute_billpay(payload: BillPayExecuteRequest, db: AsyncSession = Depends(get_db)):
+    # 1. Validate Merchant
+    result = await db.execute(select(Merchant).where(Merchant.merchant_id == payload.merchant_id))
+    merchant = result.scalar_one_or_none()
+    if not merchant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error_code": "INVALID_MERCHANT", "message": "Merchant not found"}
+        )
+
+    trace_id = str(uuid.uuid4())
+    status_str = "CLEARED"
+    failure_reason = None
+
+    # 2. Failure Simulation (NSF)
+    # Triggered if amount ends in .01
+    if abs(payload.amount % 1.0 - 0.01) < 0.0001:
+        status_str = "FAILED"
+        failure_reason = "Insufficient Funds"
+
+    # 3. Persist Transaction
+    new_tx = Transaction(
+        merchant_id=payload.merchant_id,
+        subscriber_id=payload.subscriber_id,
+        amount=payload.amount,
+        status=status_str,
+        trace_id=trace_id,
+        failure_reason=failure_reason
     )
+    db.add(new_tx)
+    await db.commit()
+
+    return BillPayExecuteResponse(
+        trace_id=trace_id,
+        settlement_date=date.today() + timedelta(days=1),
+        status=status_str,
+        failure_reason=failure_reason
+    )
+
+@app.get("/transactions", response_model=List[TransactionResponse], dependencies=[Depends(verify_api_key)])
+async def get_transactions(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Transaction).order_by(Transaction.created_at.desc()))
+    return result.scalars().all()
 
 @app.on_event("startup")
 async def startup_event():
