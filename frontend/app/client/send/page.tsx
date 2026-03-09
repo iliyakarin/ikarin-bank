@@ -31,7 +31,7 @@ export default function SendMoneyPage() {
   const [successMessage, setSuccessMessage] = useState("");
   const [txId, setTxId] = useState("");
 
-  // Send to Contact (formerly Instant Transfer) State
+  // One time transfer (formerly Instant Transfer) State
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [commentary, setCommentary] = useState("");
@@ -614,7 +614,7 @@ export default function SendMoneyPage() {
             : "text-white/60 hover:text-white hover:bg-white/5"
             }`}
         >
-          <Send size={18} /> Send to Contact
+          <Send size={18} /> One time transfer
         </button>
         <button
           onClick={() => {
@@ -1208,9 +1208,9 @@ export default function SendMoneyPage() {
                 />
               </div>
 
-              {/* Contact Dropdown */}
+              {/* Recipient Dropdown */}
               <AnimatePresence>
-                {isContactDropdownOpen && contacts.length > 0 && (
+                {isContactDropdownOpen && (
                   <motion.div
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1219,49 +1219,70 @@ export default function SendMoneyPage() {
                     className="absolute z-50 w-full mt-2 bg-[#2a1f42] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
                   >
                     <div className="p-2">
-                      {contacts.filter(
-                        (c) =>
-                          c.contact_name
-                            .toLowerCase()
-                            .includes(recipient.toLowerCase()) ||
-                          c.contact_email
-                            .toLowerCase()
-                            .includes(recipient.toLowerCase()),
-                      ).length > 0 ? (
-                        contacts
-                          .filter(
-                            (c) =>
-                              c.contact_name
-                                .toLowerCase()
-                                .includes(recipient.toLowerCase()) ||
-                              c.contact_email
-                                .toLowerCase()
-                                .includes(recipient.toLowerCase()),
-                          )
-                          .map((c) => (
-                            <div
-                              key={c.id}
-                              onClick={() => {
-                                setRecipient(c.contact_email);
-                                setIsContactDropdownOpen(false);
-                              }}
-                              className="px-4 py-3 hover:bg-white/10 rounded-lg cursor-pointer transition-colors flex justify-between items-center"
-                            >
-                              <div>
-                                <p className="text-white font-medium">
-                                  {c.contact_name}
-                                </p>
-                                <p className="text-white/50 text-sm">
-                                  {c.contact_email}
-                                </p>
-                              </div>
+                      {(() => {
+                        const term = recipient.toLowerCase();
+                        const matchedContacts = contacts.filter(c =>
+                          c.contact_name.toLowerCase().includes(term) ||
+                          c.contact_email.toLowerCase().includes(term)
+                        );
+                        const matchedVendors = vendors.filter(v =>
+                          v.name.toLowerCase().includes(term) ||
+                          v.email.toLowerCase().includes(term)
+                        );
+
+                        if (matchedContacts.length === 0 && matchedVendors.length === 0) {
+                          return (
+                            <div className="px-4 py-3 text-white/50 text-sm">
+                              Use "{recipient}" as custom email
                             </div>
-                          ))
-                      ) : (
-                        <div className="px-4 py-3 text-white/50 text-sm">
-                          Use "{recipient}" as custom email
-                        </div>
-                      )}
+                          );
+                        }
+
+                        return (
+                          <>
+                            {matchedContacts.map(c => (
+                              <div
+                                key={c.id}
+                                onClick={() => {
+                                  setRecipient(c.contact_email);
+                                  setIsContactDropdownOpen(false);
+                                }}
+                                className="px-4 py-3 hover:bg-white/10 rounded-lg cursor-pointer transition-colors flex justify-between items-center group"
+                              >
+                                <div>
+                                  <p className="text-white font-medium group-hover:text-purple-300 transition-colors">
+                                    {c.contact_name}
+                                  </p>
+                                  <p className="text-white/50 text-sm">
+                                    {c.contact_email}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded border border-purple-500/30 uppercase font-bold tracking-wider">Contact</span>
+                              </div>
+                            ))}
+                            {matchedVendors.map(v => (
+                              <div
+                                key={v.id}
+                                onClick={() => {
+                                  setRecipient(v.email);
+                                  setIsContactDropdownOpen(false);
+                                }}
+                                className="px-4 py-3 hover:bg-white/10 rounded-lg cursor-pointer transition-colors flex justify-between items-center group border-t border-white/5"
+                              >
+                                <div>
+                                  <p className="text-white font-medium group-hover:text-purple-300 transition-colors">
+                                    {v.name}
+                                  </p>
+                                  <p className="text-white/50 text-sm">
+                                    {v.email}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/30 uppercase font-bold tracking-wider">Merchant</span>
+                              </div>
+                            ))}
+                          </>
+                        );
+                      })()}
                     </div>
                   </motion.div>
                 )}
@@ -1555,47 +1576,70 @@ export default function SendMoneyPage() {
                     className="absolute z-50 w-full mt-2 bg-[#2a1f42] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
                   >
                     <div className="p-2">
-                      {vendors.filter(
-                        (v) =>
-                          v.name
-                            .toLowerCase()
-                            .includes(schedRecipient.toLowerCase()) ||
-                          v.email
-                            .toLowerCase()
-                            .includes(schedRecipient.toLowerCase()),
-                      ).length > 0 ? (
-                        vendors
-                          .filter(
-                            (v) =>
-                              v.name
-                                .toLowerCase()
-                                .includes(schedRecipient.toLowerCase()) ||
-                              v.email
-                                .toLowerCase()
-                                .includes(schedRecipient.toLowerCase()),
-                          )
-                          .map((v) => (
-                            <div
-                              key={v.id}
-                              onClick={() => {
-                                setSchedRecipient(v.email);
-                                setIsVendorDropdownOpen(false);
-                              }}
-                              className="px-4 py-3 hover:bg-white/10 rounded-lg cursor-pointer transition-colors"
-                            >
-                              <p className="text-white font-medium">
-                                {v.email}
-                              </p>
-                              <p className="text-white/50 text-sm">
-                                {v.name} ({v.category})
-                              </p>
+                      {(() => {
+                        const term = schedRecipient.toLowerCase();
+                        const matchedContacts = contacts.filter(c =>
+                          c.contact_name.toLowerCase().includes(term) ||
+                          c.contact_email.toLowerCase().includes(term)
+                        );
+                        const matchedVendors = vendors.filter(v =>
+                          v.name.toLowerCase().includes(term) ||
+                          v.email.toLowerCase().includes(term)
+                        );
+
+                        if (matchedContacts.length === 0 && matchedVendors.length === 0) {
+                          return (
+                            <div className="px-4 py-3 text-white/50 text-sm">
+                              Use "{schedRecipient}" as custom email
                             </div>
-                          ))
-                      ) : (
-                        <div className="px-4 py-3 text-white/50 text-sm">
-                          Use "{schedRecipient}" as custom email
-                        </div>
-                      )}
+                          );
+                        }
+
+                        return (
+                          <>
+                            {matchedContacts.map(c => (
+                              <div
+                                key={c.id}
+                                onClick={() => {
+                                  setSchedRecipient(c.contact_email);
+                                  setIsVendorDropdownOpen(false);
+                                }}
+                                className="px-4 py-3 hover:bg-white/10 rounded-lg cursor-pointer transition-colors flex justify-between items-center group"
+                              >
+                                <div>
+                                  <p className="text-white font-medium group-hover:text-indigo-300 transition-colors">
+                                    {c.contact_name}
+                                  </p>
+                                  <p className="text-white/50 text-sm">
+                                    {c.contact_email}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded border border-purple-500/30 uppercase font-bold tracking-wider">Contact</span>
+                              </div>
+                            ))}
+                            {matchedVendors.map(v => (
+                              <div
+                                key={v.id}
+                                onClick={() => {
+                                  setSchedRecipient(v.email);
+                                  setIsVendorDropdownOpen(false);
+                                }}
+                                className="px-4 py-3 hover:bg-white/10 rounded-lg cursor-pointer transition-colors flex justify-between items-center group border-t border-white/5"
+                              >
+                                <div>
+                                  <p className="text-white font-medium group-hover:text-indigo-300 transition-colors">
+                                    {v.name}
+                                  </p>
+                                  <p className="text-white/50 text-sm">
+                                    {v.email}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/30 uppercase font-bold tracking-wider">Merchant</span>
+                              </div>
+                            ))}
+                          </>
+                        );
+                      })()}
                     </div>
                   </motion.div>
                 )}
@@ -2249,10 +2293,10 @@ export default function SendMoneyPage() {
                   <div className="flex justify-between border-b border-white/5 pb-2">
                     <span className="text-white/40 text-sm">Status</span>
                     <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${selectedTxDetails.status === 'cleared' || selectedTxDetails.status === 'Active'
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        : selectedTxDetails.status === 'failed' || selectedTxDetails.status === 'Failed'
-                          ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                          : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      : selectedTxDetails.status === 'failed' || selectedTxDetails.status === 'Failed'
+                        ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                        : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                       }`}>
                       {selectedTxDetails.status}
                     </span>

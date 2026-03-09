@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, BarChart3, Settings } from 'lucide-react';
 import QueryBuilder from '@/components/admin/QueryBuilder';
@@ -49,6 +50,7 @@ interface BankingMetrics {
 }
 
 export default function AdminPage() {
+  const { token } = useAuth();
   const [activeTab, setActiveTab] = useState<'query' | 'dashboard'>('dashboard');
   const [activeQueryTab, setActiveQueryTab] = useState<'builder' | 'config'>('builder');
   const [queryResults, setQueryResults] = useState<QueryResults | null>(null);
@@ -83,14 +85,20 @@ export default function AdminPage() {
 
   // Load banking metrics on component mount
   React.useEffect(() => {
-    loadBankingMetrics();
-    const interval = setInterval(loadBankingMetrics, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
-  }, []);
+    if (token) {
+      loadBankingMetrics();
+      const interval = setInterval(loadBankingMetrics, 30000); // Refresh every 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [token]);
 
   const loadBankingMetrics = async () => {
     try {
-      const response = await fetch('/api/admin/banking-metrics');
+      const response = await fetch('/api/v1/admin/banking-metrics', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       if (response.ok) {
         const metrics = await response.json();
         setBankingMetrics(metrics);
@@ -168,10 +176,11 @@ export default function AdminPage() {
   const handleQuery = async (query: string, params: any) => {
     setLoading(true);
     try {
-      const response = await fetch('/api/admin/query', {
+      const response = await fetch('/api/v1/admin/query', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ query, params }),
       });
@@ -193,14 +202,14 @@ export default function AdminPage() {
 
   const handleTestConnection = async (source: 'clickhouse' | 'postgres' | 'kafka') => {
     setConnectionStatus(prev => ({ ...prev, [source]: 'testing' }));
-    
+
     try {
       // Simulate connection test
       await new Promise(resolve => setTimeout(resolve, 1500));
-      
+
       // In real implementation, this would test actual database connections
       setConnectionStatus(prev => ({ ...prev, [source]: 'connected' }));
-      
+
       setTimeout(() => {
         setConnectionStatus(prev => ({ ...prev, [source]: 'idle' }));
       }, 3000);
@@ -212,65 +221,63 @@ export default function AdminPage() {
 
   return (
     <DataErrorBoundary>
-      <div className="min-h-screen bg-[#F8F9FA] font-sans text-black">
+      <div className="min-h-screen font-sans text-slate-200">
         {/* Ambient background blobs matching client portal */}
-        <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
-          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-600/30 blur-[120px] rounded-full animate-blob" />
-          <div className="absolute top-[20%] right-[-10%] w-[40%] h-[40%] bg-blue-600/20 blur-[100px] rounded-full animate-blob [animation-delay:2s]" />
-          <div className="absolute bottom-[-10%] left-[20%] w-[45%] h-[45%] bg-indigo-600/20 blur-[120px] rounded-full animate-blob [animation-delay:4s]" />
-        </div>
+
 
         {/* Header with Tabs */}
-        <div className="sticky top-0 z-40 glass-panel">
+        <div className="sticky top-0 z-40 glass-panel border-b border-white/5 bg-slate-950/20 backdrop-blur-2xl">
           <div className="max-w-[1600px] mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-6">
+              <div className="flex items-center gap-8">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
-                    <Settings className="text-white w-6 h-6" />
+                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/20">
+                    <Settings className="text-white w-5 h-5" />
                   </div>
                   <div>
-                    <h1 className="text-xl font-bold tracking-tight text-black">Mission Control</h1>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Admin Portal</p>
+                    <h1 className="text-lg font-black tracking-tight text-white uppercase italic">
+                      MISSION<span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-400">CONTROL</span>
+                    </h1>
+                    <p className="text-[10px] font-black text-indigo-400/60 uppercase tracking-[0.2em]">Data Layer Interface</p>
                   </div>
                 </div>
 
                 {/* Main Tab Navigation */}
-                <div className="flex gap-1 p-1 bg-gray-100 rounded-xl">
+                <div className="flex gap-1 p-1 bg-white/5 rounded-2xl border border-white/5">
                   <button
                     onClick={() => setActiveTab('dashboard')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                      activeTab === 'dashboard'
-                        ? 'bg-white text-black shadow-sm'
-                        : 'text-gray-500 hover:text-black hover:bg-white/50'
-                    }`}
+                    className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2.5 ${activeTab === 'dashboard'
+                        ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/20'
+                        : 'text-white/40 hover:text-white hover:bg-white/5'
+                      }`}
                   >
                     <BarChart3 className="w-4 h-4" />
-                    Banking Analytics
+                    Analytics
                   </button>
                   <button
                     onClick={() => setActiveTab('query')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                      activeTab === 'query'
-                        ? 'bg-white text-black shadow-sm'
-                        : 'text-gray-500 hover:text-black hover:bg-white/50'
-                    }`}
+                    className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2.5 ${activeTab === 'query'
+                        ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/20'
+                        : 'text-white/40 hover:text-white hover:bg-white/5'
+                      }`}
                   >
                     <Search className="w-4 h-4" />
-                    Data Query
+                    Engine
                   </button>
                 </div>
               </div>
 
               <div className="flex items-center gap-4">
-                <div className="text-xs font-mono text-gray-400">v2.1.0-admin</div>
+                <div className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">
+                  SYS-ADMIN · V2.1.0
+                </div>
               </div>
             </div>
           </div>
         </div>
 
         {/* Content Area */}
-        <div className="max-w-[1600px] mx-auto p-6 lg:p-10">
+        <div className="max-w-[1600px] mx-auto py-10">
           <AnimatePresence mode="wait">
             {activeTab === 'dashboard' ? (
               <motion.div
@@ -292,28 +299,26 @@ export default function AdminPage() {
                 className="grid grid-cols-1 lg:grid-cols-3 gap-8"
               >
                 {/* Query/Config Sidebar */}
-                <div className="lg:col-span-1">
+                <div className="lg:col-span-1 space-y-6">
                   {/* Sub-tabs */}
-                  <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-6">
+                  <div className="flex gap-1 p-1 bg-white/5 rounded-2xl border border-white/5">
                     <button
                       onClick={() => setActiveQueryTab('builder')}
-                      className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                        activeQueryTab === 'builder'
-                          ? 'bg-white text-gray-900 shadow-sm'
-                          : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'
-                      }`}
+                      className={`flex-1 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all ${activeQueryTab === 'builder'
+                          ? 'bg-white/10 text-white shadow-sm'
+                          : 'text-white/40 hover:text-white hover:bg-white/5'
+                        }`}
                     >
-                      Query Builder
+                      Workspace
                     </button>
                     <button
                       onClick={() => setActiveQueryTab('config')}
-                      className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                        activeQueryTab === 'config'
-                          ? 'bg-white text-gray-900 shadow-sm'
-                          : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'
-                      }`}
+                      className={`flex-1 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all ${activeQueryTab === 'config'
+                          ? 'bg-white/10 text-white shadow-sm'
+                          : 'text-white/40 hover:text-white hover:bg-white/5'
+                        }`}
                     >
-                      Database Config
+                      Connectivity
                     </button>
                   </div>
 
@@ -336,8 +341,8 @@ export default function AdminPage() {
                         exit={{ opacity: 0, x: 10 }}
                         transition={{ duration: 0.2 }}
                       >
-                        <DatabaseConfig 
-                          config={dbConfig} 
+                        <DatabaseConfig
+                          config={dbConfig}
                           onChange={setDbConfig}
                           onTestConnection={handleTestConnection}
                           connectionStatus={connectionStatus}
@@ -350,20 +355,22 @@ export default function AdminPage() {
                 {/* Query Results */}
                 <div className="lg:col-span-2">
                   {queryResults ? (
-                    <div className="glass-panel rounded-2xl">
-                      <div className="p-6 border-b border-white/10">
-                        <h3 className="text-black font-semibold">Query Results</h3>
-                        <div className="flex gap-6 mt-2 text-sm">
-                          <span className="text-green-600">{queryResults.rowCount} rows</span>
-                          <span className="text-blue-600">{queryResults.executionTime}ms</span>
+                    <div className="glass-panel rounded-[2rem] overflow-hidden">
+                      <div className="p-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
+                        <div>
+                          <h3 className="text-white font-black text-xl tracking-tight">System Response</h3>
+                          <div className="flex gap-6 mt-3 text-[10px] font-black uppercase tracking-widest">
+                            <span className="text-emerald-400/80 bg-emerald-400/10 px-2 py-0.5 rounded-full border border-emerald-400/20">{queryResults.rowCount} records</span>
+                            <span className="text-indigo-400/80 bg-indigo-400/10 px-2 py-0.5 rounded-full border border-indigo-400/20">{queryResults.executionTime}ms latency</span>
+                          </div>
                         </div>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full">
                           <thead>
-                            <tr className="border-b border-white/10">
+                            <tr className="border-b border-white/5 bg-white/[0.01]">
                               {queryResults.columns.map((column) => (
-                                <th key={column} className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                <th key={column} className="px-6 py-4 text-left text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">
                                   {column}
                                 </th>
                               ))}
@@ -371,9 +378,9 @@ export default function AdminPage() {
                           </thead>
                           <tbody>
                             {queryResults.data.slice(0, 100).map((row, index) => (
-                              <tr key={index} className="border-b border-white/5 hover:bg-white/20">
+                              <tr key={index} className="border-b border-white/5 hover:bg-white/[0.04] transition-colors">
                                 {queryResults.columns.map((column) => (
-                                  <td key={column} className="px-4 py-3 text-sm text-gray-800 font-mono">
+                                  <td key={column} className="px-6 py-4 text-xs text-white/70 font-mono tracking-tighter">
                                     {row[column]?.toString() || 'NULL'}
                                   </td>
                                 ))}
@@ -382,17 +389,21 @@ export default function AdminPage() {
                           </tbody>
                         </table>
                         {queryResults.data.length > 100 && (
-                          <div className="p-4 text-center text-gray-500 text-sm">
-                            Showing first 100 of {queryResults.rowCount} results
+                          <div className="p-6 text-center text-white/20 text-[10px] font-black uppercase tracking-[0.3em]">
+                            Truncated: Showing 100 of {queryResults.rowCount}
                           </div>
                         )}
                       </div>
                     </div>
                   ) : (
-                    <div className="h-96 glass-panel rounded-2xl flex items-center justify-center">
-                      <div className="text-center">
-                        <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                        <p className="text-gray-500">Configure database connections and execute a query to see results</p>
+                    <div className="h-[28rem] glass-panel rounded-[2rem] flex items-center justify-center border-dashed border-white/10">
+                      <div className="text-center space-y-4">
+                        <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto border border-white/5">
+                          <Search className="w-8 h-8 text-white/10" />
+                        </div>
+                        <p className="text-white/20 text-xs font-black uppercase tracking-[0.2em] max-w-xs mx-auto leading-relaxed">
+                          Awaiting Database execution. Configure parameters and run query to fetch telemetry.
+                        </p>
                       </div>
                     </div>
                   )}

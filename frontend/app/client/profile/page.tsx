@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     User,
@@ -13,6 +13,7 @@ import {
     Star,
     RefreshCw,
     Settings,
+    Trash2,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { useBalance } from "@/hooks/useDashboard";
@@ -38,10 +39,44 @@ export default function ProfilePage() {
 
     // Sync State
     const [syncLoading, setSyncLoading] = useState(false);
-    const [syncSuccess, setSyncSuccess] = useState("");
     const [syncError, setSyncError] = useState("");
+    const [syncSuccess, setSyncSuccess] = useState("");
+
+    // Admin User Management
+    const [users, setUsers] = useState<any[]>([]);
+    const [usersLoading, setUsersLoading] = useState(false);
+    const [searchEmail, setSearchEmail] = useState("");
+    const [foundUser, setFoundUser] = useState<any>(null);
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [searchError, setSearchError] = useState("");
+    const [deleteLoading, setDeleteLoading] = useState(false);
+    const [deleteError, setDeleteError] = useState("");
+    const [deleteSuccess, setDeleteSuccess] = useState("");
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [confirmEmail, setConfirmEmail] = useState("");
 
     if (!user) return null;
+
+    const fetchUsers = async () => {
+        setUsersLoading(true);
+        try {
+            const res = await fetch("/api/v1/admin/users", {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            if (res.ok) setUsers(data);
+        } catch (err) {
+            console.error("Failed to fetch users", err);
+        } finally {
+            setUsersLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (token && user?.role === "admin") {
+            fetchUsers();
+        }
+    }, [token, user]);
 
     const handleBackupUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -158,6 +193,60 @@ export default function ProfilePage() {
             setSyncError(err.message);
         } finally {
             setSyncLoading(false);
+        }
+    };
+
+    const handleSearchUser = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setSearchError("");
+        setFoundUser(null);
+        setSearchLoading(true);
+        setDeleteSuccess("");
+
+        try {
+            const res = await fetch(`/api/v1/admin/users/search?email=${encodeURIComponent(searchEmail)}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || "User not found");
+            setFoundUser(data);
+        } catch (err: any) {
+            setSearchError(err.message);
+        } finally {
+            setSearchLoading(false);
+        }
+    };
+
+    const handleDeleteUser = async () => {
+        if (confirmEmail !== foundUser.email) {
+            setDeleteError("Confirmation email does not match");
+            return;
+        }
+
+        setDeleteLoading(true);
+        setDeleteError("");
+        setShowDeleteConfirm(false);
+
+        try {
+            const res = await fetch(`/api/v1/admin/users/${foundUser.id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` },
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.detail || "Failed to delete user");
+            }
+
+            setDeleteSuccess(`User ${foundUser.email} and all associated data have been purged.`);
+            setFoundUser(null);
+            setSearchEmail("");
+            setConfirmEmail("");
+            fetchUsers(); // Refresh the list
+        } catch (err: any) {
+            setDeleteError(err.message);
+        } finally {
+            setDeleteLoading(false);
         }
     };
 
@@ -528,9 +617,227 @@ export default function ProfilePage() {
                                 )}
                             </button>
                         </div>
+
+                        {/* User Directory */}
+                        <div className="bg-black/20 border border-white/5 rounded-2xl p-6 space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-white font-semibold flex items-center gap-2">
+                                    <Shield className="w-5 h-5 text-indigo-400" /> User Directory
+                                </h4>
+                                <button
+                                    onClick={fetchUsers}
+                                    className="p-2 hover:bg-white/5 rounded-lg transition-colors text-white/40 hover:text-white"
+                                    title="Refresh List"
+                                >
+                                    <RefreshCw className={`w-4 h-4 ${usersLoading ? 'animate-spin' : ''}`} />
+                                </button>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                    <thead>
+                                        <tr className="border-b border-white/5 text-white/40 font-bold uppercase tracking-widest text-[10px]">
+                                            <th className="pb-3 pl-2">User</th>
+                                            <th className="pb-3">Role</th>
+                                            <th className="pb-3">Registered</th>
+                                            <th className="pb-3 text-right pr-2">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {usersLoading && users.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={4} className="py-8 text-center text-white/20">Loading registry...</td>
+                                            </tr>
+                                        ) : users.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={4} className="py-8 text-center text-white/20">No users found</td>
+                                            </tr>
+                                        ) : (
+                                            users.slice(0, 10).map((u) => (
+                                                <tr key={u.id} className="group hover:bg-white/[0.02] transition-colors">
+                                                    <td className="py-3 pl-2">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center font-bold text-indigo-400 group-hover:bg-indigo-500/20 transition-colors">
+                                                                {u.first_name[0]}{u.last_name[0]}
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-white font-medium">{u.first_name} {u.last_name}</p>
+                                                                <p className="text-white/40 text-xs">{u.email}</p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3">
+                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${u.role === 'admin' ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400' : 'bg-white/5 border-white/10 text-white/40'}`}>
+                                                            {u.role.toUpperCase()}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 text-white/40 text-xs">
+                                                        {new Date().toLocaleDateString()}
+                                                    </td>
+                                                    <td className="py-3 text-right pr-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                setFoundUser(u);
+                                                                setSearchEmail(u.email);
+                                                                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                                                            }}
+                                                            className="p-2 hover:bg-red-500/20 text-white/20 hover:text-red-400 rounded-lg transition-all"
+                                                            title="Target for Deletion"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* User Erasure Tool */}
+                        <div className="bg-black/20 border border-red-500/20 rounded-2xl p-6 space-y-6">
+                            <div>
+                                <h4 className="text-white font-semibold flex items-center gap-2">
+                                    <Trash2 className="w-5 h-5 text-red-400" /> User Erasure & GDPR Compliance
+                                </h4>
+                                <p className="text-white/50 text-sm mt-1">
+                                    Locate and permanently delete a user account and all associated transaction records from both PostgreSQL and ClickHouse.
+                                </p>
+                            </div>
+
+                            <form onSubmit={handleSearchUser} className="flex flex-col sm:flex-row gap-3">
+                                <input
+                                    type="email"
+                                    value={searchEmail}
+                                    onChange={(e) => setSearchEmail(e.target.value)}
+                                    placeholder="Enter user email to search..."
+                                    className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                                    required
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={searchLoading}
+                                    className="bg-white/5 hover:bg-white/10 text-white font-bold py-3 px-6 rounded-xl border border-white/10 transition-all flex items-center justify-center gap-2"
+                                >
+                                    {searchLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Verify User"}
+                                </button>
+                            </form>
+
+                            {searchError && (
+                                <p className="text-red-400 text-sm">{searchError}</p>
+                            )}
+
+                            {deleteSuccess && (
+                                <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm flex items-center gap-2">
+                                    <CheckCircle className="w-4 h-4 flex-shrink-0" /> {deleteSuccess}
+                                </div>
+                            )}
+
+                            {foundUser && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    className="p-6 bg-red-500/5 border border-red-500/20 rounded-2xl space-y-4"
+                                >
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p className="text-white/40 text-[10px] uppercase font-black tracking-widest">Target Account Found</p>
+                                            <h5 className="text-white font-bold text-xl">{foundUser.first_name} {foundUser.last_name}</h5>
+                                            <p className="text-white/60 text-sm">{foundUser.email}</p>
+                                            <div className="flex gap-4 mt-2">
+                                                <span className="text-[10px] text-white/40">ID: {foundUser.id}</span>
+                                                <span className="text-[10px] text-white/40">ROLE: {foundUser.role}</span>
+                                            </div>
+                                        </div>
+                                        <div className="px-3 py-1 bg-red-500/20 text-red-400 text-[10px] font-bold rounded-full border border-red-500/30 uppercase tracking-tighter">
+                                            Permanent Deletion
+                                        </div>
+                                    </div>
+
+                                    {deleteError && (
+                                        <p className="text-red-400 text-sm bg-red-400/10 p-3 rounded-lg border border-red-400/20">{deleteError}</p>
+                                    )}
+
+                                    <button
+                                        onClick={() => setShowDeleteConfirm(true)}
+                                        className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-red-500/20 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <Trash2 size={18} /> Purge This Account
+                                    </button>
+                                </motion.div>
+                            )}
+                        </div>
                     </motion.div>
                 )}
             </div>
+
+            {/* User Deletion Confirmation Modal */}
+            <AnimatePresence>
+                {showDeleteConfirm && foundUser && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setShowDeleteConfirm(false)}
+                            className="absolute inset-0 bg-black/80 backdrop-blur-md"
+                        />
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0, y: 10 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                            className="relative bg-[#1a0f1f] border border-red-500/50 w-full max-w-lg rounded-[2.5rem] p-10 shadow-2xl overflow-hidden"
+                        >
+                            <div className="space-y-6 text-center">
+                                <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-500/50">
+                                    <AlertTriangle className="text-red-500 w-10 h-10" />
+                                </div>
+                                <div>
+                                    <h3 className="text-3xl font-bold text-white mb-2">
+                                        CRITICAL ACTION
+                                    </h3>
+                                    <p className="text-white/70">
+                                        You are about to permanently delete <span className="text-white font-bold">{foundUser.email}</span>. This action is irreversible and will purge all financial history and PII.
+                                    </p>
+                                </div>
+
+                                <div className="space-y-4 text-left">
+                                    <label className="text-white/50 text-xs font-bold uppercase tracking-widest pl-1">
+                                        Type "{foundUser.email}" to confirm
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={confirmEmail}
+                                        onChange={(e) => setConfirmEmail(e.target.value)}
+                                        placeholder={foundUser.email}
+                                        className="w-full bg-black/40 border border-red-500/30 rounded-2xl px-5 py-4 text-white font-mono text-sm focus:outline-none focus:ring-4 focus:ring-red-500/20 transition-all"
+                                    />
+                                </div>
+
+                                <div className="flex gap-4 pt-4">
+                                    <button
+                                        onClick={() => {
+                                            setShowDeleteConfirm(false);
+                                            setConfirmEmail("");
+                                        }}
+                                        className="flex-1 py-4 px-4 rounded-2xl font-bold text-white/60 hover:text-white hover:bg-white/10 transition-colors border border-white/10"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleDeleteUser}
+                                        disabled={deleteLoading || confirmEmail !== foundUser.email}
+                                        className="flex-1 py-4 px-4 rounded-2xl font-black text-white bg-gradient-to-r from-red-600 to-red-800 hover:from-red-500 hover:to-red-700 shadow-xl disabled:opacity-30 disabled:grayscale transition-all flex items-center justify-center gap-2"
+                                    >
+                                        {deleteLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "PURGE USER"}
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
             {/* Password Confirmation Modal */}
             <AnimatePresence>

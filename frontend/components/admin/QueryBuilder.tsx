@@ -90,12 +90,12 @@ export default function QueryBuilder({ onQuery, loading, dbConfig }: QueryBuilde
   const handleExecuteQuery = () => {
     const query = isCustomMode ? customQuery : selectedQuery.query;
     const params = isCustomMode ? {} : queryParams;
-    
+
     if (query.trim()) {
-      onQuery(query, { 
-        source: selectedSource, 
+      onQuery(query, {
+        source: selectedSource,
         ...params,
-        dbConfig 
+        dbConfig
       });
     }
   };
@@ -129,11 +129,10 @@ export default function QueryBuilder({ onQuery, loading, dbConfig }: QueryBuilde
               setSelectedQuery(PREDEFINED_QUERIES[source][0]);
               setIsCustomMode(false);
             }}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-              selectedSource === source 
-                ? 'bg-white text-black' 
-                : 'text-white/60 hover:text-white hover:bg-white/10'
-            }`}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${selectedSource === source
+                ? 'bg-white/10 text-white shadow-sm border border-white/10'
+                : 'text-white/60 hover:text-white hover:bg-white/5'
+              }`}
           >
             {source === 'clickhouse' && <Database className="w-4 h-4" />}
             {source === 'postgres' && <Database className="w-4 h-4" />}
@@ -152,11 +151,10 @@ export default function QueryBuilder({ onQuery, loading, dbConfig }: QueryBuilde
           </h3>
           <button
             onClick={() => setIsCustomMode(!isCustomMode)}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-              isCustomMode 
-                ? 'bg-purple-500 text-white' 
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${isCustomMode
+                ? 'bg-purple-500 text-white'
                 : 'bg-white/10 text-white/60 hover:text-white'
-            }`}
+              }`}
           >
             {isCustomMode ? 'Predefined' : 'Custom SQL'}
           </button>
