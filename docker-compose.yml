@@ -144,6 +144,8 @@ services:
     depends_on:
       - api
 
+
+
   scheduled-payments-worker:
     build: ./backend
     container_name: bank-scheduled-payments-worker
