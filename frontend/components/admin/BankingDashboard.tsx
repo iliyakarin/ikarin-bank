@@ -1,8 +1,17 @@
 "use client";
-import React, { useState } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
-import { Database, Clock, DollarSign, TrendingUp, Users, Activity, ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import { DataErrorBoundary } from '@/components/ErrorBoundaryWrapper';
+import {
+  Database,
+  Clock,
+  DollarSign,
+  TrendingUp,
+  Users,
+  Activity as ActivityIcon,
+  ArrowUpRight,
+  ArrowDownRight,
+  Target
+} from 'lucide-react';
 
 interface BankingMetrics {
   totalVolume: number;
@@ -26,7 +35,7 @@ export default function BankingDashboard({ metrics, loading }: BankingDashboardP
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-32 bg-black/20 rounded-2xl animate-pulse" />
+          <div key={i} className="h-32 bg-white/5 rounded-3xl animate-pulse border border-white/5" />
         ))}
       </div>
     );
@@ -45,155 +54,143 @@ export default function BankingDashboard({ metrics, loading }: BankingDashboardP
     return new Intl.NumberFormat('en-US').format(num);
   };
 
+  const metricCards = [
+    {
+      label: "24h Volume",
+      value: formatCurrency(metrics.totalVolume),
+      change: "+12.5%",
+      icon: <DollarSign className="w-6 h-6 text-purple-400" />,
+      color: "from-purple-500/20 to-indigo-500/20",
+      border: "border-purple-500/30",
+    },
+    {
+      label: "Transactions",
+      value: formatNumber(metrics.transactionCount),
+      change: "+8.3%",
+      icon: <ActivityIcon className="w-6 h-6 text-indigo-400" />,
+      color: "from-indigo-500/20 to-blue-500/20",
+      border: "border-indigo-500/30",
+    },
+    {
+      label: "Total Balance",
+      value: formatCurrency(metrics.totalBalance),
+      change: "+5.7%",
+      icon: <Database className="w-6 h-6 text-fuchsia-400" />,
+      color: "from-fuchsia-500/20 to-purple-500/20",
+      border: "border-fuchsia-500/30",
+    },
+    {
+      label: "Active Users",
+      value: formatNumber(metrics.activeUsers),
+      change: "-2.1%",
+      icon: <Users className="w-6 h-6 text-slate-400" />,
+      color: "from-slate-500/20 to-slate-600/20",
+      border: "border-slate-500/30",
+      isNegative: true,
+    }
+  ];
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="p-6 bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-2xl border border-blue-500/30"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-white/60 text-sm font-medium mb-1">24h Volume</p>
-              <p className="text-2xl font-bold text-white">{formatCurrency(metrics.totalVolume)}</p>
-              <p className="text-green-400 text-xs mt-2 flex items-center gap-1">
-                <ArrowUpRight className="w-3 h-3" />
-                +12.5% from yesterday
-              </p>
+        {metricCards.map((card, i) => (
+          <motion.div
+            key={card.label}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.1 }}
+            className={`p-6 bg-gradient-to-br ${card.color} rounded-3xl border ${card.border} backdrop-blur-md relative overflow-hidden group`}
+          >
+            <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110" />
+            <div className="relative flex items-start justify-between">
+              <div>
+                <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em] mb-2">{card.label}</p>
+                <p className="text-3xl font-black text-white tracking-tighter">{card.value}</p>
+                <div className={`mt-3 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-black tracking-tight border ${card.isNegative
+                    ? 'text-red-400 bg-red-400/10 border-red-400/20'
+                    : 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20'
+                  }`}>
+                  {card.isNegative ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
+                  {card.change}
+                </div>
+              </div>
+              <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10 group-hover:border-white/20 transition-all">
+                {card.icon}
+              </div>
             </div>
-            <div className="w-12 h-12 bg-blue-500/30 rounded-xl flex items-center justify-center">
-              <DollarSign className="w-6 h-6 text-blue-400" />
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="p-6 bg-gradient-to-br from-green-500/20 to-green-600/20 rounded-2xl border border-green-500/30"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-white/60 text-sm font-medium mb-1">Transactions</p>
-              <p className="text-2xl font-bold text-white">{formatNumber(metrics.transactionCount)}</p>
-              <p className="text-green-400 text-xs mt-2 flex items-center gap-1">
-                <ArrowUpRight className="w-3 h-3" />
-                +8.3% from yesterday
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-green-500/30 rounded-xl flex items-center justify-center">
-              <Activity className="w-6 h-6 text-green-400" />
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="p-6 bg-gradient-to-br from-purple-500/20 to-purple-600/20 rounded-2xl border border-purple-500/30"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-white/60 text-sm font-medium mb-1">Total Balance</p>
-              <p className="text-2xl font-bold text-white">{formatCurrency(metrics.totalBalance)}</p>
-              <p className="text-green-400 text-xs mt-2 flex items-center gap-1">
-                <ArrowUpRight className="w-3 h-3" />
-                +5.7% from last week
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-purple-500/30 rounded-xl flex items-center justify-center">
-              <Database className="w-6 h-6 text-purple-400" />
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="p-6 bg-gradient-to-br from-orange-500/20 to-orange-600/20 rounded-2xl border border-orange-500/30"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-white/60 text-sm font-medium mb-1">Active Users</p>
-              <p className="text-2xl font-bold text-white">{formatNumber(metrics.activeUsers)}</p>
-              <p className="text-red-400 text-xs mt-2 flex items-center gap-1">
-                <ArrowDownRight className="w-3 h-3" />
-                -2.1% from yesterday
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-orange-500/30 rounded-xl flex items-center justify-center">
-              <Users className="w-6 h-6 text-orange-400" />
-            </div>
-          </div>
-        </motion.div>
+          </motion.div>
+        ))}
       </div>
 
-      {/* Additional Analytics */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Recent High Value Transactions */}
+        {/* High Value Transactions */}
         <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.5 }}
-          className="p-6 bg-black/20 rounded-2xl border border-white/10"
+          className="glass-panel rounded-[2rem] p-8 space-y-6"
         >
-          <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-yellow-400" />
-            High Value Transactions
-          </h3>
-          <div className="space-y-3">
-            {metrics.topTransactions.slice(0, 5).map((transaction, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-black/20 rounded-xl">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-yellow-500/20 rounded-lg flex items-center justify-center text-yellow-400 text-sm font-bold">
-                    {index + 1}
+          <div className="flex items-center justify-between">
+            <h3 className="text-white font-bold text-xl flex items-center gap-3">
+              <TrendingUp className="w-5 h-5 text-indigo-400" />
+              High Value Activity
+            </h3>
+            <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-[10px] font-black text-white/40 uppercase tracking-widest">Live Feed</span>
+          </div>
+
+          <div className="space-y-4">
+            {metrics.topTransactions.slice(0, 5).map((tx, idx) => (
+              <div key={idx} className="group flex items-center justify-between p-4 bg-white/5 hover:bg-white/[0.08] border border-white/5 rounded-2xl transition-all cursor-default">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-xl flex items-center justify-center border border-indigo-500/20">
+                    <Target className="w-4 h-4 text-indigo-400" />
                   </div>
                   <div>
-                    <p className="text-white text-sm font-medium">{transaction.merchant}</p>
-                    <p className="text-white/40 text-xs">
-                      {new Date(transaction.created_at + 'Z').toLocaleTimeString()}
+                    <p className="text-white font-bold text-sm tracking-tight">{tx.merchant}</p>
+                    <p className="text-white/30 text-[10px] font-medium uppercase tracking-widest mt-0.5">
+                      {new Date(tx.created_at + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • ID: {tx.account_id}
                     </p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-white font-bold">{formatCurrency(transaction.amount)}</p>
-                  <p className="text-white/40 text-xs">ID: {transaction.account_id}</p>
+                  <p className="text-white font-black text-lg tracking-tighter">{formatCurrency(tx.amount)}</p>
+                  <p className="text-emerald-400/60 text-[10px] font-bold tracking-widest uppercase">Verified</p>
                 </div>
               </div>
             ))}
           </div>
         </motion.div>
 
-        {/* Hourly Volume Chart */}
+        {/* Volume Heatmap */}
         <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.6 }}
-          className="p-6 bg-black/20 rounded-2xl border border-white/10"
+          className="glass-panel rounded-[2rem] p-8 space-y-6"
         >
-          <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-blue-400" />
-            24h Transaction Volume
-          </h3>
-          <div className="space-y-2">
-            {metrics.hourlyVolume.slice(-8).map((hour, index) => (
-              <div key={index} className="flex items-center gap-3">
-                <span className="text-white/60 text-sm w-12">
+          <div className="flex items-center justify-between">
+            <h3 className="text-white font-bold text-xl flex items-center gap-3">
+              <Clock className="w-5 h-5 text-purple-400" />
+              Transaction Velocity
+            </h3>
+            <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-[10px] font-black text-white/40 uppercase tracking-widest">24H Window</span>
+          </div>
+
+          <div className="space-y-3">
+            {metrics.hourlyVolume.slice(-8).map((hour, i) => (
+              <div key={i} className="flex items-center gap-4">
+                <span className="text-white/30 font-bold text-[10px] uppercase tracking-tighter w-10">
                   {hour.hour}:00
                 </span>
-                <div className="flex-1 h-8 bg-black/20 rounded-lg overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg transition-all"
-                    style={{ width: `${(hour.count / Math.max(...metrics.hourlyVolume.map(h => h.count))) * 100}%` }}
+                <div className="flex-1 h-3 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${(hour.count / Math.max(...metrics.hourlyVolume.map(h => h.count))) * 100}%` }}
+                    className="h-full bg-gradient-to-r from-purple-500 to-indigo-500"
                   />
                 </div>
-                <span className="text-white text-sm font-medium w-16 text-right">
+                <span className="text-white font-black text-xs tracking-tighter w-20 text-right">
                   {formatCurrency(hour.total)}
                 </span>
               </div>
@@ -202,48 +199,25 @@ export default function BankingDashboard({ metrics, loading }: BankingDashboardP
         </motion.div>
       </div>
 
-      {/* Average Transaction Size & Merchant Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7 }}
-          className="p-6 bg-gradient-to-br from-indigo-500/20 to-indigo-600/20 rounded-2xl border border-indigo-500/30 text-center"
-        >
-          <h4 className="text-white/60 text-sm font-medium mb-2">Avg Transaction Size</h4>
-          <p className="text-3xl font-bold text-white">{formatCurrency(metrics.avgTransactionSize)}</p>
-          <p className="text-indigo-400 text-xs mt-2">Last 24 hours</p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.8 }}
-          className="p-6 bg-gradient-to-br from-pink-500/20 to-pink-600/20 rounded-2xl border border-pink-500/30 text-center"
-        >
-          <h4 className="text-white/60 text-sm font-medium mb-2">Top Merchant</h4>
-          <p className="text-xl font-bold text-white truncate">
-            {metrics.merchantStats[0]?.merchant || 'N/A'}
-          </p>
-          <p className="text-pink-400 text-xs mt-2">
-            {formatCurrency(metrics.merchantStats[0]?.total_amount || 0)} volume
-          </p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.9 }}
-          className="p-6 bg-gradient-to-br from-cyan-500/20 to-cyan-600/20 rounded-2xl border border-cyan-500/30 text-center"
-        >
-          <h4 className="text-white/60 text-sm font-medium mb-2">New Users Today</h4>
-          <p className="text-3xl font-bold text-white">
-            {metrics.userGrowth.filter(u =>
-              new Date(u.date).toDateString() === new Date().toDateString()
-            )[0]?.count || 0}
-          </p>
-          <p className="text-cyan-400 text-xs mt-2">+18% growth rate</p>
-        </motion.div>
+      {/* Secondary Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-4">
+        {[
+          { label: "Avg Ticket Size", val: formatCurrency(metrics.avgTransactionSize), sub: "Last 24 hours", col: "text-indigo-400" },
+          { label: "Top Merchant", val: metrics.merchantStats[0]?.merchant || 'N/A', sub: `${formatCurrency(metrics.merchantStats[0]?.total_amount || 0)} Vol`, col: "text-purple-400" },
+          { label: "New Users", val: metrics.userGrowth.filter(u => new Date(u.date).toDateString() === new Date().toDateString())[0]?.count || 0, sub: "+18% Net/Growth", col: "text-fuchsia-400" },
+        ].map((m, i) => (
+          <motion.div
+            key={m.label}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7 + (i * 0.1) }}
+            className="p-6 bg-white/5 border border-white/10 rounded-[2rem] text-center group hover:bg-white/[0.08] transition-all"
+          >
+            <p className="text-white/30 text-[10px] font-black uppercase tracking-[0.2em] mb-2">{m.label}</p>
+            <p className="text-2xl font-black text-white tracking-tighter truncate px-2">{m.val}</p>
+            <p className={`${m.col} text-[10px] font-bold uppercase tracking-widest mt-2 opacity-60`}>{m.sub}</p>
+          </motion.div>
+        ))}
       </div>
     </div>
   );
