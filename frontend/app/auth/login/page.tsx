@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import Link from 'next/link';
 import { useAuth } from '@/lib/AuthContext';
+import Turnstile from '@/components/ui/Turnstile';
 
 export default function LoginPage() {
     const [formData, setFormData] = useState({
@@ -15,6 +16,7 @@ export default function LoginPage() {
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [captchaToken, setCaptchaToken] = useState<string | null>(null);
     const { login } = useAuth();
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -26,6 +28,9 @@ export default function LoginPage() {
             const params = new URLSearchParams();
             params.append('username', formData.email);
             params.append('password', formData.password);
+            if (captchaToken) {
+                params.append('captcha_token', captchaToken);
+            }
 
             const res = await fetch('/api/auth/login', {
                 method: 'POST',
@@ -108,11 +113,18 @@ export default function LoginPage() {
                                 className="w-full"
                                 loading={loading}
                                 size="lg"
+                                disabled={!captchaToken}
                             >
                                 <span className="flex items-center gap-2">
                                     Sign In <ArrowRight className="w-4 h-4" />
                                 </span>
                             </Button>
+
+                            <Turnstile
+                                onVerify={(token) => setCaptchaToken(token)}
+                                onError={() => setError('Captcha failed to load.')}
+                                onExpire={() => setCaptchaToken(null)}
+                            />
                         </form>
 
                         <div className="text-center pt-2">
@@ -126,6 +138,6 @@ export default function LoginPage() {
                     </div>
                 </Card>
             </motion.div>
-        </div>
+        </div >
     );
 }
