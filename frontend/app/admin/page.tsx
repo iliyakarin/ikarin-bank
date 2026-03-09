@@ -54,6 +54,7 @@ export default function AdminPage() {
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState<'query' | 'dashboard' | 'users'>('dashboard');
   const [activeQueryTab, setActiveQueryTab] = useState<'builder' | 'config'>('builder');
+  const [environment, setEnvironment] = useState<string>('development');
   const [queryResults, setQueryResults] = useState<QueryResults | null>(null);
   const [bankingMetrics, setBankingMetrics] = useState<BankingMetrics | null>(null);
   const [loading, setLoading] = useState(false);
@@ -101,12 +102,12 @@ export default function AdminPage() {
       });
       if (response.ok) {
         const config = await response.json();
-        // Merge with existing defaults to preserve any fields not returned by API
+        if (config.env) setEnvironment(config.env);
         setDbConfig(prev => ({
           ...prev,
-          clickhouse: { ...prev.clickhouse, ...config.clickhouse, password: '' },
-          postgres: { ...prev.postgres, ...config.postgres, password: '' },
-          kafka: { ...prev.kafka, ...config.kafka, password: '' }
+          clickhouse: { ...prev.clickhouse, ...config.clickhouse },
+          postgres: { ...prev.postgres, ...config.postgres },
+          kafka: { ...prev.kafka, ...config.kafka }
         }));
       }
     } catch (error) {
@@ -385,6 +386,8 @@ export default function AdminPage() {
                           onChange={setDbConfig}
                           onTestConnection={handleTestConnection}
                           connectionStatus={connectionStatus}
+                          readOnly={true}
+                          environment={environment}
                         />
                       </motion.div>
                     )}
