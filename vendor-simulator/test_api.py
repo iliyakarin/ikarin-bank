@@ -1,8 +1,10 @@
 import requests
 import json
 
-BASE_URL = "http://localhost:8001"
-API_KEY = "[REDACTED]"
+import os
+
+BASE_URL = os.getenv("SIMULATOR_LOCAL_URL")
+API_KEY = os.getenv("SIMULATOR_API_KEY")
 HEADERS = {"X-API-KEY": API_KEY}
 
 def test_auth():

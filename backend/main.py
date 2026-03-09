@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from confluent_kafka.admin import AdminClient
 from confluent_kafka import Consumer
 import clickhouse_connect
+from clickhouse_utils import get_ch_client, CH_DB
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -124,6 +125,7 @@ class P2PTransferRequest(BaseModel):
     idempotency_key: Optional[str] = None
     commentary: Optional[str] = None
     payment_request_id: Optional[int] = None
+    subscriber_id: Optional[str] = None
 
 class PaymentRequestCreate(BaseModel):
     target_email: str
@@ -147,6 +149,7 @@ class ScheduledTransferCreate(BaseModel):
     reserve_amount: bool = False
     idempotency_key: Optional[str] = None
     funding_account_id: Optional[int] = None
+    subscriber_id: Optional[str] = None
 
 class ScheduledPaymentResponse(BaseModel):
     id: int
@@ -594,9 +597,7 @@ async def get_stats(
     pg_count = result.scalar()
 
     # 2. ClickHouse Count
-    ch_client = clickhouse_connect.get_client(
-        host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
-    )
+    ch_client = get_ch_client()
     ch_result = ch_client.query("SELECT count() FROM transactions")
     ch_count = ch_result.result_rows[0][0]
 
@@ -655,13 +656,16 @@ async def get_traces(
     tx_ids = [tx.id for tx in pg_txs]
 
     # Get matching records from ClickHouse
-    ch_client = clickhouse_connect.get_client(host=CH_HOST, port=CH_PORT)
-    # Using IN clause for efficiency
-    # Use parameterized query to prevent SQL injection
-    query = "SELECT transaction_id, event_time FROM transactions WHERE transaction_id IN {tx_ids:Array(String)}"
-    ch_txs = ch_client.query(query, parameters={'tx_ids': tx_ids}).named_results()
-
-    ch_map = {row["transaction_id"]: row["event_time"] for row in ch_txs}
+    try:
+        ch_client = get_ch_client()
+        # Using IN clause for efficiency
+        # Use parameterized query to prevent SQL injection
+        query = "SELECT transaction_id, event_time FROM transactions WHERE transaction_id IN {tx_ids:Array(String)}"
+        ch_txs = ch_client.query(query, parameters={'tx_ids': tx_ids}).named_results()
+        ch_map = {row["transaction_id"]: row["event_time"] for row in ch_txs}
+    except Exception as e:
+        logger.warning(f"ClickHouse trace lookup failed: {e}")
+        ch_map = {}
 
     traces = []
     for tx in pg_txs:
@@ -775,9 +779,7 @@ async def get_postgres_logs(
 @app.get("/admin/clickhouse-logs")
 def get_ch_logs(current_user: User = Depends(admin_only)):
     # Connect to ClickHouse
-    client = clickhouse_connect.get_client(
-        host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
-    )
+    client = get_ch_client()
     result = client.query(
         "SELECT * FROM transactions ORDER BY event_time DESC LIMIT 10"
     )
@@ -1076,6 +1078,37 @@ def _create_p2p_outbox_entries(
     db.add(Outbox(event_type="p2p.recipient", payload=recipient_payload))
 
 
+SIMULATOR_URL = os.getenv("SIMULATOR_URL")
+SIMULATOR_API_KEY = os.getenv("SIMULATOR_API_KEY")
+
+async def get_vendors():
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(f"{SIMULATOR_URL}/vendors")
+            if resp.status_code == 200:
+                return resp.json().get("vendors", [])
+        except Exception as e:
+            print(f"[ERROR] Fetching vendors: {e}")
+        return []
+
+async def execute_vendor_payment_immediate(merchant_id: str, subscriber_id: str, amount: Decimal):
+    async with httpx.AsyncClient() as client:
+        try:
+            payload = {
+                "merchant_id": merchant_id,
+                "subscriber_id": subscriber_id,
+                "amount": float(amount)
+            }
+            resp = await client.post(
+                f"{SIMULATOR_URL}/billpay/execute",
+                json=payload,
+                headers={"X-API-KEY": SIMULATOR_API_KEY}
+            )
+            return resp.json()
+        except Exception as e:
+            print(f"[ERROR] Executing vendor payment: {e}")
+            return {"status": "FAILED", "failure_reason": str(e)}
+
 @app.post("/p2p-transfer")
 async def create_p2p_transfer(
     transfer: P2PTransferRequest,
@@ -1097,7 +1130,74 @@ async def create_p2p_transfer(
             return existing_key.response_body
 
     # 2. Validation & Recipient Lookup
-    recipient = await _validate_p2p_transfer(transfer, current_user, db)
+    try:
+        recipient = await _validate_p2p_transfer(transfer, current_user, db)
+    except HTTPException as e:
+        if e.status_code == 404 and "Recipient not found" in str(e.detail):
+            # Check for vendor
+            vendors = await get_vendors()
+            vendor = next((v for v in vendors if v["email"] == transfer.recipient_email), None)
+            if vendor:
+                # Resolve Sender Account
+                sender_account_query = select(Account).filter(Account.user_id == current_user.id)
+                if transfer.source_account_id:
+                    sender_account_query = sender_account_query.filter(Account.id == transfer.source_account_id)
+                else:
+                    sender_account_query = sender_account_query.filter(Account.is_main == True)
+                    
+                result = await db.execute(sender_account_query.with_for_update())
+                sender_account = result.scalars().first()
+                if not sender_account:
+                    raise HTTPException(status_code=404, detail="Source account not found")
+
+                if sender_account.balance < transfer.amount:
+                     raise HTTPException(status_code=400, detail="Insufficient funds")
+
+                # Execute Vendor Payment
+                sim_resp = await execute_vendor_payment_immediate(
+                    vendor["id"], transfer.subscriber_id or "UNKNOWN", transfer.amount
+                )
+
+                # Update Balance
+                sender_account.balance -= transfer.amount
+
+                # Create Transaction Record
+                status_map = {"CLEARED": "cleared", "FAILED": "failed"}
+                tx_id = str(uuid.uuid4())
+                vendor_tx = Transaction(
+                    id=tx_id,
+                    account_id=sender_account.id,
+                    amount=-transfer.amount,
+                    category="Bill Pay",
+                    merchant=vendor["name"],
+                    status=status_map.get(sim_resp.get("status"), "failed"),
+                    transaction_type="expense",
+                    transaction_side="DEBIT",
+                    failure_reason=sim_resp.get("failure_reason"),
+                    commentary=f"Bill Payment to {vendor['name']} (Instant)",
+                    subscriber_id=transfer.subscriber_id,
+                    idempotency_key=transfer.idempotency_key or str(uuid.uuid4()),
+                    ip_address=client_ip,
+                    user_agent=user_agent,
+                    created_at=datetime.datetime.utcnow()
+                )
+                db.add(vendor_tx)
+
+                response_body = {"status": "success", "transaction_id": tx_id, "vendor_status": sim_resp.get("status")}
+                if transfer.idempotency_key:
+                    db.add(IdempotencyKey(
+                        key=transfer.idempotency_key,
+                        user_id=current_user.id,
+                        response_code=200,
+                        response_body=response_body
+                    ))
+
+                await db.commit()
+                return response_body
+            else:
+                raise # Re-raise original 404
+        else:
+            raise
 
     # 2.5 Security Checks
     if not await check_velocity(db, current_user.id):
@@ -1523,7 +1623,8 @@ async def create_scheduled_transfer(
             status="Active",
             idempotency_key=ik,
             reserve_amount=transfer.reserve_amount,
-            funding_account_id=sender_account.id
+            funding_account_id=sender_account.id,
+            subscriber_id=transfer.subscriber_id
         )
         db.add(new_scheduled_payment)
         
@@ -1626,9 +1727,7 @@ async def get_activity(
 ):
     """Query the activity log from ClickHouse."""
     try:
-        ch = clickhouse_connect.get_client(
-            host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
-        )
+        ch = get_ch_client()
 
         if not from_date:
             # Default to last 24 hours if not specified
@@ -1709,9 +1808,7 @@ async def get_balance_history(
         raise HTTPException(status_code=404, detail="Account not found")
 
     try:
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
-        )
+        ch_client = get_ch_client()
 
         # Query ClickHouse for balance trend
         query = f"""
@@ -1793,9 +1890,7 @@ async def get_recent_transactions(
         pg_transactions = result.scalars().all()
         
         # 2. Get CLEARED/HISTORY transactions from ClickHouse (incoming AND outgoing)
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
-        )
+        ch_client = get_ch_client()
         
         # Join account IDs for ClickHouse query to ensure we only get transactions belonging to the user's specific accounts
         # This prevents duplicate entries for P2P transfers while ensuring both sender and recipient see their record.
@@ -1814,7 +1909,9 @@ async def get_recent_transactions(
                 recipient_email,
                 transaction_type,
                 transaction_side,
-                event_time
+                event_time,
+                subscriber_id,
+                failure_reason
             FROM {CH_DB}.transactions
             WHERE account_id IN ({account_ids_str})
             AND event_time >= now() - INTERVAL {hours} HOUR
@@ -1844,6 +1941,8 @@ async def get_recent_transactions(
                 "transaction_type": row[6],
                 "transaction_side": row[7],
                 "created_at": row[8].isoformat() if row[8] else None,
+                "subscriber_id": row[9],
+                "failure_reason": row[10],
                 "status": "cleared"
             })
             
@@ -1927,9 +2026,7 @@ async def get_all_transactions(
     cutoff_time = datetime.datetime.utcnow() - datetime.timedelta(days=days)
 
     try:
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
-        )
+        ch_client = get_ch_client()
 
         account_ids_str = ",".join(map(str, target_account_ids))
         where_clauses = [
@@ -1970,6 +2067,8 @@ async def get_all_transactions(
             transaction_side,
             event_time,
             internal_account_last_4,
+            subscriber_id,
+            failure_reason,
             status
         FROM {CH_DB}.transactions
         WHERE {where_clause}
@@ -1992,19 +2091,17 @@ async def get_all_transactions(
                 "side": row["transaction_side"],
                 "timestamp": row["event_time"].isoformat(),
                 "internal_account_last_4": row.get("internal_account_last_4"),
+                "subscriber_id": row.get("subscriber_id"),
+                "failure_reason": row.get("failure_reason"),
                 "status": row.get("status", "cleared")
             }
             # IDOR check: even though we filter by account_ids belonging to user,
             # this is a defense-in-depth to ensure no leakage if query logic fails.
             transactions.append(tx)
 
-        if not transactions:
-            # Fall back to Postgres when ClickHouse has no data
-            raise Exception("No data in ClickHouse, falling back to Postgres")
-
         return {"transactions": transactions, "total": len(transactions)}
     except Exception as e:
-        print(f"ClickHouse query failed or empty, falling back to Postgres: {e}")
+        logger.error(f"ClickHouse query failed or empty, falling back to Postgres: {e}")
 
         # --- Postgres Fallback ---
         query = select(Transaction).filter(
@@ -2032,15 +2129,15 @@ async def get_all_transactions(
         for row in results:
             tx = {
                 "id": str(row.id),
-                "sender_email": row.sender_email or "",
-                "recipient_email": row.recipient_email or "",
+                "merchant": row.merchant or "",
                 "amount": float(row.amount),
                 "category": row.category or "Transfer",
-                "merchant": row.merchant or "",
                 "transaction_type": row.transaction_type or "expense",
                 "transaction_side": row.transaction_side or "",
                 "timestamp": row.created_at.isoformat() if row.created_at else "",
                 "status": row.status or "Cleared",
+                "subscriber_id": row.subscriber_id,
+                "failure_reason": row.failure_reason,
             }
             transactions.append(tx)
 
@@ -2191,7 +2288,7 @@ def _execute_clickhouse_query(request: QueryRequest) -> Tuple[List, List]:
     ch_client = clickhouse_connect.get_client(
         host=CH_HOST,
         port=CH_PORT,
-        username=os.getenv("CLICKHOUSE_READONLY_USER"),
+        username=CH_USER,
         password=os.getenv("CLICKHOUSE_READONLY_PASSWORD"),
     )
 
@@ -2387,9 +2484,7 @@ async def get_banking_metrics(
         total_users = total_users_result.scalar() or 0
 
         # ClickHouse queries for transaction data
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
-        )
+        ch_client = get_ch_client()
 
         # 24h transaction metrics
         volume_query = """

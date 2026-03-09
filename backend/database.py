@@ -82,6 +82,7 @@ class ScheduledPayment(Base):
     retry_count = Column(Integer, default=0, nullable=False)
     idempotency_key = Column(String(100), unique=True, index=True, nullable=False)
     reserve_amount = Column(Boolean, default=False, nullable=False)
+    subscriber_id = Column(String(100), nullable=True) # For Vendor Payments
 
 class PaymentRequest(Base):
     __tablename__ = "payment_requests"
@@ -120,6 +121,7 @@ class Transaction(Base):
     user_agent = Column(String(255))
     failure_reason = Column(String(255))
     commentary = Column(String, nullable=True)
+    subscriber_id = Column(String(100), nullable=True) # For Vendor Payments
     payment_request_id = Column(Integer, ForeignKey("payment_requests.id"), index=True, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
