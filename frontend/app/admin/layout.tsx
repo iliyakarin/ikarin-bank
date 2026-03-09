@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { JetBrains_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import { AdminWrapper } from './AdminWrapper';
 
-const mono = JetBrains_Mono({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
     title: "Mission Control | Karin Bank Admin",
@@ -14,5 +14,9 @@ export default function AdminLayout({
 }: {
     children: React.ReactNode;
 }) {
-    return <AdminWrapper>{children}</AdminWrapper>;
+    return (
+        <div className={inter.className}>
+            <AdminWrapper>{children}</AdminWrapper>
+        </div>
+    );
 }

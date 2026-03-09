@@ -588,7 +588,7 @@ async def get_account_balance(
 # --- Observability Endpoints ---
 
 
-@app.get("/admin/stats")
+@app.get("/v1/admin/stats")
 async def get_stats(
     db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_only)
 ):
@@ -642,6 +642,35 @@ async def get_stats(
         "sync_health": "in_sync" if delta < 5 else "syncing",
         "status": "healthy" if lag < 5000 and lag >= 0 else "degraded",
     }
+
+
+@app.get("/v1/admin/users", response_model=List[UserResponse])
+async def list_users(
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_only)
+):
+    """Admin-only: List all users in the system."""
+    result = await db.execute(
+        select(User).order_by(User.id.desc()).offset(skip).limit(limit)
+    )
+    users = result.scalars().all()
+    return users
+
+
+@app.get("/v1/admin/users/search", response_model=UserResponse)
+async def search_user_by_email(
+    email: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_only)
+):
+    """Admin-only: Search for a user by their email address."""
+    result = await db.execute(select(User).filter(User.email == email))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
 
 @app.delete("/v1/admin/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -771,7 +800,7 @@ class SimulationRequest(BaseModel):
     count: int
 
 
-@app.post("/admin/simulate")
+@app.post("/v1/admin/simulate")
 async def simulate_traffic(
     req: SimulationRequest,
     background_tasks: BackgroundTasks,
@@ -2536,7 +2565,7 @@ def _get_kafka_topic_stats() -> Tuple[List, List]:
         )
 
 
-@app.post("/admin/query")
+@app.post("/v1/admin/query")
 async def execute_admin_query(
     request: QueryRequest,
     current_user: User = Depends(admin_only),
@@ -2575,7 +2604,7 @@ async def execute_admin_query(
         raise HTTPException(status_code=500, detail=f"Query execution failed: {str(e)}")
 
 
-@app.get("/admin/banking-metrics")
+@app.get("/v1/admin/banking-metrics")
 async def get_banking_metrics(
     current_user: User = Depends(admin_only), db: Session = Depends(get_db)
 ):
