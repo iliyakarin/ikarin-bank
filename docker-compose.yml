@@ -135,16 +135,6 @@ services:
       clickhouse:
         condition: service_healthy
 
-
-
-
-  vendor-simulator:
-    build: ./vendor-simulator
-    container_name: bank-vendor-simulator
-    ports:
-      - "8001:8001"
-    env_file: .env
-
   frontend:
     build: ./frontend
     container_name: bank-frontend
@@ -175,17 +165,47 @@ services:
     depends_on:
       - proxy
 
+  vendor-simulator:
+    build: ./vendor-simulator
+    container_name: bank-vendor-simulator
+    ports:
+      - "8001:8001"
+    env_file: .env
+    environment:
+      - DATABASE_URL=${VENDOR_SIMULATOR_DB_URL}
+      - SIMULATOR_API_KEY=${SIMULATOR_API_KEY}
+    depends_on:
+      vendor-simulator-db:
+        condition: service_healthy
+
+  vendor-simulator-db:
+    image: postgres:16-alpine
+    container_name: bank-vendor-simulator-db
+    env_file: .env
+    environment:
+      - POSTGRES_USER=${VENDOR_SIMULATOR_DB_USER}
+      - POSTGRES_PASSWORD=${VENDOR_SIMULATOR_DB_PASSWORD}
+      - POSTGRES_DB=${VENDOR_SIMULATOR_DB_NAME}
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${VENDOR_SIMULATOR_DB_USER} -d ${VENDOR_SIMULATOR_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   fed-gateway-db:
     image: postgres:16-alpine
     container_name: fed-gateway-db
+    env_file: .env
     environment:
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=admin
-      - POSTGRES_DB=fed_gateway_db
+      - POSTGRES_USER=${FED_GATEWAY_DB_USER}
+      - POSTGRES_PASSWORD=${FED_GATEWAY_DB_PASSWORD}
+      - POSTGRES_DB=${FED_GATEWAY_DB_NAME}
     ports:
       - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d fed_gateway_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${FED_GATEWAY_DB_USER} -d ${FED_GATEWAY_DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -193,9 +213,10 @@ services:
   mock-fed-gateway:
     build: ./mock-fed-gateway
     container_name: mock-fed-gateway
+    env_file: .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://admin:admin@fed-gateway-db:5432/fed_gateway_db
-      - GATEWAY_API_KEY=[REDACTED]
+      - DATABASE_URL=${FED_GATEWAY_DB_URL}
+      - GATEWAY_API_KEY=${GATEWAY_API_KEY}
     ports:
       - "8002:8002"
     depends_on:

@@ -11,25 +11,28 @@ This service simulates the US Federal Reserve (ACH) and major Bill Pay aggregato
   - `INVALID_SUBSCRIBER`: Triggered if subscriber ID contains `00000`.
 
 ## Security Evolution Roadmap
-Currently, the service uses a simple `X-API-KEY` header for authentication. The roadmap for production hardening includes:
-1. **Mutual TLS (mTLS)**: Enforcing client-side certificates for all bank-to-gateway communication. This ensures both identity and encryption at the transport layer.
-2. **Signed JWS (JSON Web Signatures)**: Implementation of JWS for payload non-repudiation. Each transaction payload will be signed by the originating bank's private key and verified by the gateway.
-3. **OAuth2.0 / Client Credentials**: Transitioning to short-lived JWTs issued by a central Identity Provider (IdP) for internal service-to-service calls.
+High-integrity simulation of the US Federal Reserve ACH and Wire systems.
 
-## Feature Evolution Roadmap
-1. **ISO 8583 Simulation**: Implementing a simulator for the ISO 8583 messaging standard to support Debit Card rail simulations (Authorization, Reversal, Clearing).
-2. **FedNow Simulation**: Adding real-time payment support (Instant Credit Transfer) to mirror the FedNow service.
-3. **Webhooks**: Implementing asynchronous callback notifications for ACH settlement and returns.
+## 🏗 Features
+- **ACH Origination**: Simulate NACHA-style batch transfers.
+- **Bank Directory**: Validates routing numbers against major US entities (Chase, BoA, etc.).
+- **Failure Simulation**: Trigger-based returns (e.g., R01 NSF).
+- **Security**: Mandatory `X-API-KEY` header validation.
 
-## Getting Started
-### Running Standalone
-```bash
-cd mock-fed-gateway
-docker compose up -d
-docker compose exec mock-fed-gateway python seed.py
-```
+## 🚀 Getting Started
+The gateway is part of the Karin Bank ecosystem. Ensure the root `docker-compose.yml` is running.
 
 ### API Endpoints
-- `POST /fed/ach/originate`: `{ "routing_number": "...", "account_number": "...", "amount": 100.00 }`
-- `POST /billpay/validate-subscriber`: `{ "merchant_id": "...", "subscriber_id": "..." }`
-- `POST /billpay/execute`: `{ "merchant_id": "...", "subscriber_id": "...", "amount": 50.0 }`
+- `POST /fed/ach/originate`: Simulates an ACH transfer.
+  - Headers: `X-API-KEY: ${GATEWAY_API_KEY}`
+  - Body: `{"routing_number": "...", "account_number": "...", "amount": 100.00}`
+
+### Failure Triggers
+- **R01 (NSF)**: Use any amount ending in `.01` (e.g., `100.01`).
+- **R03 (No Account)**: Use any account number containing `00000`.
+
+## 🧪 Testing
+Run the local test suite (requires `requests`):
+```bash
+python3 test_api.py
+```

@@ -5,9 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncAttrs
 class Base(AsyncAttrs, DeclarativeBase):
     pass
 
-class Bank(Base):
-    __tablename__ = "banks"
+class Merchant(Base):
+    __tablename__ = "merchants"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    routing_number: Mapped[str] = mapped_column(String(9), unique=True, nullable=False, index=True)
+    merchant_id: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(100), nullable=False)
