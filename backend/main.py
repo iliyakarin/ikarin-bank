@@ -904,25 +904,29 @@ def manual_sync_clickhouse(
 
 @app.get("/v1/admin/config")
 async def get_admin_config(current_user: User = Depends(admin_only)):
-    """Returns masked configuration for database connectivity."""
-    from database import POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER, POSTGRES_DB
+    """Returns full configuration for database connectivity (admin-only)."""
+    from database import POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
     
     return {
+        "env": os.getenv("ENV"),
         "clickhouse": {
             "host": CH_HOST,
             "port": CH_PORT,
             "username": CH_USER,
-            "database": "banking"
+            "password": CH_PASSWORD,
+            "database": os.getenv("CLICKHOUSE_DB")
         },
         "postgres": {
             "host": POSTGRES_HOST,
             "port": POSTGRES_PORT,
             "username": POSTGRES_USER,
+            "password": POSTGRES_PASSWORD,
             "database": POSTGRES_DB
         },
         "kafka": {
             "bootstrap_servers": KAFKA_BOOTSTRAP_SERVERS,
             "username": KAFKA_USER,
+            "password": KAFKA_PASSWORD,
             "topic": KAFKA_TOPIC
         }
     }
