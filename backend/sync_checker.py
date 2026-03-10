@@ -12,11 +12,11 @@ from database import SessionLocal, Transaction, Outbox
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-CH_HOST = os.getenv("CLICKHOUSE_HOST", "localhost")
+CH_HOST = os.getenv("CLICKHOUSE_HOST")
 CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
-CH_USER = os.getenv("CLICKHOUSE_USER", "default")
-CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
-CH_DB = os.getenv("CLICKHOUSE_DB", "banking_log")
+CH_USER = os.getenv("CLICKHOUSE_USER")
+CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD")
+CH_DB = os.getenv("CLICKHOUSE_DB")
 
 CHECK_INTERVAL_SECONDS = 86400 # Run every 24 hours
 

@@ -8,11 +8,11 @@ from sqlalchemy import select
 from database import SessionLocal, Outbox, Transaction
 from aiokafka import AIOKafkaProducer
 
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "bank_transactions")
 KAFKA_ACTIVITY_TOPIC = os.getenv("KAFKA_ACTIVITY_TOPIC", "bank_activity_events")
-KAFKA_USER = os.getenv("KAFKA_USER", "admin")
-KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD", "")
+KAFKA_USER = os.getenv("KAFKA_USER")
+KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
 
 async def process_outbox():
     print("🚀 Outbox worker started...")

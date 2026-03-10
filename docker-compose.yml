@@ -3,7 +3,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: bank-postgres
-    env_file: .env
+    env_file: .env.dev
     ports:
       - "5432:5432"
     volumes:
@@ -18,7 +18,7 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:latest
     container_name: bank-clickhouse
-    env_file: .env
+    env_file: .env.dev
     ports:
       - "8123:8123"
     volumes:
@@ -35,7 +35,7 @@ services:
     container_name: bank-kafka
     ports:
       - "9092:9092"
-    env_file: .env
+    env_file: .env.dev
     environment:
       - KAFKA_NODE_ID=1
       - KAFKA_PROCESS_ROLES=broker,controller
@@ -60,7 +60,7 @@ services:
     build: ./backend
     # Removed container_name to allow scaling multiple instances
     command: gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
-    env_file: .env
+    env_file: .env.dev
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - PYTHONUNBUFFERED=1
@@ -91,7 +91,7 @@ services:
     build: ./backend
     container_name: bank-consumer
     command: python consumer.py
-    env_file: .env
+    env_file: .env.dev
     volumes:
       - ./backend:/app
     environment:
@@ -107,7 +107,7 @@ services:
     build: ./backend
     container_name: bank-outbox-worker
     command: python outbox_worker.py
-    env_file: .env
+    env_file: .env.dev
     volumes:
       - ./backend:/app
     environment:
@@ -123,7 +123,7 @@ services:
     build: ./backend
     container_name: bank-sync-checker
     command: python sync_checker.py
-    env_file: .env
+    env_file: .env.dev
     volumes:
       - ./backend:/app
     environment:
@@ -140,7 +140,7 @@ services:
     container_name: bank-frontend
     ports:
       - "3000:3000"
-    env_file: .env
+    env_file: .env.dev
     depends_on:
       - api
 
@@ -150,7 +150,7 @@ services:
     build: ./backend
     container_name: bank-scheduled-payments-worker
     command: python scheduled_payments_worker.py
-    env_file: .env
+    env_file: .env.dev
     volumes:
       - ./backend:/app
     environment:
@@ -162,7 +162,7 @@ services:
   # cloudflared:
   #   image: cloudflare/cloudflared:latest
   #   container_name: bank-cloudflared
-  #   env_file: .env
+  #   env_file: .env.dev
   #   command: tunnel --no-autoupdate run
   #   depends_on:
   #     - proxy
@@ -172,7 +172,7 @@ services:
     container_name: bank-vendor-simulator
     ports:
       - "8001:8001"
-    env_file: .env
+    env_file: .env.dev
     environment:
       - DATABASE_URL=${VENDOR_SIMULATOR_DB_URL}
       - SIMULATOR_API_KEY=${SIMULATOR_API_KEY}
@@ -183,7 +183,7 @@ services:
   vendor-simulator-db:
     image: postgres:16-alpine
     container_name: bank-vendor-simulator-db
-    env_file: .env
+    env_file: .env.dev
     environment:
       - POSTGRES_USER=${VENDOR_SIMULATOR_DB_USER}
       - POSTGRES_PASSWORD=${VENDOR_SIMULATOR_DB_PASSWORD}
@@ -199,7 +199,7 @@ services:
   fed-gateway-db:
     image: postgres:16-alpine
     container_name: fed-gateway-db
-    env_file: .env
+    env_file: .env.dev
     environment:
       - POSTGRES_USER=${FED_GATEWAY_DB_USER}
       - POSTGRES_PASSWORD=${FED_GATEWAY_DB_PASSWORD}
@@ -215,7 +215,7 @@ services:
   mock-fed-gateway:
     build: ./mock-fed-gateway
     container_name: mock-fed-gateway
-    env_file: .env
+    env_file: .env.dev
     environment:
       - DATABASE_URL=${FED_GATEWAY_DB_URL}
       - GATEWAY_API_KEY=${GATEWAY_API_KEY}
