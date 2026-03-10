@@ -4,6 +4,8 @@ services:
     image: postgres:16-alpine
     container_name: bank-postgres
     env_file: .env.dev
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "5432:5432"
     volumes:
@@ -19,6 +21,8 @@ services:
     image: clickhouse/clickhouse-server:latest
     container_name: bank-clickhouse
     env_file: .env.dev
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "8123:8123"
     volumes:
@@ -34,6 +38,8 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.6.1
     container_name: bank-kafka
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "9092:9092"
     env_file: .env.dev
@@ -65,6 +71,10 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - PYTHONUNBUFFERED=1
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     # Removed ports binding to avoid conflicts when scaling
     # ports:
     #   - "8000:8000"
@@ -79,10 +89,14 @@ services:
         condition: service_healthy
 
   proxy:
-    image: nginx:alpine
+    image: nginxinc/nginx-unprivileged:alpine
     container_name: bank-proxy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "8000:80"
+      - "8000:8080"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -98,7 +112,10 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - PYTHONUNBUFFERED=1
-
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       kafka:
         condition: service_started
@@ -114,6 +131,10 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - PYTHONUNBUFFERED=1
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       postgres:
         condition: service_healthy
@@ -130,6 +151,10 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - PYTHONUNBUFFERED=1
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       postgres:
         condition: service_healthy
@@ -139,6 +164,10 @@ services:
   frontend:
     build: ./frontend
     container_name: bank-frontend
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "3000:3000"
     env_file: .env.dev
@@ -156,6 +185,10 @@ services:
       - ./backend:/app
     environment:
       - PYTHONUNBUFFERED=1
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       postgres:
         condition: service_healthy
@@ -171,11 +204,15 @@ services:
   vendor-simulator:
     build: ./vendor-simulator
     container_name: bank-vendor-simulator
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "8001:8001"
     env_file: .env.dev
     environment:
-      - DATABASE_URL=${VENDOR_SIMULATOR_DB_URL}
+      - DATABASE_URL=postgresql+asyncpg://${VENDOR_SIMULATOR_DB_USER}:${VENDOR_SIMULATOR_DB_PASSWORD}@vendor-simulator-db:5432/${VENDOR_SIMULATOR_DB_NAME}
       - SIMULATOR_API_KEY=${SIMULATOR_API_KEY}
     depends_on:
       vendor-simulator-db:
@@ -185,12 +222,16 @@ services:
     image: postgres:16-alpine
     container_name: bank-vendor-simulator-db
     env_file: .env.dev
+    security_opt:
+      - no-new-privileges:true
     environment:
       - POSTGRES_USER=${VENDOR_SIMULATOR_DB_USER}
       - POSTGRES_PASSWORD=${VENDOR_SIMULATOR_DB_PASSWORD}
       - POSTGRES_DB=${VENDOR_SIMULATOR_DB_NAME}
     ports:
       - "5434:5432"
+    volumes:
+      - ./data/vendor-simulator:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${VENDOR_SIMULATOR_DB_USER} -d ${VENDOR_SIMULATOR_DB_NAME}"]
       interval: 5s
@@ -201,12 +242,16 @@ services:
     image: postgres:16-alpine
     container_name: fed-gateway-db
     env_file: .env.dev
+    security_opt:
+      - no-new-privileges:true
     environment:
       - POSTGRES_USER=${FED_GATEWAY_DB_USER}
       - POSTGRES_PASSWORD=${FED_GATEWAY_DB_PASSWORD}
       - POSTGRES_DB=${FED_GATEWAY_DB_NAME}
     ports:
       - "5433:5432"
+    volumes:
+      - ./data/fed-gateway:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${FED_GATEWAY_DB_USER} -d ${FED_GATEWAY_DB_NAME}"]
       interval: 5s
@@ -216,9 +261,13 @@ services:
   mock-fed-gateway:
     build: ./mock-fed-gateway
     container_name: mock-fed-gateway
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     env_file: .env.dev
     environment:
-      - DATABASE_URL=${FED_GATEWAY_DB_URL}
+      - DATABASE_URL=postgresql+asyncpg://${FED_GATEWAY_DB_USER}:${FED_GATEWAY_DB_PASSWORD}@fed-gateway-db:5432/${FED_GATEWAY_DB_NAME}
       - GATEWAY_API_KEY=${GATEWAY_API_KEY}
     ports:
       - "8002:8002"
@@ -229,6 +278,8 @@ services:
   playwright:
     image: mcr.microsoft.com/playwright:v1.58.2-jammy
     container_name: bank-playwright
+    security_opt:
+      - no-new-privileges:true
     working_dir: /app/frontend
     volumes:
       - .:/app

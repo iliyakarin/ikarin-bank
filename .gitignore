@@ -98,3 +98,4 @@ init-db/*.prod.conf
 init-db/*.prod.xml
 nginx.prod.conf
 deploy.sh
+backend/scripts/
