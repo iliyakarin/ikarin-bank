@@ -15,16 +15,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configuration from .env
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "bank_transactions")
 KAFKA_ACTIVITY_TOPIC = os.getenv("KAFKA_ACTIVITY_TOPIC", "bank_activity_events")
-KAFKA_USER = os.getenv("KAFKA_USER", "admin")
-KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD", "")
-CH_HOST = os.getenv("CLICKHOUSE_HOST", "localhost")
+KAFKA_USER = os.getenv("KAFKA_USER")
+KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
+CH_HOST = os.getenv("CLICKHOUSE_HOST")
 CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
-CH_USER = os.getenv("CLICKHOUSE_USER", "default")
-CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
-CH_DB = os.getenv("CLICKHOUSE_DB", "banking_log")
+CH_USER = os.getenv("CLICKHOUSE_USER")
+CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD")
+CH_DB = os.getenv("CLICKHOUSE_DB")
 
 # OPTIMIZED CONFIGURATION
 OPTIMAL_BATCH_SIZE = 100

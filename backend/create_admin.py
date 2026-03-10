@@ -5,8 +5,8 @@ from passlib.context import CryptContext
 from database import User, SessionLocal
 
 # Load from environment
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "[REDACTED]")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "[REDACTED]")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
