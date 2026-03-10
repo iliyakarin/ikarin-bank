@@ -41,12 +41,12 @@ async def health_check():
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
 KAFKA_USER = os.getenv("KAFKA_USER")
-KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD", "")
+KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
 
 CH_HOST = os.getenv("CLICKHOUSE_HOST")
 CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
 CH_USER = os.getenv("CLICKHOUSE_USER")
-CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
+CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD")
 CH_DB = os.getenv("CLICKHOUSE_DB")
 
 CORS_ORIGINS = os.getenv("CORS_ORIGINS").split(",")
@@ -65,6 +65,7 @@ from auth_utils import (
     pwd_context, oauth2_scheme, verify_password, get_password_hash, 
     create_access_token, get_db, get_current_user, RoleChecker
 )
+from migrations import run_all_migrations
 
 
 # Pydantic Models for Auth
@@ -958,11 +959,15 @@ producer = None
 
 @app.on_event("startup")
 async def startup_event():
-    # Ensure database tables exist
+    # Ensure database tables and schema exist
     try:
+        # 1. Base Metadata creation (ensures tables exist)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        print("[INFO] Database tables verified/created")
+        
+        # 2. Schema Migrations (ensures columns exist, etc.)
+        await run_all_migrations()
+        print("[INFO] Database tables verified/migrated successfully")
     except Exception as e:
         print(f"[ERROR] Failed to initialize database: {e}")
 

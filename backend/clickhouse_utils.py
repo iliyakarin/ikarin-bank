@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 CH_HOST = os.getenv("CLICKHOUSE_HOST")
 CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
 CH_USER = os.getenv("CLICKHOUSE_USER")
-CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
+CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD")
 CH_DB = os.getenv("CLICKHOUSE_DB")
 
 _ch_client = None

@@ -12,7 +12,7 @@ KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
 KAFKA_ACTIVITY_TOPIC = os.getenv("KAFKA_ACTIVITY_TOPIC")
 KAFKA_USER = os.getenv("KAFKA_USER")
-KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD", "")
+KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
 
 async def process_outbox():
     print("🚀 Outbox worker started...")
