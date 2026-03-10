@@ -847,6 +847,9 @@ async def run_simulation(tps: int, count: int):
                 category="Simulation",
                 merchant=f"Bot-{i}",
                 status="pending",
+                internal_account_last_4="Simulation", # Placeholder for bot
+                sender_email="simulation@bot.karin",
+                recipient_email="simulation@bot.karin"
             )
             db.add(new_tx)
             await db.commit()
@@ -1041,6 +1044,9 @@ async def create_transfer(
             category=transfer.category,
             merchant=transfer.merchant,
             status="pending",
+            internal_account_last_4=account.account_number_last_4,
+            sender_email=current_user.email,
+            recipient_email="external@gateway.com" # Generic external recipient
         )
         db.add(new_tx)
         
@@ -1138,6 +1144,8 @@ def _create_p2p_transactions(
     idempotency_key: Optional[str],
     client_ip: str,
     user_agent: str,
+    sender_account_last_4: str | None = None,
+    recipient_account_last_4: str | None = None,
     commentary: Optional[str] = None,
     payment_request_id: Optional[int] = None
 ) -> Tuple[str, str, str]:
@@ -1153,14 +1161,17 @@ def _create_p2p_transactions(
         amount=-amount,
         category="Transfer",
         merchant=f"Transfer to {recipient_email}",
-        status="pending",
+        status="cleared", # P2P transfers are instant in the internal ledger
         transaction_type="transfer",
         transaction_side="DEBIT",
         idempotency_key=idempotency_key,
         ip_address=client_ip,
         user_agent=user_agent,
         commentary=commentary,
-        payment_request_id=payment_request_id
+        payment_request_id=payment_request_id,
+        internal_account_last_4=sender_account_last_4,
+        sender_email=sender_email,
+        recipient_email=recipient_email
     )
 
     recipient_tx = Transaction(
@@ -1170,14 +1181,17 @@ def _create_p2p_transactions(
         amount=amount,
         category="Transfer",
         merchant=f"Received from {sender_email}",
-        status="pending",
+        status="cleared",
         transaction_type="transfer",
         transaction_side="CREDIT",
         idempotency_key=idempotency_key,
         ip_address=client_ip,
         user_agent=user_agent,
         commentary=commentary,
-        payment_request_id=payment_request_id
+        payment_request_id=payment_request_id,
+        internal_account_last_4=recipient_account_last_4,
+        sender_email=sender_email,
+        recipient_email=recipient_email
     )
 
     db.add(sender_tx)
@@ -1333,6 +1347,9 @@ async def create_p2p_transfer(
                     transaction_side="DEBIT",
                     failure_reason=sim_resp.get("failure_reason"),
                     commentary=f"Bill Payment to {vendor['name']} (Instant)",
+                    internal_account_last_4=sender_account.account_number_last_4,
+                    recipient_email=vendor["email"],
+                    sender_email=current_user.email,
                     subscriber_id=transfer.subscriber_id,
                     idempotency_key=transfer.idempotency_key or str(uuid.uuid4()),
                     ip_address=client_ip,
@@ -1417,8 +1434,10 @@ async def create_p2p_transfer(
             transfer.idempotency_key,
             client_ip,
             user_agent,
-            transfer.commentary,
-            transfer.payment_request_id
+            sender_account_last_4=sender_account.account_number_last_4,
+            recipient_account_last_4=recipient_account.account_number_last_4,
+            commentary=transfer.commentary,
+            payment_request_id=transfer.payment_request_id
         )
 
         # 5. Create Outbox Entries
@@ -2326,10 +2345,13 @@ async def get_all_transactions(
                 "merchant": row.merchant or "",
                 "amount": float(row.amount),
                 "category": row.category or "Transfer",
-                "transaction_type": row.transaction_type or "expense",
-                "transaction_side": row.transaction_side or "",
+                "type": row.transaction_type or "expense",
+                "side": row.transaction_side or "",
                 "timestamp": row.created_at.isoformat() if row.created_at else "",
-                "status": row.status or "Cleared",
+                "status": row.status or "cleared",
+                "internal_account_last_4": row.internal_account_last_4,
+                "sender_email": row.sender_email,
+                "recipient_email": row.recipient_email,
                 "subscriber_id": row.subscriber_id,
                 "failure_reason": row.failure_reason,
             }

@@ -129,6 +129,9 @@ class Transaction(Base):
     user_agent = Column(String(255))
     failure_reason = Column(String(255))
     commentary = Column(String, nullable=True)
+    recipient_email = Column(String(100), nullable=True)
+    sender_email = Column(String(100), nullable=True)
+    internal_account_last_4 = Column(String(4), nullable=True)
     subscriber_id = Column(String(100), nullable=True) # For Vendor Payments
     payment_request_id = Column(Integer, ForeignKey("payment_requests.id"), index=True, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
