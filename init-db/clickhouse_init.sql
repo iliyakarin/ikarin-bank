@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS banking_log.transactions (
     transaction_side String,
     event_time DateTime,
     internal_account_last_4 Nullable(String),
+    subscriber_id Nullable(String),
+    failure_reason Nullable(String),
     status String
 ) ENGINE = ReplacingMergeTree()
 PARTITION BY toYYYYMM(event_time)
