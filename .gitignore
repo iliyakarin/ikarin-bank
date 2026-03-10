@@ -74,6 +74,7 @@ performance_tests/
 .gemini/
 .cursor/
 .codex/
+.config-history/
 
 # Local Database Configuration (Generated or Mocked)
 init-db/*.conf

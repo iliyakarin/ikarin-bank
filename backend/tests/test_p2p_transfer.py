@@ -18,6 +18,7 @@ class MockAccount:
         self.user_id = user_id
         self.balance = balance
         self.account_number_last_4 = "1234"
+        self.internal_account_last_4 = "1234" # Ensure internal matches for test simplicity
         self.is_main = True
 
 @pytest.mark.asyncio
@@ -172,12 +173,19 @@ async def test_p2p_transfer_success(mock_fastapi_dependency):
     amounts = sorted([call.kwargs['amount'] for call in tx_calls])
     assert amounts[0] == Decimal("-10.00")
     assert amounts[1] == Decimal("10.00")
+    
+    # Check new fields safely (they should be in both transactions)
+    for call in tx_calls:
+        assert call.kwargs['internal_account_last_4'] == "1234"
+        assert call.kwargs['sender_email'] == "sender@example.com"
+        assert call.kwargs['recipient_email'] == "recipient@example.com"
+        assert call.kwargs['status'] == "cleared"
 
     # Verify Outbox creation calls
-    assert main_module.Outbox.call_count >= 2
     outbox_calls = main_module.Outbox.call_args_list
-    events = sorted([call.kwargs['event_type'] for call in outbox_calls])
-    assert events == ["p2p.recipient", "p2p.sender"]
+    # Filter for p2p events as there might be activity_event calls too
+    p2p_events = sorted([call.kwargs['event_type'] for call in outbox_calls if call.kwargs['event_type'].startswith('p2p.')])
+    assert p2p_events == ["p2p.recipient", "p2p.sender"]
 
 @pytest.mark.asyncio
 async def test_p2p_transfer_insufficient_funds(mock_fastapi_dependency):

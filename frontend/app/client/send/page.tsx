@@ -1265,11 +1265,10 @@ export default function SendMoneyPage() {
                                     {c.contact_type === "merchant" ? `Merchant: ${c.merchant_id}` : c.contact_email}
                                   </p>
                                 </div>
-                                <span className={`text-[10px] px-2 py-0.5 rounded border uppercase font-bold tracking-wider ${
-                                  c.contact_type === "karin" ? "bg-purple-500/20 text-purple-400 border-purple-500/30" :
-                                  c.contact_type === "merchant" ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30" :
-                                  "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                                }`}>
+                                <span className={`text-[10px] px-2 py-0.5 rounded border uppercase font-bold tracking-wider ${c.contact_type === "karin" ? "bg-purple-500/20 text-purple-400 border-purple-500/30" :
+                                    c.contact_type === "merchant" ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30" :
+                                      "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                                  }`}>
                                   {c.contact_type === "karin" ? "Karin" : c.contact_type}
                                 </span>
                               </div>
@@ -1431,11 +1430,17 @@ export default function SendMoneyPage() {
                             {Math.abs(tx.amount).toFixed(2)}
                           </td>
                           <td className="py-4 px-4">
-                            <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider ${tx.status === 'cleared' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                              tx.status === 'pending' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                                'bg-white/10 text-white/50'
+                            <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider ${tx.status === 'cleared' || tx.status === 'Completed' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                              tx.status === 'pending' || tx.status === 'Pending' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                                tx.status === 'processing' || tx.status === 'Processing' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                                  tx.status === 'failed' || tx.status === 'Failed' || tx.status === 'Declined' || tx.status === 'Rejected' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                                    'bg-white/10 text-white/50'
                               }`}>
-                              {tx.status || 'cleared'}
+                              {tx.status === 'cleared' ? 'Completed' :
+                                tx.status === 'pending' ? 'Pending' :
+                                  tx.status === 'processing' ? 'Processing' :
+                                    tx.status === 'failed' ? 'Failed / Declined / Rejected' :
+                                      (tx.status || 'Processing')}
                             </span>
                           </td>
                           <td className="py-4 text-right">

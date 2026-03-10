@@ -69,7 +69,10 @@ def seed_data():
                     status="cleared",
                     transaction_type="income",
                     transaction_side="CREDIT",
-                    created_at=current_date
+                    created_at=current_date,
+                    internal_account_last_4=acc.account_number_last_4,
+                    sender_email="employer@company.com",
+                    recipient_email=email
                 )
                 db.add(tx)
                 acc.balance += amount
@@ -115,7 +118,10 @@ def seed_data():
                     status="cleared",
                     transaction_type="expense",
                     transaction_side="DEBIT",
-                    created_at=current_date
+                    created_at=current_date,
+                    internal_account_last_4=acc.account_number_last_4,
+                    sender_email=email,
+                    recipient_email=None
                 )
                 db.add(tx)
                 acc.balance -= amount

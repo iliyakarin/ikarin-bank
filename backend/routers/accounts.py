@@ -195,7 +195,10 @@ async def internal_transfer(
             status="cleared", # internal transfers clear instantly
             transaction_type="transfer",
             transaction_side="DEBIT",
-            commentary=request.commentary
+            commentary=request.commentary,
+            internal_account_last_4=sender.account_number_last_4,
+            sender_email=current_user.email,
+            recipient_email=current_user.email
         )
         
         receiver_tx = Transaction(
@@ -208,7 +211,10 @@ async def internal_transfer(
             status="cleared",
             transaction_type="transfer",
             transaction_side="CREDIT",
-            commentary=request.commentary
+            commentary=request.commentary,
+            internal_account_last_4=receiver.account_number_last_4,
+            sender_email=current_user.email,
+            recipient_email=current_user.email
         )
 
         db.add(sender_tx)

@@ -45,6 +45,9 @@ async def run_postgres_migrations():
         # 4. transactions table
         await conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS commentary TEXT"))
         await conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS subscriber_id VARCHAR(100)"))
+        await conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS internal_account_last_4 VARCHAR(4)"))
+        await conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sender_email VARCHAR(100)"))
+        await conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS recipient_email VARCHAR(100)"))
         # payment_request_id might fail if payment_requests table doesn't exist yet, but Base.metadata.create_all handles table creation first
         try:
             await conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payment_request_id INTEGER REFERENCES payment_requests(id)"))

@@ -134,6 +134,9 @@ async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, no
                 transaction_side="DEBIT",
                 failure_reason=sim_resp.get("failure_reason"),
                 commentary=f"Bill Payment to {vendor['name']}",
+                internal_account_last_4=funding_account.account_number_last_4,
+                sender_email=sender_user.email,
+                recipient_email=vendor["email"],
                 subscriber_id=payment.subscriber_id,
                 idempotency_key=str(uuid.uuid4()),
                 created_at=datetime.utcnow()
@@ -200,7 +203,9 @@ async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, no
             str(uuid.uuid4()), # Need new idempotency key for this run
             "127.0.0.1",
             "system-worker",
-            "Scheduled Payment"
+            sender_account_last_4=sender_locked.account_number_last_4,
+            recipient_account_last_4=recipient_locked.account_number_last_4,
+            commentary="Scheduled Payment"
         )
         # Update Transactions with subscriber_id if any (unlikely for P2P but for completeness)
         # (Already handled by helper in main.py usually, but we could add it here)
@@ -262,6 +267,9 @@ async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment,
         transaction_side="DEBIT",
         failure_reason="Insufficient funds",
         commentary="Recurring payment failed. Please Top Up and Retry.",
+        internal_account_last_4=funding_account.account_number_last_4,
+        sender_email=sender.email,
+        recipient_email=recipient.email,
         subscriber_id=getattr(payment, 'subscriber_id', None),
         created_at=datetime.utcnow()
     )
