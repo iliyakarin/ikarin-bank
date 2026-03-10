@@ -4,6 +4,7 @@ import os
 import time
 from datetime import datetime, timedelta
 import uuid
+import httpx
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -13,6 +14,37 @@ from main import _create_p2p_transactions, _create_p2p_outbox_entries, _calculat
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+SIMULATOR_URL = os.getenv("SIMULATOR_URL")
+SIMULATOR_API_KEY = os.getenv("SIMULATOR_API_KEY")
+
+async def get_vendors():
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(f"{SIMULATOR_URL}/vendors")
+            if resp.status_code == 200:
+                return resp.json().get("vendors", [])
+        except Exception as e:
+            logger.error(f"Error fetching vendors: {e}")
+        return []
+
+async def execute_vendor_payment(merchant_id: str, subscriber_id: str, amount: float):
+    async with httpx.AsyncClient() as client:
+        try:
+            payload = {
+                "merchant_id": merchant_id,
+                "subscriber_id": subscriber_id,
+                "amount": amount
+            }
+            resp = await client.post(
+                f"{SIMULATOR_URL}/billpay/execute",
+                json=payload,
+                headers={"X-API-KEY": SIMULATOR_API_KEY}
+            )
+            return resp.json()
+        except Exception as e:
+            logger.error(f"Error executing vendor payment: {e}")
+            return {"status": "FAILED", "failure_reason": str(e), "trace_id": "ERROR"}
 
 async def process_scheduled_payments():
     async with SessionLocal() as db:
@@ -63,9 +95,68 @@ async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, no
     # Determine Recipient
     result = await db.execute(select(User).filter(User.email == payment.recipient_email))
     recipient = result.scalars().first()
+    
     if not recipient:
-        fail_payment(db, payment, "Recipient not found", permanently=True)
-        return
+        # Check if it's a vendor
+        vendors = await get_vendors()
+        vendor = next((v for v in vendors if v["email"] == payment.recipient_email), None)
+        
+        if vendor:
+            # VENDOR PAYMENT FLOW
+            if funding_account.balance < payment.amount:
+                # Reuse existing insufficient funds logic but with a dummy recipient representation
+                # Create a mini mock user for the failure record
+                mock_recipient = type('obj', (object,), {'email': payment.recipient_email})
+                await handle_insufficient_funds(db, payment, sender_user, funding_account, mock_recipient)
+                return
+
+            # Execute via Simulator
+            # The UI should have captured subscriber_id and saved it in ScheduledPayment
+            sim_resp = await execute_vendor_payment(
+                merchant_id=vendor["id"],
+                subscriber_id=payment.subscriber_id or "UNKNOWN",
+                amount=float(payment.amount)
+            )
+
+            # Update Balance
+            funding_account.balance -= payment.amount
+
+            # Create Transaction Record
+            status_map = {"CLEARED": "cleared", "FAILED": "failed"}
+            vendor_tx = Transaction(
+                id=str(uuid.uuid4()),
+                account_id=funding_account.id,
+                amount=-payment.amount,
+                category="Bill Pay",
+                merchant=vendor["name"],
+                status=status_map.get(sim_resp.get("status"), "failed"),
+                transaction_type="expense",
+                transaction_side="DEBIT",
+                failure_reason=sim_resp.get("failure_reason"),
+                commentary=f"Bill Payment to {vendor['name']}",
+                subscriber_id=payment.subscriber_id,
+                idempotency_key=str(uuid.uuid4()),
+                created_at=datetime.utcnow()
+            )
+            db.add(vendor_tx)
+
+            # Update Payment Record
+            payment.payments_made += 1
+            if sim_resp.get("status") == "CLEARED":
+                payment.retry_count = 0
+                payment.status = "Active"
+                logger.info(f"Vendor payment {payment.id} to {vendor['name']} cleared.")
+            else:
+                # Handle simulator-level failure (e.g., NSF from simulator perspective)
+                fail_payment(db, payment, sim_resp.get("failure_reason", "Simulator Failure"), permanently=False)
+                logger.warning(f"Vendor payment {payment.id} failed: {sim_resp.get('failure_reason')}")
+
+            # Check end condition and set next run (reusing logic later)
+            update_payment_schedule(payment, now)
+            return
+        else:
+            fail_payment(db, payment, "Recipient not found", permanently=True)
+            return
 
     result = await db.execute(select(Account).filter(Account.user_id == recipient.id, Account.is_main == True))
     recipient_account = result.scalars().first()
@@ -88,10 +179,10 @@ async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, no
         else:
             sender_locked = acc2
             recipient_locked = acc1
-
+ 
         if sender_locked.balance < payment.amount:
             # INSUFFICIENT FUNDS
-            handle_insufficient_funds(db, payment, sender_user, funding_account, recipient)
+            await handle_insufficient_funds(db, payment, sender_user, funding_account, recipient)
             return
 
         # Execute Transfer
@@ -111,9 +202,9 @@ async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, no
             "system-worker",
             "Scheduled Payment"
         )
-        # Manually ensure status='cleared' since outbound is initially 'pending' but internal DB transfers are fast
-        # Wait, the outbound needs to be 'pending' so Kafka picks it up properly if we use Outbox?
-        # Let's let outbox_worker do its job
+        # Update Transactions with subscriber_id if any (unlikely for P2P but for completeness)
+        # (Already handled by helper in main.py usually, but we could add it here)
+        
         _create_p2p_outbox_entries(
             db,
             sender_locked.id,
@@ -132,26 +223,29 @@ async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, no
         payment.retry_count = 0
         payment.status = "Active"
 
-        # Check end condition
-        if payment.frequency == "One-time":
-            payment.status = "Completed"
-            payment.next_run_at = None
-        elif payment.end_condition == "target" and payment.target_payments and payment.payments_made >= payment.target_payments:
-            payment.status = "Completed"
-            payment.next_run_at = None
-        else:
-            # Set next run date
-            payment.next_run_at = _calculate_next_run_at(now, payment.frequency, payment.frequency_interval)
-            
-            if payment.end_condition == "date" and payment.end_date and payment.next_run_at > payment.end_date:
-                payment.status = "Completed"
-                payment.next_run_at = None
+        update_payment_schedule(payment, now)
 
         logger.info(f"Payment {payment.id} successful.")
 
     except Exception as e:
         logger.error(f"Transfer error for scheduled payment {payment.id}: {e}")
         fail_payment(db, payment, str(e), permanently=False)
+
+def update_payment_schedule(payment: ScheduledPayment, now: datetime):
+    # Check end condition
+    if payment.frequency == "One-time":
+        payment.status = "Completed"
+        payment.next_run_at = None
+    elif payment.end_condition == "target" and payment.target_payments and payment.payments_made >= payment.target_payments:
+        payment.status = "Completed"
+        payment.next_run_at = None
+    else:
+        # Set next run date
+        payment.next_run_at = _calculate_next_run_at(now, payment.frequency, payment.frequency_interval)
+        
+        if payment.end_condition == "date" and payment.end_date and payment.next_run_at > payment.end_date:
+            payment.status = "Completed"
+            payment.next_run_at = None
 
 async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment, sender: User, funding_account: Account, recipient: User):
     payment.retry_count += 1
@@ -168,9 +262,31 @@ async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment,
         transaction_side="DEBIT",
         failure_reason="Insufficient funds",
         commentary="Recurring payment failed. Please Top Up and Retry.",
+        subscriber_id=getattr(payment, 'subscriber_id', None),
         created_at=datetime.utcnow()
     )
     db.add(failed_tx)
+    
+    # Emit to ClickHouse via Outbox
+    from main import _create_p2p_outbox_entries
+    from database import Account
+    # We only need the sender's side for a failed funding attempt
+    db.add(Outbox(
+        event_type="p2p.sender",
+        payload={
+            "transaction_id": failed_tx.id,
+            "account_id": funding_account.id,
+            "amount": float(failed_tx.amount),
+            "category": failed_tx.category,
+            "merchant": failed_tx.merchant,
+            "transaction_type": failed_tx.transaction_type,
+            "transaction_side": failed_tx.transaction_side,
+            "status": "failed",
+            "failure_reason": failed_tx.failure_reason,
+            "timestamp": datetime.utcnow().isoformat(),
+            "commentary": failed_tx.commentary
+        }
+    ))
 
     if payment.retry_count >= 3:
         payment.status = "Failed" # Terminal state

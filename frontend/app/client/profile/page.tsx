@@ -1,17 +1,15 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     User,
     Mail,
-    Shield,
     Lock,
     CheckCircle,
     AlertCircle,
     Loader2,
     AlertTriangle,
     Star,
-    RefreshCw,
     Settings,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
@@ -36,12 +34,9 @@ export default function ProfilePage() {
     const [passError, setPassError] = useState("");
     const [showPassConfirm, setShowPassConfirm] = useState(false);
 
-    // Sync State
-    const [syncLoading, setSyncLoading] = useState(false);
-    const [syncSuccess, setSyncSuccess] = useState("");
-    const [syncError, setSyncError] = useState("");
 
     if (!user) return null;
+
 
     const handleBackupUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -132,34 +127,6 @@ export default function ProfilePage() {
         }
     };
 
-    const handleManualSync = async () => {
-        setSyncLoading(true);
-        setSyncSuccess("");
-        setSyncError("");
-
-        try {
-            const res = await fetch(
-                "/api/admin/sync-clickhouse",
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                },
-            );
-
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || "Failed to trigger sync");
-
-            setSyncSuccess("Sync successfully triggered in the background.");
-            setTimeout(() => setSyncSuccess(""), 5000);
-        } catch (err: any) {
-            setSyncError(err.message);
-        } finally {
-            setSyncLoading(false);
-        }
-    };
 
     return (
         <div className="max-w-4xl mx-auto space-y-8">
@@ -223,7 +190,6 @@ export default function ProfilePage() {
 
                                     {user.role === "admin" && (
                                         <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold leading-none bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                                            <Shield className="w-3 h-3 mr-1" />
                                             Administrator
                                         </span>
                                     )}
@@ -481,55 +447,6 @@ export default function ProfilePage() {
                         </button>
                     </form>
                 </motion.div>
-
-                {/* Admin Tools */}
-                {user.role === "admin" && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.4 }}
-                        className="bg-white/5 backdrop-blur-xl border border-indigo-500/30 rounded-3xl p-8 space-y-6 md:col-span-2"
-                    >
-                        <div>
-                            <h3 className="text-xl font-bold text-white flex items-center gap-2 mb-2">
-                                <Shield className="text-indigo-400 w-6 h-6" />
-                                Administrative Controls
-                            </h3>
-                            <p className="text-white/50 text-sm">
-                                Advanced actions available only to administrators.
-                            </p>
-                        </div>
-
-                        <div className="bg-black/20 border border-white/10 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-6">
-                            <div>
-                                <h4 className="text-white font-semibold flex items-center gap-2">
-                                    <RefreshCw className="w-5 h-5 text-emerald-400" /> ClickHouse Manual Sync
-                                </h4>
-                                <p className="text-white/50 text-sm mt-1 max-w-md">
-                                    Trigger an immediate integrity check between Postgres and ClickHouse. Discrepancies will be automatically repaired via the Kafka outbox.
-                                </p>
-                                {syncError && <p className="text-red-400 text-sm mt-2">{syncError}</p>}
-                                {syncSuccess && <p className="text-emerald-400 text-sm mt-2">{syncSuccess}</p>}
-                            </div>
-
-                            <button
-                                onClick={handleManualSync}
-                                disabled={syncLoading}
-                                className="w-full sm:w-auto shrink-0 bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-300 border border-indigo-500/30 font-bold py-3 px-6 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                            >
-                                {syncLoading ? (
-                                    <>
-                                        <Loader2 className="w-5 h-5 animate-spin" /> Syncing...
-                                    </>
-                                ) : (
-                                    <>
-                                        <RefreshCw className="w-5 h-5" /> Sync Now
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </motion.div>
-                )}
             </div>
 
             {/* Password Confirmation Modal */}

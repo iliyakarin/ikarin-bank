@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import Link from 'next/link';
+import Turnstile from '@/components/ui/Turnstile';
 
 export default function RegisterPage() {
     const [formData, setFormData] = useState({
@@ -17,6 +18,7 @@ export default function RegisterPage() {
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [captchaToken, setCaptchaToken] = useState<string | null>(null);
     const router = useRouter();
 
     const generatePassword = () => {
@@ -37,7 +39,7 @@ export default function RegisterPage() {
             const res = await fetch('/api/auth/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData),
+                body: JSON.stringify({ ...formData, captcha_token: captchaToken }),
             });
 
             if (res.ok) {
@@ -146,9 +148,16 @@ export default function RegisterPage() {
                                 className="w-full"
                                 loading={loading}
                                 size="lg"
+                                disabled={!captchaToken}
                             >
                                 Register Now
                             </Button>
+
+                            <Turnstile
+                                onVerify={(token) => setCaptchaToken(token)}
+                                onError={() => setError('Captcha failed to load.')}
+                                onExpire={() => setCaptchaToken(null)}
+                            />
                         </form>
 
                         <div className="text-center pt-2">

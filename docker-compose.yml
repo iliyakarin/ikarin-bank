@@ -50,7 +50,7 @@ services:
       - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
-      - KAFKA_OPTS=-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf
+      - KAFKA_OPTS=-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf -DKAFKA_ADMIN_PASSWORD=${KAFKA_ADMIN_PASSWORD} -DKAFKA_CLIENT_PASSWORD=${KAFKA_CLIENT_PASSWORD}
     volumes:
       - ./data/kafka:/var/lib/kafka/data
       - ./init-db/kafka-server-jaas.conf:/etc/kafka/kafka_server_jaas.conf:ro
@@ -135,16 +135,6 @@ services:
       clickhouse:
         condition: service_healthy
 
-
-
-
-  vendor-simulator:
-    build: ./vendor-simulator
-    container_name: bank-vendor-simulator
-    ports:
-      - "8001:8001"
-    env_file: .env
-
   frontend:
     build: ./frontend
     container_name: bank-frontend
@@ -153,6 +143,8 @@ services:
     env_file: .env
     depends_on:
       - api
+
+
 
   scheduled-payments-worker:
     build: ./backend
@@ -167,10 +159,68 @@ services:
       postgres:
         condition: service_healthy
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: bank-cloudflared
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: bank-cloudflared
+  #   env_file: .env
+  #   command: tunnel --no-autoupdate run
+  #   depends_on:
+  #     - proxy
+
+  vendor-simulator:
+    build: ./vendor-simulator
+    container_name: bank-vendor-simulator
+    ports:
+      - "8001:8001"
     env_file: .env
-    command: tunnel --no-autoupdate run
+    environment:
+      - DATABASE_URL=${VENDOR_SIMULATOR_DB_URL}
+      - SIMULATOR_API_KEY=${SIMULATOR_API_KEY}
     depends_on:
-      - proxy
+      vendor-simulator-db:
+        condition: service_healthy
+
+  vendor-simulator-db:
+    image: postgres:16-alpine
+    container_name: bank-vendor-simulator-db
+    env_file: .env
+    environment:
+      - POSTGRES_USER=${VENDOR_SIMULATOR_DB_USER}
+      - POSTGRES_PASSWORD=${VENDOR_SIMULATOR_DB_PASSWORD}
+      - POSTGRES_DB=${VENDOR_SIMULATOR_DB_NAME}
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${VENDOR_SIMULATOR_DB_USER} -d ${VENDOR_SIMULATOR_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  fed-gateway-db:
+    image: postgres:16-alpine
+    container_name: fed-gateway-db
+    env_file: .env
+    environment:
+      - POSTGRES_USER=${FED_GATEWAY_DB_USER}
+      - POSTGRES_PASSWORD=${FED_GATEWAY_DB_PASSWORD}
+      - POSTGRES_DB=${FED_GATEWAY_DB_NAME}
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${FED_GATEWAY_DB_USER} -d ${FED_GATEWAY_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mock-fed-gateway:
+    build: ./mock-fed-gateway
+    container_name: mock-fed-gateway
+    env_file: .env
+    environment:
+      - DATABASE_URL=${FED_GATEWAY_DB_URL}
+      - GATEWAY_API_KEY=${GATEWAY_API_KEY}
+    ports:
+      - "8002:8002"
+    depends_on:
+      fed-gateway-db:
+        condition: service_healthy

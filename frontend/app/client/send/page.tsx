@@ -31,11 +31,13 @@ export default function SendMoneyPage() {
   const [successMessage, setSuccessMessage] = useState("");
   const [txId, setTxId] = useState("");
 
-  // Send to Contact (formerly Instant Transfer) State
+  // One time transfer (formerly Instant Transfer) State
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [commentary, setCommentary] = useState("");
   const [sourceAccountId, setSourceAccountId] = useState<number | "">("");
+  const [subscriberId, setSubscriberId] = useState("");
+  const [isVendor, setIsVendor] = useState(false);
 
   // Request Transfer State
   const [requestEmail, setRequestEmail] = useState("");
@@ -66,6 +68,8 @@ export default function SendMoneyPage() {
   const [targetPayments, setTargetPayments] = useState("");
   const [reserveAmount, setReserveAmount] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("checking"); // Mock source
+  const [schedSubscriberId, setSchedSubscriberId] = useState("");
+  const [isSchedVendor, setIsSchedVendor] = useState(false);
   const [isVendorDropdownOpen, setIsVendorDropdownOpen] = useState(false);
   const [isSourceDropdownOpen, setIsSourceDropdownOpen] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -94,9 +98,27 @@ export default function SendMoneyPage() {
   // Mock Vendors from Simulator
   const [vendors, setVendors] = useState<any[]>([]);
 
+  // Transaction Details Modal
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [selectedTxDetails, setSelectedTxDetails] = useState<any>(null);
+
   useEffect(() => {
-    // Fetch mock vendors from our new simulator service
-    fetch("http://localhost:8001/vendors")
+    // Check if recipient is a vendor for instant
+    const vendorMatch = vendors.find(v => v.email === recipient);
+    setIsVendor(!!vendorMatch);
+  }, [recipient, vendors]);
+
+  useEffect(() => {
+    // Check if recipient is a vendor for scheduled
+    const vendorMatch = vendors.find(v => v.email === schedRecipient);
+    setIsSchedVendor(!!vendorMatch);
+  }, [schedRecipient, vendors]);
+
+  useEffect(() => {
+    // Fetch mock vendors from our new simulator service proxy
+    fetch("/api/v1/vendors", {
+      headers: { Authorization: `Bearer ${token}` }
+    })
       .then((res) => res.json())
       .then((data) => {
         if (data && data.vendors) setVendors(data.vendors);
@@ -305,6 +327,7 @@ export default function SendMoneyPage() {
           amount: parseFloat(amount),
           commentary: cleanCommentary || null,
           source_account_id: sourceAccountId || undefined,
+          subscriber_id: subscriberId || undefined,
         }),
       });
       if (res.ok) {
@@ -406,6 +429,7 @@ export default function SendMoneyPage() {
             : null,
         reserve_amount: reserveAmount,
         funding_account_id: sourceAccountId || undefined,
+        subscriber_id: schedSubscriberId || undefined,
       };
 
       const res = await fetch(
@@ -592,7 +616,7 @@ export default function SendMoneyPage() {
             : "text-white/60 hover:text-white hover:bg-white/5"
             }`}
         >
-          <Send size={18} /> Send to Contact
+          <Send size={18} /> One time transfer
         </button>
         <button
           onClick={() => {
@@ -1186,9 +1210,9 @@ export default function SendMoneyPage() {
                 />
               </div>
 
-              {/* Contact Dropdown */}
+              {/* Recipient Dropdown */}
               <AnimatePresence>
-                {isContactDropdownOpen && contacts.length > 0 && (
+                {isContactDropdownOpen && (
                   <motion.div
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1197,49 +1221,82 @@ export default function SendMoneyPage() {
                     className="absolute z-50 w-full mt-2 bg-[#2a1f42] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
                   >
                     <div className="p-2">
-                      {contacts.filter(
-                        (c) =>
-                          c.contact_name
-                            .toLowerCase()
-                            .includes(recipient.toLowerCase()) ||
-                          c.contact_email
-                            .toLowerCase()
-                            .includes(recipient.toLowerCase()),
-                      ).length > 0 ? (
-                        contacts
-                          .filter(
-                            (c) =>
-                              c.contact_name
-                                .toLowerCase()
-                                .includes(recipient.toLowerCase()) ||
-                              c.contact_email
-                                .toLowerCase()
-                                .includes(recipient.toLowerCase()),
-                          )
-                          .map((c) => (
-                            <div
-                              key={c.id}
-                              onClick={() => {
-                                setRecipient(c.contact_email);
-                                setIsContactDropdownOpen(false);
-                              }}
-                              className="px-4 py-3 hover:bg-white/10 rounded-lg cursor-pointer transition-colors flex justify-between items-center"
-                            >
-                              <div>
-                                <p className="text-white font-medium">
-                                  {c.contact_name}
-                                </p>
-                                <p className="text-white/50 text-sm">
-                                  {c.contact_email}
-                                </p>
-                              </div>
+                      {(() => {
+                        const term = recipient.toLowerCase();
+                        const matchedContacts = contacts.filter(c =>
+                          c.contact_name.toLowerCase().includes(term) ||
+                          c.contact_email.toLowerCase().includes(term)
+                        );
+                        const matchedVendors = vendors.filter(v =>
+                          v.name.toLowerCase().includes(term) ||
+                          v.email.toLowerCase().includes(term)
+                        );
+
+                        if (matchedContacts.length === 0 && matchedVendors.length === 0) {
+                          return (
+                            <div className="px-4 py-3 text-white/50 text-sm">
+                              Use "{recipient}" as custom email
                             </div>
-                          ))
-                      ) : (
-                        <div className="px-4 py-3 text-white/50 text-sm">
-                          Use "{recipient}" as custom email
-                        </div>
-                      )}
+                          );
+                        }
+
+                        return (
+                          <>
+                            {matchedContacts.map(c => (
+                              <div
+                                key={c.id}
+                                onClick={() => {
+                                  if (c.contact_type === "merchant" && c.merchant_id) {
+                                    const v = vendors.find(vend => vend.id === c.merchant_id);
+                                    if (v) setRecipient(v.email);
+                                    if (c.subscriber_id) setSubscriberId(c.subscriber_id);
+                                  } else {
+                                    setRecipient(c.contact_email || "");
+                                  }
+                                  setIsContactDropdownOpen(false);
+                                }}
+                                className="px-4 py-3 hover:bg-white/10 rounded-lg cursor-pointer transition-colors flex justify-between items-center group"
+                              >
+                                <div>
+                                  <p className="text-white font-medium group-hover:text-purple-300 transition-colors">
+                                    {c.contact_name}
+                                  </p>
+                                  <p className="text-white/50 text-sm">
+                                    {c.contact_type === "merchant" ? `Merchant: ${c.merchant_id}` : c.contact_email}
+                                  </p>
+                                </div>
+                                <span className={`text-[10px] px-2 py-0.5 rounded border uppercase font-bold tracking-wider ${
+                                  c.contact_type === "karin" ? "bg-purple-500/20 text-purple-400 border-purple-500/30" :
+                                  c.contact_type === "merchant" ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30" :
+                                  "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                                }`}>
+                                  {c.contact_type === "karin" ? "Karin" : c.contact_type}
+                                </span>
+                              </div>
+                            ))}
+                            {matchedVendors.map(v => (
+                              <div
+                                key={v.id}
+                                onClick={() => {
+                                  setRecipient(v.email);
+                                  setIsContactDropdownOpen(false);
+                                }}
+                                className="px-4 py-3 hover:bg-white/10 rounded-lg cursor-pointer transition-colors flex justify-between items-center group border-t border-white/5"
+                              >
+                                <div>
+                                  <p className="text-white font-medium group-hover:text-purple-300 transition-colors">
+                                    {v.name}
+                                  </p>
+                                  <p className="text-white/50 text-sm">
+                                    {v.email}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded border border-slate-500/30 uppercase font-bold tracking-wider">Public Merchant</span>
+                              </div>
+                            ))}
+                          </>
+                        );
+                      })()}
                     </div>
                   </motion.div>
                 )}
@@ -1279,6 +1336,26 @@ export default function SendMoneyPage() {
                 className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder:text-white/40 focus:outline-none focus:border-purple-400 resize-none"
               />
             </div>
+
+            {isVendor && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                className="space-y-3"
+              >
+                <label className="block text-white font-semibold">
+                  Subscriber / Contract ID
+                </label>
+                <input
+                  type="text"
+                  value={subscriberId}
+                  onChange={(e) => setSubscriberId(e.target.value)}
+                  placeholder="Enter your subscriber ID"
+                  className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder:text-white/40 focus:outline-none focus:border-purple-400"
+                  required
+                />
+              </motion.div>
+            )}
             <button
               type="submit"
               disabled={loading}
@@ -1362,18 +1439,29 @@ export default function SendMoneyPage() {
                             </span>
                           </td>
                           <td className="py-4 text-right">
-                            <button
-                              onClick={() => {
-                                setSelectedRepeatTx(tx);
-                                setRepeatAmount(Math.abs(tx.amount).toString());
-                                setRepeatCommentary("");
-                                setRepeatSourceAccountId("");
-                                setRepeatModalOpen(true);
-                              }}
-                              className="text-xs bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg border border-purple-500/30 transition-all font-bold"
-                            >
-                              Repeat
-                            </button>
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => {
+                                  setSelectedRepeatTx(tx);
+                                  setRepeatAmount(Math.abs(tx.amount).toString());
+                                  setRepeatCommentary("");
+                                  setRepeatSourceAccountId("");
+                                  setRepeatModalOpen(true);
+                                }}
+                                className="text-xs bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg border border-purple-500/30 transition-all font-bold"
+                              >
+                                Repeat
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedTxDetails(tx);
+                                  setDetailsModalOpen(true);
+                                }}
+                                className="text-xs bg-white/5 hover:bg-white/10 text-white/50 hover:text-white px-3 py-1.5 rounded-lg border border-white/10 transition-all font-bold"
+                              >
+                                Details
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1502,52 +1590,95 @@ export default function SendMoneyPage() {
                     className="absolute z-50 w-full mt-2 bg-[#2a1f42] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
                   >
                     <div className="p-2">
-                      {vendors.filter(
-                        (v) =>
-                          v.name
-                            .toLowerCase()
-                            .includes(schedRecipient.toLowerCase()) ||
-                          v.email
-                            .toLowerCase()
-                            .includes(schedRecipient.toLowerCase()),
-                      ).length > 0 ? (
-                        vendors
-                          .filter(
-                            (v) =>
-                              v.name
-                                .toLowerCase()
-                                .includes(schedRecipient.toLowerCase()) ||
-                              v.email
-                                .toLowerCase()
-                                .includes(schedRecipient.toLowerCase()),
-                          )
-                          .map((v) => (
-                            <div
-                              key={v.id}
-                              onClick={() => {
-                                setSchedRecipient(v.email);
-                                setIsVendorDropdownOpen(false);
-                              }}
-                              className="px-4 py-3 hover:bg-white/10 rounded-lg cursor-pointer transition-colors"
-                            >
-                              <p className="text-white font-medium">
-                                {v.email}
-                              </p>
-                              <p className="text-white/50 text-sm">
-                                {v.name} ({v.category})
-                              </p>
+                      {(() => {
+                        const term = schedRecipient.toLowerCase();
+                        const matchedContacts = contacts.filter(c =>
+                          c.contact_name.toLowerCase().includes(term) ||
+                          c.contact_email.toLowerCase().includes(term)
+                        );
+                        const matchedVendors = vendors.filter(v =>
+                          v.name.toLowerCase().includes(term) ||
+                          v.email.toLowerCase().includes(term)
+                        );
+
+                        if (matchedContacts.length === 0 && matchedVendors.length === 0) {
+                          return (
+                            <div className="px-4 py-3 text-white/50 text-sm">
+                              Use "{schedRecipient}" as custom email
                             </div>
-                          ))
-                      ) : (
-                        <div className="px-4 py-3 text-white/50 text-sm">
-                          Use "{schedRecipient}" as custom email
-                        </div>
-                      )}
+                          );
+                        }
+
+                        return (
+                          <>
+                            {matchedContacts.map(c => (
+                              <div
+                                key={c.id}
+                                onClick={() => {
+                                  setSchedRecipient(c.contact_email);
+                                  setIsVendorDropdownOpen(false);
+                                }}
+                                className="px-4 py-3 hover:bg-white/10 rounded-lg cursor-pointer transition-colors flex justify-between items-center group"
+                              >
+                                <div>
+                                  <p className="text-white font-medium group-hover:text-indigo-300 transition-colors">
+                                    {c.contact_name}
+                                  </p>
+                                  <p className="text-white/50 text-sm">
+                                    {c.contact_email}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded border border-purple-500/30 uppercase font-bold tracking-wider">Contact</span>
+                              </div>
+                            ))}
+                            {matchedVendors.map(v => (
+                              <div
+                                key={v.id}
+                                onClick={() => {
+                                  setSchedRecipient(v.email);
+                                  setIsVendorDropdownOpen(false);
+                                }}
+                                className="px-4 py-3 hover:bg-white/10 rounded-lg cursor-pointer transition-colors flex justify-between items-center group border-t border-white/5"
+                              >
+                                <div>
+                                  <p className="text-white font-medium group-hover:text-indigo-300 transition-colors">
+                                    {v.name}
+                                  </p>
+                                  <p className="text-white/50 text-sm">
+                                    {v.email}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/30 uppercase font-bold tracking-wider">Merchant</span>
+                              </div>
+                            ))}
+                          </>
+                        );
+                      })()}
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
+
+            {isSchedVendor && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                className="space-y-3"
+              >
+                <label className="block text-white font-semibold">
+                  Subscriber / Contract ID
+                </label>
+                <input
+                  type="text"
+                  value={schedSubscriberId}
+                  onChange={(e) => setSchedSubscriberId(e.target.value)}
+                  placeholder="Enter your subscriber ID"
+                  className="w-full bg-[#3b2d59] border border-white/20 rounded-xl px-4 py-3 text-white placeholder:text-white/40 focus:outline-none focus:border-indigo-400"
+                  required
+                />
+              </motion.div>
+            )}
 
             <div className="space-y-3">
               <label className="block text-white font-semibold flex justify-between">
@@ -1806,14 +1937,32 @@ export default function SendMoneyPage() {
                             </span>
                           </td>
                           <td className="p-4 text-right">
-                            {pmt.status === "Active" && (
+                            <div className="flex justify-end gap-2">
                               <button
-                                onClick={() => handleCancelScheduled(pmt)}
-                                className="px-3 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors border border-red-500/30 text-xs font-bold"
+                                onClick={() => {
+                                  setSelectedTxDetails({
+                                    ...pmt,
+                                    recipient_email: pmt.recipient_email,
+                                    amount: -pmt.amount,
+                                    status: pmt.status,
+                                    is_scheduled: true
+                                  });
+                                  setDetailsModalOpen(true);
+                                }}
+                                className="text-xs bg-white/5 hover:bg-white/10 text-white/50 hover:text-white px-3 py-1.5 rounded-lg border border-white/10 transition-all font-bold"
                               >
-                                Cancel
+                                Details
                               </button>
-                            )}
+
+                              {pmt.status === "Active" && (
+                                <button
+                                  onClick={() => handleCancelScheduled(pmt)}
+                                  className="px-3 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors border border-red-500/30 text-xs font-bold"
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -2103,6 +2252,101 @@ export default function SendMoneyPage() {
           </div>
         </motion.div>
       )}
+      {/* Transaction Details Modal */}
+      <AnimatePresence>
+        {detailsModalOpen && selectedTxDetails && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-[#1a1228] border border-white/10 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl"
+            >
+              <div className="bg-gradient-to-r from-purple-600 to-indigo-700 p-6 text-white">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xl font-bold">Transaction Details</h3>
+                  <button
+                    onClick={() => setDetailsModalOpen(false)}
+                    className="text-white/60 hover:text-white transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div className="flex flex-col items-center py-4 bg-white/5 rounded-2xl border border-white/5">
+                  <span className={`text-3xl font-bold ${selectedTxDetails.amount < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {selectedTxDetails.amount < 0 ? '-' : '+'}${Math.abs(selectedTxDetails.amount).toFixed(2)}
+                  </span>
+                  <span className="text-white/50 text-sm mt-1 uppercase tracking-widest font-semibold">
+                    {selectedTxDetails.transaction_side || (selectedTxDetails.amount < 0 ? 'Debit' : 'Credit')}
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between border-b border-white/5 pb-2">
+                    <span className="text-white/40 text-sm">Recipient</span>
+                    <span className="text-white font-medium prose-sm max-w-[200px] truncate">{selectedTxDetails.recipient_email}</span>
+                  </div>
+
+                  {selectedTxDetails.merchant && (
+                    <div className="flex justify-between border-b border-white/5 pb-2">
+                      <span className="text-white/40 text-sm">Merchant</span>
+                      <span className="text-white font-medium">{selectedTxDetails.merchant}</span>
+                    </div>
+                  )}
+
+                  {selectedTxDetails.subscriber_id && (
+                    <div className="flex justify-between border-b border-white/5 pb-2">
+                      <span className="text-white/40 text-sm">Subscriber ID</span>
+                      <span className="text-indigo-300 font-mono text-sm">{selectedTxDetails.subscriber_id}</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between border-b border-white/5 pb-2">
+                    <span className="text-white/40 text-sm">Status</span>
+                    <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${selectedTxDetails.status === 'cleared' || selectedTxDetails.status === 'Active'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      : selectedTxDetails.status === 'failed' || selectedTxDetails.status === 'Failed'
+                        ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                        : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                      }`}>
+                      {selectedTxDetails.status}
+                    </span>
+                  </div>
+
+                  {selectedTxDetails.failure_reason && (
+                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
+                      <span className="text-red-400 text-xs font-bold uppercase block mb-1">Failure Reason</span>
+                      <p className="text-red-100 text-sm leading-relaxed">{selectedTxDetails.failure_reason}</p>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between border-b border-white/5 pb-2">
+                    <span className="text-white/40 text-sm">Date</span>
+                    <span className="text-white/70 text-sm">
+                      {new Date(selectedTxDetails.timestamp || selectedTxDetails.next_run_at || new Date()).toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between border-b border-white/5 pb-2">
+                    <span className="text-white/40 text-sm">Trace / TX ID</span>
+                    <span className="text-white/40 font-mono text-[10px] max-w-[200px] truncate">{selectedTxDetails.id}</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setDetailsModalOpen(false)}
+                  className="w-full bg-white/10 hover:bg-white/20 text-white font-bold py-3 rounded-xl transition-all border border-white/10"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

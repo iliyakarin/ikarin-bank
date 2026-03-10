@@ -7,6 +7,7 @@ from typing import List, Dict, Any
 
 import logging
 import clickhouse_connect
+from clickhouse_utils import get_ch_client
 from confluent_kafka import Consumer, KafkaError
 
 # Configure logging
@@ -26,8 +27,8 @@ CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
 CH_DB = os.getenv("CLICKHOUSE_DB")
 
 # OPTIMIZED CONFIGURATION
-OPTIMAL_BATCH_SIZE = 1000
-OPTIMAL_FLUSH_INTERVAL = 30
+OPTIMAL_BATCH_SIZE = 100
+OPTIMAL_FLUSH_INTERVAL = 5
 OPTIMAL_SESSION_TIMEOUT = 10000
 MAX_RETRIES = 3
 
@@ -37,16 +38,7 @@ ch_client = None
 
 def get_clickhouse_client():
     """Get or create ClickHouse client with connection pooling"""
-    global ch_client
-    if ch_client is None:
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST,
-            port=CH_PORT,
-            username=CH_USER,
-            password=CH_PASSWORD
-        )
-        logger.info("🚀 ClickHouse client connected with performance optimizations")
-    return ch_client
+    return get_ch_client()
 
 
 def log_malformed_message_batch(malformed_messages):
@@ -103,8 +95,10 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                 msg["merchant"],
                 msg.get("transaction_type") or "expense",
                 msg.get("transaction_side") or "",
-                msg["timestamp"],
+                datetime.fromisoformat(msg["timestamp"].replace("Z", "+00:00")) if isinstance(msg["timestamp"], str) else msg["timestamp"],
                 msg.get("internal_account_last_4") or "",
+                msg.get("subscriber_id"),
+                msg.get("failure_reason"),
                 msg.get("status") or "pending",
             ]
             for msg in batch
@@ -131,11 +125,14 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                         "transaction_side",
                         "event_time",
                         "internal_account_last_4",
+                        "subscriber_id",
+                        "failure_reason",
                         "status",
                     ],
                 ),
             )
             logger.info(f"🚀 Async flush completed in {time.time() - start_time:.2f}s")
+            return True
             return True
         except Exception as e:
             logger.warning(f"⚠️ Async flush failed, falling back to sync: {e}")
@@ -156,6 +153,8 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                     "transaction_side",
                     "event_time",
                     "internal_account_last_4",
+                    "subscriber_id",
+                    "failure_reason",
                     "status",
                 ],
             )

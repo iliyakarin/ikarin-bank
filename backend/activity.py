@@ -95,3 +95,50 @@ def emit_activity(
     except RuntimeError:
         # No running event loop (e.g. called from sync context) — skip WS push
         pass
+
+
+def emit_transaction_status_update(
+    db: AsyncSession,
+    transaction_id: str,
+    account_id: int,
+    status: str,
+    amount: float,
+    category: str,
+    merchant: str,
+    transaction_type: str = "transfer",
+    transaction_side: str = "DEBIT",
+    sender_email: str | None = None,
+    recipient_email: str | None = None,
+    internal_account_last_4: str | None = None,
+    commentary: str | None = None,
+    failure_reason: str | None = None,
+):
+    """
+    Emits a status update for an existing transaction to the Outbox.
+    This creates a NEW row in ClickHouse with the same transaction_id but a new timestamp,
+    preserving historical status changes as requested.
+    """
+    now = datetime.datetime.utcnow().isoformat()
+
+    payload = {
+        "transaction_id": transaction_id,
+        "account_id": account_id,
+        "amount": amount,
+        "category": category,
+        "merchant": merchant,
+        "transaction_type": transaction_type,
+        "transaction_side": transaction_side,
+        "status": status,
+        "timestamp": now,
+        "sender_email": sender_email,
+        "recipient_email": recipient_email,
+        "internal_account_last_4": internal_account_last_4,
+        "commentary": commentary,
+        "failure_reason": failure_reason,
+    }
+
+    outbox_entry = Outbox(
+        event_type="transaction.status_update",
+        payload=payload,
+    )
+    db.add(outbox_entry)
