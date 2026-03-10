@@ -63,6 +63,12 @@ async def originate_ach(payload: ACHOriginateRequest, db: AsyncSession = Depends
 
     return StatusResponse(status="SUCCESS", message=f"ACH Transferred to {bank.name}")
 
+@app.get("/banks")
+async def get_banks(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Bank))
+    banks = result.scalars().all()
+    return {"banks": [{"name": b.name, "routing_number": b.routing_number} for b in banks]}
+
 @app.on_event("startup")
 async def startup_event():
     async with engine.begin() as conn:

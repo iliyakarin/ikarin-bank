@@ -174,13 +174,27 @@ class ScheduledPaymentResponse(BaseModel):
 
 class ContactCreate(BaseModel):
     contact_name: str
-    contact_email: str
+    contact_email: Optional[str] = None
+    contact_type: str = "karin" # karin, merchant, bank
+    # Merchant fields
+    merchant_id: Optional[str] = None
+    subscriber_id: Optional[str] = None
+    # Bank fields
+    bank_name: Optional[str] = None
+    routing_number: Optional[str] = None
+    account_number: Optional[str] = None
 
 class ContactResponse(BaseModel):
     id: int
     user_id: int
     contact_name: str
-    contact_email: str
+    contact_email: Optional[str] = None
+    contact_type: str
+    merchant_id: Optional[str] = None
+    subscriber_id: Optional[str] = None
+    bank_name: Optional[str] = None
+    routing_number: Optional[str] = None
+    account_number: Optional[str] = None
     created_at: datetime.datetime
 
     class Config:
@@ -188,7 +202,13 @@ class ContactResponse(BaseModel):
 
 class ContactUpdate(BaseModel):
     contact_name: str
-    contact_email: str
+    contact_email: Optional[str] = None
+    # Allow updating metadata too
+    merchant_id: Optional[str] = None
+    subscriber_id: Optional[str] = None
+    bank_name: Optional[str] = None
+    routing_number: Optional[str] = None
+    account_number: Optional[str] = None
 
 # Helper Functions
 # Role Checkers
@@ -2330,23 +2350,54 @@ async def create_contact(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not contact_data.contact_name.strip() or not contact_data.contact_email.strip():
-        raise HTTPException(status_code=400, detail="Name and Email are required")
+    if not contact_data.contact_name.strip():
+        raise HTTPException(status_code=400, detail="Name is required")
         
-    # Check if duplicate email exists for user
-    result = await db.execute(select(Contact).filter(
-        Contact.user_id == current_user.id, 
-        Contact.contact_email == contact_data.contact_email
-    ))
+    # Validation per type
+    if contact_data.contact_type == "karin":
+        if not contact_data.contact_email or not contact_data.contact_email.strip():
+            raise HTTPException(status_code=400, detail="Email is required for KarinBank contacts")
+    elif contact_data.contact_type == "merchant":
+        if not contact_data.merchant_id or not contact_data.subscriber_id:
+            raise HTTPException(status_code=400, detail="Merchant ID and Subscriber ID are required")
+    elif contact_data.contact_type == "bank":
+        if not contact_data.routing_number or not contact_data.account_number:
+            raise HTTPException(status_code=400, detail="Routing Number and Account Number are required")
+
+    # Check for duplicates (simplified check based on type and unique identifiers)
+    if contact_data.contact_type == "karin":
+        result = await db.execute(select(Contact).filter(
+            Contact.user_id == current_user.id, 
+            Contact.contact_email == contact_data.contact_email,
+            Contact.contact_type == "karin"
+        ))
+    elif contact_data.contact_type == "merchant":
+        result = await db.execute(select(Contact).filter(
+            Contact.user_id == current_user.id,
+            Contact.merchant_id == contact_data.merchant_id,
+            Contact.subscriber_id == contact_data.subscriber_id
+        ))
+    else: # bank
+        result = await db.execute(select(Contact).filter(
+            Contact.user_id == current_user.id,
+            Contact.routing_number == contact_data.routing_number,
+            Contact.account_number == contact_data.account_number
+        ))
+        
     existing = result.scalars().first()
-    
     if existing:
-        raise HTTPException(status_code=400, detail="Contact with this email already exists")
+        raise HTTPException(status_code=400, detail="Contact already exists")
 
     new_contact = Contact(
         user_id=current_user.id,
         contact_name=contact_data.contact_name,
-        contact_email=contact_data.contact_email
+        contact_email=contact_data.contact_email,
+        contact_type=contact_data.contact_type,
+        merchant_id=contact_data.merchant_id,
+        subscriber_id=contact_data.subscriber_id,
+        bank_name=contact_data.bank_name,
+        routing_number=contact_data.routing_number,
+        account_number=contact_data.account_number
     )
     
     db.add(new_contact)
@@ -2371,22 +2422,16 @@ async def update_contact(
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
         
-    if not contact_data.contact_name.strip() or not contact_data.contact_email.strip():
-        raise HTTPException(status_code=400, detail="Name and Email are required")
+    if not contact_data.contact_name.strip():
+        raise HTTPException(status_code=400, detail="Name is required")
         
-    # Check if duplicate email exists for user (excluding self)
-    result = await db.execute(select(Contact).filter(
-        Contact.user_id == current_user.id, 
-        Contact.contact_email == contact_data.contact_email,
-        Contact.id != contact_id
-    ))
-    existing = result.scalars().first()
-    
-    if existing:
-        raise HTTPException(status_code=400, detail="Another contact with this email already exists")
-
     contact.contact_name = contact_data.contact_name
     contact.contact_email = contact_data.contact_email
+    contact.merchant_id = contact_data.merchant_id
+    contact.subscriber_id = contact_data.subscriber_id
+    contact.bank_name = contact_data.bank_name
+    contact.routing_number = contact_data.routing_number
+    contact.account_number = contact_data.account_number
     
     await db.commit()
     await db.refresh(contact)
@@ -2412,6 +2457,34 @@ async def delete_contact(
     await db.commit()
     
     return {"status": "success"}
+
+@app.get("/v1/vendors")
+async def get_external_vendors():
+    """Proxy to get vendors from vendor-simulator."""
+    # This service doesn't require an API key for listing vendors
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.get("http://vendor-simulator:8001/vendors", timeout=5.0)
+            if res.status_code == 200:
+                return res.json()
+            return {"vendors": []}
+        except Exception as e:
+            print(f"Error fetching vendors: {e}")
+            return {"vendors": []}
+
+@app.get("/v1/banks")
+async def get_external_banks():
+    """Proxy to get banks from mock-fed-gateway."""
+    async with httpx.AsyncClient() as client:
+        try:
+            # We'll add this route to the gateway in the next step
+            res = await client.get("http://mock-fed-gateway:8001/banks", timeout=5.0)
+            if res.status_code == 200:
+                return res.json()
+            return {"banks": []}
+        except Exception as e:
+            print(f"Error fetching banks: {e}")
+            return {"banks": []}
 
 # --- Admin Endpoints ---
 
