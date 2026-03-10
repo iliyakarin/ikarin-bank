@@ -1,0 +1,34 @@
+[allowlist]
+description = "Global allowlist for Gitleaks"
+paths = [
+    '''^vendor/''',
+    '''^node_modules/''',
+    '''^frontend/out/''',
+    '''^frontend/\.next/''',
+    '''^scripts/redactor\.py$''',
+    '''^scripts/cleanup_history\.sh$'''
+]
+# We allow the redacted string itself
+stopwords = [
+    "REDACTED"
+]
+
+[[rules]]
+description = "Karin Bank Sensitive Identifier"
+id = "karin-sensitive-id"
+regex = '''(?i)(admin@karinbank\.com|admin123|password123|bank_secure_pass_2025|kafka_secure_pass_2025)'''
+severity = "critical"
+
+[[rules]]
+description = "Generic API Key"
+id = "generic-api-key"
+regex = '''(?i)(api_key|apikey|secret|password|passwd|pwd)[-|_]*['"|:|=]+[ \t]*['"]([0-9a-zA-Z\-_=]{16,64})['"]'''
+entropy = 3.5
+severity = "high"
+
+[[rules]]
+description = "Enforce no default fallbacks in os.getenv"
+id = "no-getenv-fallback"
+regex = '''os\.getenv\s*\(\s*["'][A-Z_]+["']\s*,\s*["'][^"']+["']\s*\)'''
+path = '''backend/.*\.py$'''
+severity = "high"
