@@ -100,7 +100,15 @@ class Contact(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     contact_name = Column(String(100), nullable=False)
-    contact_email = Column(String(100), nullable=False)
+    contact_email = Column(String(100), nullable=True)  # Required for karin, optional for others
+    contact_type = Column(String(20), default="karin", server_default="karin", nullable=False)  # karin, merchant, bank
+    # Merchant-specific fields
+    merchant_id = Column(String(50), nullable=True)
+    subscriber_id = Column(String(100), nullable=True)
+    # External bank-specific fields
+    bank_name = Column(String(255), nullable=True)
+    routing_number = Column(String(9), nullable=True)
+    account_number = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 from sqlalchemy.dialects.postgresql import JSONB, UUID
