@@ -37,45 +37,135 @@ const PREDEFINED_QUERIES = {
       name: "Top Merchants by Volume",
       query: "SELECT merchant, COUNT(*) as transaction_count, SUM(amount) as total_amount FROM bank_transactions WHERE created_at >= now() - INTERVAL 7 DAY GROUP BY merchant ORDER BY total_amount DESC LIMIT 20",
       description: "Top 20 merchants by transaction volume (7 days)"
+    },
+    {
+      name: "Daily Volume Trends",
+      query: "SELECT toDate(created_at) as date, SUM(amount) as volume FROM bank_transactions GROUP BY date ORDER BY date DESC LIMIT 30",
+      description: "Daily transaction volume for the last 30 days"
+    },
+    {
+      name: "Category Distribution",
+      query: "SELECT category, COUNT(*) as count, SUM(amount) as total FROM bank_transactions GROUP BY category ORDER BY total DESC",
+      description: "Spending patterns by transaction category"
+    },
+    {
+      name: "Average Transaction Size",
+      query: "SELECT AVG(amount) FROM bank_transactions",
+      description: "Global average transaction amount"
+    },
+    {
+      name: "Peak Usage Hours",
+      query: "SELECT toHour(created_at) as hr, count(*) as c FROM bank_transactions GROUP BY hr ORDER BY c DESC",
+      description: "Hours with highest transaction density"
+    },
+    {
+      name: "System Errors & Returns",
+      query: "SELECT * FROM bank_transactions WHERE status = 'failed' OR amount < 0 LIMIT 50",
+      description: "Trace failed or reversed transactions"
     }
   ],
   postgres: [
     {
-      name: "All Users with Accounts",
-      query: "SELECT u.id, u.first_name, u.last_name, u.email, a.balance FROM users u LEFT JOIN accounts a ON u.id = a.user_id ORDER BY u.created_at DESC",
-      description: "All users with their current account balances"
+      name: "All Users Registry",
+      query: "SELECT id, first_name, last_name, email, role, created_at FROM users ORDER BY created_at DESC",
+      description: "Complete member directory from PostgreSQL"
     },
     {
-      name: "Recent Transactions",
-      query: "SELECT t.*, u.first_name, u.last_name FROM transactions t JOIN users u ON t.account_id = u.id ORDER BY t.created_at DESC LIMIT 50",
-      description: "Latest 50 transactions with user information"
+      name: "Account Balances",
+      query: "SELECT u.email, a.balance, a.name FROM users u JOIN accounts a ON u.id = a.user_id",
+      description: "Current ledger balances for all users"
     },
     {
-      name: "Account Balance Distribution",
-      query: "SELECT CASE WHEN balance < 100 THEN 'Low' WHEN balance < 1000 THEN 'Medium' WHEN balance < 10000 THEN 'High' ELSE 'Very High' END as balance_range, COUNT(*) as account_count FROM accounts GROUP BY balance_range",
-      description: "Distribution of account balances across ranges"
+      name: "Transaction Audit Log",
+      query: "SELECT * FROM transactions ORDER BY created_at DESC LIMIT 100",
+      description: "Raw transaction log from the main relational database"
     },
     {
-      name: "User Registration Trends",
-      query: "SELECT DATE(created_at) as date, COUNT(*) as new_users FROM users WHERE created_at >= CURRENT_DATE - INTERVAL '30 days' GROUP BY DATE(created_at) ORDER BY date DESC",
-      description: "New user registrations over past 30 days"
+      name: "Idempotency Records",
+      query: "SELECT * FROM idempotency_keys ORDER BY created_at DESC LIMIT 50",
+      description: "Verify API execution consistency records"
+    },
+    {
+      name: "Scheduled Payments",
+      query: "SELECT * FROM scheduled_payments WHERE status = 'Active'",
+      description: "All currently active recurring transfers"
+    },
+    {
+      name: "Pending Requests",
+      query: "SELECT * FROM payment_requests WHERE status = 'pending_target'",
+      description: "Unclaimed peer-to-peer payment requests"
+    },
+    {
+      name: "Outbox Queue Status",
+      query: "SELECT status, COUNT(*) FROM outbox GROUP BY status",
+      description: "Current status of the Kafka event relay queue"
+    },
+    {
+      name: "Admin Audit Trail",
+      query: "SELECT * FROM users WHERE role = 'admin'",
+      description: "Identify all users with administrative privileges"
+    },
+    {
+      name: "System Totals (Assets)",
+      query: "SELECT SUM(balance) as total_assets FROM accounts",
+      description: "Cumulative balance of all accounts in the system"
+    },
+    {
+      name: "Recent Signups",
+      query: "SELECT email, created_at FROM users WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'",
+      description: "New users registered in the last week"
     }
   ],
   kafka: [
     {
-      name: "Recent Kafka Messages",
+      name: "Recent Stream Events",
       query: "get_recent_messages",
-      description: "Recent messages from bank_transactions topic (last 100)"
+      description: "Listen to the bank_transactions live message stream"
     },
     {
-      name: "Topic Message Count",
+      name: "Topic Telemetry",
       query: "get_topic_stats",
-      description: "Message count and consumer lag for bank_transactions topic"
+      description: "Real-time stats for the banking topic"
     },
     {
-      name: "Consumer Group Status",
+      name: "Consumer Health",
       query: "get_consumer_groups",
-      description: "Status of all consumer groups for banking topics"
+      description: "Check status of event consumers and lag"
+    },
+    {
+      name: "Outbox Heartbeat",
+      query: "get_outbox_telemetry",
+      description: "Live monitoring of the Outbox Worker relay"
+    },
+    {
+      name: "Event Latency",
+      query: "get_stream_latency",
+      description: "Message propagation delay (ms)"
+    },
+    {
+      name: "Stream Errors",
+      query: "get_error_stream",
+      description: "High-level Kafka technical error logs"
+    },
+    {
+      name: "Partition Mapping",
+      query: "get_partition_data",
+      description: "Analyze message distribution across partitions"
+    },
+    {
+      name: "Producer Status",
+      query: "get_producer_health",
+      description: "Verify the API backend's connection to the cluster"
+    },
+    {
+      name: "Message Geometry",
+      query: "get_message_sizes",
+      description: "Payload size distribution telemetry"
+    },
+    {
+      name: "System Snapshots",
+      query: "get_topic_snapshots",
+      description: "Historical high-water marks for the 24h cycle"
     }
   ]
 };
@@ -90,12 +180,12 @@ export default function QueryBuilder({ onQuery, loading, dbConfig }: QueryBuilde
   const handleExecuteQuery = () => {
     const query = isCustomMode ? customQuery : selectedQuery.query;
     const params = isCustomMode ? {} : queryParams;
-    
+
     if (query.trim()) {
-      onQuery(query, { 
-        source: selectedSource, 
+      onQuery(query, {
+        source: selectedSource,
         ...params,
-        dbConfig 
+        dbConfig
       });
     }
   };
@@ -129,11 +219,10 @@ export default function QueryBuilder({ onQuery, loading, dbConfig }: QueryBuilde
               setSelectedQuery(PREDEFINED_QUERIES[source][0]);
               setIsCustomMode(false);
             }}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-              selectedSource === source 
-                ? 'bg-white text-black' 
-                : 'text-white/60 hover:text-white hover:bg-white/10'
-            }`}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${selectedSource === source
+              ? 'bg-white/10 text-white shadow-sm border border-white/10'
+              : 'text-white/60 hover:text-white hover:bg-white/5'
+              }`}
           >
             {source === 'clickhouse' && <Database className="w-4 h-4" />}
             {source === 'postgres' && <Database className="w-4 h-4" />}
@@ -152,11 +241,10 @@ export default function QueryBuilder({ onQuery, loading, dbConfig }: QueryBuilde
           </h3>
           <button
             onClick={() => setIsCustomMode(!isCustomMode)}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-              isCustomMode 
-                ? 'bg-purple-500 text-white' 
-                : 'bg-white/10 text-white/60 hover:text-white'
-            }`}
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${isCustomMode
+              ? 'bg-purple-500 text-white'
+              : 'bg-white/10 text-white/60 hover:text-white'
+              }`}
           >
             {isCustomMode ? 'Predefined' : 'Custom SQL'}
           </button>

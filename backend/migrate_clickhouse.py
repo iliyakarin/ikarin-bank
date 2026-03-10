@@ -57,7 +57,9 @@ def run_migration():
             ADD COLUMN IF NOT EXISTS transaction_side String,
             ADD COLUMN IF NOT EXISTS event_time DateTime DEFAULT now(),
             ADD COLUMN IF NOT EXISTS category String,
-            ADD COLUMN IF NOT EXISTS internal_account_last_4 Nullable(String)
+            ADD COLUMN IF NOT EXISTS internal_account_last_4 Nullable(String),
+            ADD COLUMN IF NOT EXISTS subscriber_id Nullable(String),
+            ADD COLUMN IF NOT EXISTS failure_reason Nullable(String)
         """)
         # If timestamp exists but event_time is new, we might want to sync them, 
         # but DEFAULT now() is a safe fallback for new columns.
@@ -77,6 +79,8 @@ def run_migration():
                 transaction_side String,
                 event_time DateTime,
                 internal_account_last_4 Nullable(String),
+                subscriber_id Nullable(String),
+                failure_reason Nullable(String),
                 status String
             ) ENGINE = ReplacingMergeTree()
             PARTITION BY toYYYYMM(event_time)

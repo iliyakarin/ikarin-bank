@@ -14,3 +14,4 @@ asyncpg
 gunicorn
 pytest
 pytest-asyncio
+httpx

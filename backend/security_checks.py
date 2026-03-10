@@ -8,17 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from database import Transaction, Account
 from activity import emit_activity
-import clickhouse_connect
 import os
 import logging
+from clickhouse_utils import get_ch_client, CH_DB
 
 logger = logging.getLogger(__name__)
-
-CH_HOST = os.getenv("CLICKHOUSE_HOST", "localhost")
-CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
-CH_USER = os.getenv("CLICKHOUSE_USER", "default")
-CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
-CH_DB = os.getenv("CLICKHOUSE_DB", "banking_log")
 
 # Limits
 VELOCITY_MAX_TX_PER_MINUTE = 10
@@ -76,9 +70,7 @@ async def check_anomaly(db: AsyncSession, user_id: int, amount: Decimal) -> bool
     Does NOT block the transaction — only flags it in the activity log.
     """
     try:
-        ch = clickhouse_connect.get_client(
-            host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
-        )
+        ch = get_ch_client()
 
         # Get user's account IDs for the query
         result = await db.execute(select(Account.id).filter(Account.user_id == user_id))

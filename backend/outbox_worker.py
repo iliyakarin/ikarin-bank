@@ -26,7 +26,20 @@ async def process_outbox():
         sasl_plain_password=KAFKA_PASSWORD,
     )
     
-    await producer.start()
+    max_retries = 30
+    retry_count = 0
+    while retry_count < max_retries:
+        try:
+            await producer.start()
+            print("🚀 Kafka Producer started successfully")
+            break
+        except Exception as e:
+            retry_count += 1
+            print(f"⏳ Waiting for Kafka... ({retry_count}/{max_retries}) Error: {e}")
+            await asyncio.sleep(2)
+    else:
+        print("❌ Failed to start Kafka Producer after multiple retries")
+        return
     
     try:
         while True:

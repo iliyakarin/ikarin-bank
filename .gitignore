@@ -69,6 +69,11 @@ performance_tests/
 # AI & Internal Tooling
 .Jules/
 .antigravity/
+.agent/
+.claude/
+.gemini/
+.cursor/
+.codex/
 
 # Local Database Configuration (Generated or Mocked)
 init-db/*.conf

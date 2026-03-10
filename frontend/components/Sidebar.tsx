@@ -2,7 +2,17 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Send, CreditCard, Wallet, LogOut, History, Users, Activity } from 'lucide-react';
+import {
+    LayoutDashboard,
+    Send,
+    CreditCard,
+    Wallet,
+    LogOut,
+    History,
+    Users,
+    Activity,
+    Shield
+} from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -17,7 +27,14 @@ const navItems = [
 
 export default function Sidebar() {
     const pathname = usePathname();
-    const { logout } = useAuth();
+    const { user, logout } = useAuth();
+
+    const isAdmin = user?.role === 'admin';
+
+    const items = [...navItems];
+    if (isAdmin) {
+        items.push({ name: 'Administration', href: '/admin', icon: Shield });
+    }
 
     return (
         <aside className="w-20 md:w-64 h-screen bg-gradient-to-b from-white/10 via-white/5 to-transparent backdrop-blur-md border-r border-white/10 flex flex-col items-center md:items-stretch py-8 sticky top-0 transition-all duration-300 ease-in-out z-50">
@@ -30,8 +47,8 @@ export default function Sidebar() {
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 px-4 space-y-2">
-                {navItems.map((item) => {
+            <nav className="flex-1 px-4 space-y-2 overflow-y-auto no-scrollbar">
+                {items.map((item) => {
                     const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
                     const Icon = item.icon;
                     return (
