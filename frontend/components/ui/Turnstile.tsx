@@ -15,16 +15,21 @@ declare global {
 
 const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '[REDACTED]'; // Testing key
+    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '[REDACTED]';
 
     useEffect(() => {
-        // Auto-verify in development
-        if (process.env.NEXT_PUBLIC_ENV !== 'production') {
+        // Auto-verify in development unless we explicitly want to test production behavior
+        const isProduction = process.env.NODE_ENV === 'production' || process.env.NEXT_PUBLIC_ENV === 'production';
+
+        if (!isProduction) {
             onVerify('mock-token-dev');
             return;
         }
 
         if (!containerRef.current) return;
+
+        let retryCount = 0;
+        const maxRetries = 10;
 
         const renderTurnstile = () => {
             if (window.turnstile) {
@@ -35,9 +40,12 @@ const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) =>
                     'expired-callback': onExpire,
                     theme: 'dark',
                 });
+            } else if (retryCount < maxRetries) {
+                // If script not loaded yet, retry with backoff
+                retryCount++;
+                setTimeout(renderTurnstile, 500 * retryCount);
             } else {
-                // If script not loaded yet, retry in 500ms
-                setTimeout(renderTurnstile, 500);
+                if (onError) onError('Turnstile script failed to load after multiple retries');
             }
         };
 
@@ -45,7 +53,6 @@ const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) =>
 
         return () => {
             if (window.turnstile && containerRef.current) {
-                // Cleanup if needed (Turnstile might not have explicit remove but clearing innerHTML is common)
                 containerRef.current.innerHTML = '';
             }
         };

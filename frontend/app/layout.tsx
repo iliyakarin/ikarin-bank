@@ -11,6 +11,7 @@ export const metadata: Metadata = {
 };
 
 import { AuthProvider } from "@/lib/AuthContext";
+import Script from "next/script";
 
 export default function RootLayout({
     children,
@@ -19,10 +20,11 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" className="dark">
-            <head>
-                <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-            </head>
             <body className={`${inter.className} bg-slate-950 text-slate-50 antialiased`}>
+                <Script
+                    src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+                    strategy="afterInteractive"
+                />
                 <ErrorBoundary>
                     <AuthProvider>
                         {children}
