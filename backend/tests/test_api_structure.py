@@ -17,7 +17,7 @@ def test_admin_stats_exists(mock_fastapi_dependency):
     # Check calls to app.get
     for call in app.get.call_args_list:
         args, kwargs = call
-        if args and args[0] == "/admin/stats":
+        if args and args[0] == "/v1/admin/stats":
             found_stats = True
 
     assert found_stats, "Could not find /admin/stats endpoint definition"

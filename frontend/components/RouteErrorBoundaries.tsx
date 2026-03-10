@@ -34,7 +34,7 @@ export function ClientRouteBoundary({ children }: Omit<RouteErrorBoundaryProps, 
                 Try Again
               </button>
               <button
-                onClick={() => window.location.href = '/dashboard'}
+                onClick={() => window.location.href = '/client'}
                 className="flex-1 px-6 py-3 bg-white/10 text-white rounded-xl font-medium hover:bg-white/20 transition-colors"
               >
                 Dashboard
@@ -74,7 +74,7 @@ export function AdminRouteBoundary({ children }: Omit<RouteErrorBoundaryProps, '
                 Retry Admin Panel
               </button>
               <button
-                onClick={() => window.location.href = '/dashboard'}
+                onClick={() => window.location.href = '/client'}
                 className="flex-1 px-6 py-3 bg-white/10 text-white rounded-xl font-medium hover:bg-white/20 transition-colors"
               >
                 Leave Admin
@@ -121,45 +121,6 @@ export function AuthRouteBoundary({ children }: Omit<RouteErrorBoundaryProps, 'r
                 className="flex-1 px-6 py-3 bg-white/10 text-white rounded-xl font-medium hover:bg-white/20 transition-colors"
               >
                 Re-login
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    >
-      {children}
-    </ErrorBoundary>
-  );
-}
-
-export function DashboardRouteBoundary({ children }: Omit<RouteErrorBoundaryProps, 'routeName'>) {
-  return (
-    <ErrorBoundary
-      onError={(error, errorInfo) => {
-        console.error('Dashboard Route Error:', error);
-      }}
-      fallback={({ error, onReset }) => (
-        <div className="w-full h-full flex items-center justify-center p-8">
-          <div className="w-full max-w-md glass-panel rounded-[2.5rem] p-8 text-center">
-            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-blue-500/20 flex items-center justify-center">
-              <svg className="w-8 h-8 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-3"> Dashboard Error</h2>
-            <p className="text-white/60 mb-6">We couldn't load your dashboard. Try refreshing to see your latest data.</p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={onReset}
-                className="flex-1 px-6 py-3 bg-white text-black rounded-xl font-medium hover:bg-white/90 transition-colors"
-              >
-                Reload Dashboard
-              </button>
-              <button
-                onClick={() => window.location.reload()}
-                className="flex-1 px-6 py-3 bg-white/10 text-white rounded-xl font-medium hover:bg-white/20 transition-colors"
-              >
-                Full Refresh
               </button>
             </div>
           </div>

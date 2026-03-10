@@ -110,8 +110,13 @@ def test_internal_transfer_success(mock_fastapi_dependency):
     mock_db.commit = AsyncMock()
     mock_db.rollback = AsyncMock()
     
-    acc1 = MockAccount(100, 1, Decimal("100.00"), True, None, "Main")
-    acc2 = MockAccount(101, 1, Decimal("50.00"), False, 100, "Sub")
+    class MockAcc:
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+    
+    acc1 = MockAcc(id=100, user_id=1, balance=Decimal("100.00"), is_main=True, parent_account_id=None, name="Main", account_number_last_4="1234")
+    acc2 = MockAcc(id=101, user_id=1, balance=Decimal("50.00"), is_main=False, parent_account_id=100, name="Savings", account_number_last_4="5678")
     
     mock_q = MagicMock()
     
