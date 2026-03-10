@@ -1,33 +1,32 @@
 # Database Persistence Configuration
 
 ## Overview
-All database services are now configured to persist data to the `./data/` directory. This ensures that data survives container restarts and recreations.
+All database services are configured to persist data to the `./data/` directory. This ensures that data survives container restarts and recreations.
 
 ## Persistent Volumes
 
 ### 1. **PostgreSQL** (`./data/postgres/`)
 - **Mount Point**: `/var/lib/postgresql/data`
 - **Purpose**: Stores all user accounts, transactions, and banking data
-- **Size**: ~4KB (with initialization data)
+- **Tables**: users, accounts, scheduled_payments, payment_requests, contacts, transactions, idempotency_keys, outbox
 - **Persistence**: User data survives container restarts ✅
 
 ### 2. **ClickHouse** (`./data/clickhouse/`)
 - **Mount Point**: `/var/lib/clickhouse`
 - **Purpose**: Stores analytics, metrics, and transaction ledger data
-- **Size**: ~52KB (with schema and data)
+- **Databases**: banking_log
+- **Tables**: transactions, activity_events
 - **Persistence**: Analytics data survives container restarts ✅
 
 ### 3. **Kafka** (`./data/kafka/`)
 - **Mount Point**: `/var/lib/kafka/data`
 - **Purpose**: Stores Kafka broker logs and message data
-- **Size**: ~636KB (with message topics and consumer offsets)
+- **Topics**: bank_transactions, __consumer_offsets, __transaction_state_log
 - **Persistence**: Topic configuration and message history survives restarts ✅
 
-### 4. **Zookeeper** (`./data/zookeeper/`)
-- **Mount Point**: `/var/lib/zookeeper` and `/var/log/zookeeper`
-- **Purpose**: Stores cluster coordination state and logs
-- **Size**: ~8KB (with coordination data)
-- **Persistence**: Cluster state survives container restarts ✅
+### 4. **Zookeeper** (No persistent volume)
+- **Purpose**: Stores cluster coordination state
+- **Note**: Zookeeper data is ephemeral in this setup
 
 ## Data Isolation Benefits
 
@@ -69,11 +68,8 @@ data/
 │   ├── data/
 │   ├── metadata/
 │   └── store/
-├── kafka/                 # Kafka broker logs
-│   └── kafka-logs-*/
-└── zookeeper/             # Zookeeper coordination
-    ├── version-2/
-    └── datalog/
+└── kafka/                 # Kafka broker logs
+    └── kafka-logs-*/
 ```
 
 ## Verification

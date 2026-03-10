@@ -249,7 +249,8 @@ async def internal_transfer(
         raise
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail="Internal transfer failed")
+        raise HTTPException(status_code=500, detail=f"Internal transfer failed: {str(e)}")
+
 
 
 @router.get("/{account_id}/credentials")

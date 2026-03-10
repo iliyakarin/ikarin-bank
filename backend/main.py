@@ -908,8 +908,9 @@ def get_ch_logs(current_user: User = Depends(admin_only)):
     # Connect to ClickHouse
     client = get_ch_client()
     result = client.query(
-        "SELECT * FROM transactions ORDER BY event_time DESC LIMIT 10"
+        f"SELECT * FROM {CH_DB}.transactions ORDER BY event_time DESC LIMIT 10"
     )
+
     logs = result.named_results()
     for log in logs:
         log["status"] = "cleared"

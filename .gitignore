@@ -1,6 +1,7 @@
 # Security & Environment
 .env
 .env.local
+.env.dev
 .env.development.local
 .env.test.local
 .env.production.local
@@ -75,6 +76,7 @@ performance_tests/
 .cursor/
 .codex/
 .config-history/
+init-db/setup-admin.xml
 
 # Local Database Configuration (Generated or Mocked)
 init-db/*.conf

@@ -18,13 +18,18 @@ const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) =>
     const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '[REDACTED]';
 
     useEffect(() => {
-        // Auto-verify in development unless we explicitly want to test production behavior
-        const isProduction = process.env.NODE_ENV === 'production' || process.env.NEXT_PUBLIC_ENV === 'production';
+        const isSiteKeyValid = siteKey && siteKey.length > 5 && !siteKey.includes('REDACTED');
+        const isProduction =
+            (process.env.NODE_ENV === 'production' || process.env.NEXT_PUBLIC_ENV === 'production') &&
+            isSiteKeyValid &&
+            !siteKey.includes('1x00000000000000000000AA') &&
+            siteKey !== 'dummy-site-key';
 
         if (!isProduction) {
             onVerify('mock-token-dev');
             return;
         }
+
 
         if (!containerRef.current) return;
 
@@ -36,7 +41,9 @@ const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) =>
                 window.turnstile.render(containerRef.current, {
                     sitekey: siteKey,
                     callback: onVerify,
-                    'error-callback': onError,
+                    'error-callback': () => {
+                        if (onError) onError('Human-bot verification failed');
+                    },
                     'expired-callback': onExpire,
                     theme: 'dark',
                 });
@@ -45,9 +52,10 @@ const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) =>
                 retryCount++;
                 setTimeout(renderTurnstile, 500 * retryCount);
             } else {
-                if (onError) onError('Turnstile script failed to load after multiple retries');
+                if (onError) onError('Human-bot verification failed');
             }
         };
+
 
         renderTurnstile();
 

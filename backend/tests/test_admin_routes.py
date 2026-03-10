@@ -44,13 +44,17 @@ async def test_get_ch_logs_requires_admin(mock_fastapi_dependency):
 
     mock_client = MagicMock()
     mock_result = MagicMock()
+    # Mock named_results to return a list of dicts
     mock_result.named_results.return_value = [{"event_time": "2023-01-01", "other": "data"}]
     mock_client.query.return_value = mock_result
 
-    with patch('main.clickhouse_connect.get_client', return_value=mock_client):
+    # Patch the utility function used by main.py
+    with patch('main.get_ch_client', return_value=mock_client):
         logs = get_ch_logs(current_user=admin_user)
         assert len(logs) == 1
+        # The endpoint adds status="cleared" and created_at=event_time
         assert logs[0]["status"] == "cleared"
+        assert logs[0]["created_at"] == "2023-01-01"
 
 @pytest.mark.asyncio
 async def test_get_kafka_status_requires_admin(mock_fastapi_dependency):

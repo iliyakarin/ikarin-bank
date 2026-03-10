@@ -2,7 +2,7 @@
 
 # Configuration
 CONFIG_REPO_DIR=".config-history"
-FILES_TO_TRACK=(".env.dev" ".env.prod" "deploy.sh" "docker-compose.prod.yml" "nginx.prod.conf")
+FILES_TO_TRACK=(".env.dev" ".env.prod" "deploy.sh" "docker-compose.prod.yml" "nginx.prod.conf" "init-db/setup-admin.xml.template")
 
 # ANSI color codes
 GREEN='\033[0;32m'

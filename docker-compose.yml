@@ -24,6 +24,7 @@ services:
     volumes:
       - ./init-db/clickhouse_init.sql:/docker-entrypoint-initdb.d/init.sql
       - ./data/clickhouse:/var/lib/clickhouse
+      - ./init-db/setup-admin.xml:/etc/clickhouse-server/users.d/setup-admin.xml
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "localhost:8123/ping"]
       interval: 5s
@@ -224,3 +225,15 @@ services:
     depends_on:
       fed-gateway-db:
         condition: service_healthy
+
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.58.2-jammy
+    container_name: bank-playwright
+    working_dir: /app/frontend
+    volumes:
+      - .:/app
+    environment:
+      - PLAYWRIGHT_BASE_URL=http://frontend:3000
+    depends_on:
+      - frontend
+    command: npx playwright test --project=chromium
