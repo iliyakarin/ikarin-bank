@@ -115,8 +115,10 @@ export default function SendMoneyPage() {
   }, [schedRecipient, vendors]);
 
   useEffect(() => {
-    // Fetch mock vendors from our new simulator service
-    fetch("http://localhost:8001/vendors")
+    // Fetch mock vendors from our new simulator service proxy
+    fetch("/api/v1/vendors", {
+      headers: { Authorization: `Bearer ${token}` }
+    })
       .then((res) => res.json())
       .then((data) => {
         if (data && data.vendors) setVendors(data.vendors);
@@ -1244,7 +1246,13 @@ export default function SendMoneyPage() {
                               <div
                                 key={c.id}
                                 onClick={() => {
-                                  setRecipient(c.contact_email);
+                                  if (c.contact_type === "merchant" && c.merchant_id) {
+                                    const v = vendors.find(vend => vend.id === c.merchant_id);
+                                    if (v) setRecipient(v.email);
+                                    if (c.subscriber_id) setSubscriberId(c.subscriber_id);
+                                  } else {
+                                    setRecipient(c.contact_email || "");
+                                  }
                                   setIsContactDropdownOpen(false);
                                 }}
                                 className="px-4 py-3 hover:bg-white/10 rounded-lg cursor-pointer transition-colors flex justify-between items-center group"
@@ -1254,10 +1262,16 @@ export default function SendMoneyPage() {
                                     {c.contact_name}
                                   </p>
                                   <p className="text-white/50 text-sm">
-                                    {c.contact_email}
+                                    {c.contact_type === "merchant" ? `Merchant: ${c.merchant_id}` : c.contact_email}
                                   </p>
                                 </div>
-                                <span className="text-[10px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded border border-purple-500/30 uppercase font-bold tracking-wider">Contact</span>
+                                <span className={`text-[10px] px-2 py-0.5 rounded border uppercase font-bold tracking-wider ${
+                                  c.contact_type === "karin" ? "bg-purple-500/20 text-purple-400 border-purple-500/30" :
+                                  c.contact_type === "merchant" ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30" :
+                                  "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                                }`}>
+                                  {c.contact_type === "karin" ? "Karin" : c.contact_type}
+                                </span>
                               </div>
                             ))}
                             {matchedVendors.map(v => (
@@ -1277,7 +1291,7 @@ export default function SendMoneyPage() {
                                     {v.email}
                                   </p>
                                 </div>
-                                <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/30 uppercase font-bold tracking-wider">Merchant</span>
+                                <span className="text-[10px] bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded border border-slate-500/30 uppercase font-bold tracking-wider">Public Merchant</span>
                               </div>
                             ))}
                           </>
