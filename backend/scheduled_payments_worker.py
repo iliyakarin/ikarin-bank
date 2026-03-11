@@ -25,9 +25,10 @@ async def get_vendors():
             resp = await client.get(f"{SIMULATOR_URL}/vendors")
             if resp.status_code == 200:
                 return resp.json().get("vendors", [])
-        except Exception as e:
-            logger.error(f"Error fetching vendors: {e}")
-        return []
+        except httpx.RequestError as e:
+            logger.error(f"Network error fetching vendors: {e}")
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error fetching vendors: {e}")
 
 async def execute_vendor_payment(merchant_id: str, subscriber_id: str, amount: float):
     async with httpx.AsyncClient() as client:
@@ -43,8 +44,11 @@ async def execute_vendor_payment(merchant_id: str, subscriber_id: str, amount: f
                 headers={"X-API-KEY": SIMULATOR_API_KEY}
             )
             return resp.json()
-        except Exception as e:
-            logger.error(f"Error executing vendor payment: {e}")
+        except httpx.RequestError as e:
+            logger.error(f"Network error executing vendor payment: {e}")
+            return {"status": "FAILED", "failure_reason": str(e), "trace_id": "ERROR"}
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error executing vendor payment: {e}")
             return {"status": "FAILED", "failure_reason": str(e), "trace_id": "ERROR"}
 
 async def process_scheduled_payments():
@@ -296,29 +300,27 @@ async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment,
             "commentary": failed_tx.commentary
         }
     ))
+    # Invoke common fail_payment logic for retry handling
+    fail_payment(db, payment, "Insufficient funds", permanently=False)
 
-    if payment.retry_count >= 3:
-        payment.status = "Failed" # Terminal state
-        payment.next_run_at = None
-        logger.info(f"Payment {payment.id} permanently failed after 3 retries.")
-    else:
-        payment.status = "Retrying"
-        payment.next_run_at = datetime.now(timezone.utc) + timedelta(days=1)
-        logger.info(f"Payment {payment.id} failed logic due to funds. Retry {payment.retry_count}/3 scheduled for +24h.")
 
 def fail_payment(db: AsyncSession, payment: ScheduledPayment, reason: str, permanently: bool = True):
+    payment.failure_reason = reason
     if permanently:
         payment.status = "Failed"
         payment.next_run_at = None
+        logger.info(f"Payment {payment.id} permanently failed: {reason}")
     else:
-        # Same logic as insufficient funds basically
+        # Retry logic consolidated here
         payment.retry_count += 1
         if payment.retry_count >= 3:
             payment.status = "Failed"
             payment.next_run_at = None
+            logger.info(f"Payment {payment.id} permanently failed after 3 retries due to {reason}.")
         else:
             payment.status = "Retrying"
             payment.next_run_at = datetime.now(timezone.utc) + timedelta(days=1)
+            logger.info(f"Payment {payment.id} failed logic due to {reason}. Retry {payment.retry_count}/3 scheduled for +24h.")
 
 async def main():
     logger.info("Starting Scheduled Payments Worker...")

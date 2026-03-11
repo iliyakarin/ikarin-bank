@@ -69,7 +69,7 @@ def log_malformed_message_batch(malformed_messages):
         logger.info(
             f"📝 Batch logged {len(malformed_messages)} malformed messages to DLQ"
         )
-    except Exception as e:
+    except OSError as e:
         logger.error(f"❌ Failed to write to DLQ: {e}")
 
 
@@ -394,7 +394,7 @@ async def run_consumer():
 
     except KeyboardInterrupt:
         logger.info("🛑 Consumer stopped by user")
-    except Exception as e:
+    except KafkaError as e:
         logger.error(f"❌ Consumer error: {e}")
     finally:
         # Final flush

@@ -9,7 +9,6 @@ from typing import Dict, Any, Optional, Tuple, List
 from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Request, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func, text, or_, select
 from decimal import Decimal
 from aiokafka import AIOKafkaProducer
@@ -22,7 +21,7 @@ import clickhouse_connect
 
 from fastapi.middleware.cors import CORSMiddleware
 from confluent_kafka.admin import AdminClient
-from confluent_kafka import Consumer, KafkaException
+from confluent_kafka import Consumer
 from clickhouse_utils import get_ch_client, CH_DB
 from passlib.context import CryptContext
 from jose import JWTError, jwt
@@ -644,7 +643,7 @@ async def get_stats(
         else:
             lag = -1
     except Exception as e:
-        logger.error(f"Error fetching Kafka metadata: {e}")
+        print(f"Error fetching Kafka metadata: {e}")
         lag = -1
 
     # 5. System Volume (24h)
@@ -765,7 +764,7 @@ async def delete_user(
         ch.command(f"ALTER TABLE {CH_DB}.activity_events DELETE WHERE user_id = {user_id}")
     except Exception as e:
         # We log and continue, as the primary source of truth (Postgres) is already handled
-        logger.error(f"ClickHouse purge failed for user {user_id}: {e}")
+        print(f"[ERROR] ClickHouse purge failed for user {user_id}: {e}")
 
     await db.commit()
     return None
@@ -873,7 +872,7 @@ async def run_simulation(tps: int, count: int):
             new_tx.status = "sent_to_kafka"
             await db.commit()
         except Exception as e:
-            logger.error(f"Simulation error: {e}")
+            print(f"Simulation error: {e}")
         finally:
             await db.close()
 
@@ -974,9 +973,9 @@ async def startup_event():
         
         # 2. Schema Migrations (ensures columns exist, etc.)
         await run_all_migrations()
-        logger.info(f"Database tables verified/migrated successfully")
+        print("[INFO] Database tables verified/migrated successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
+        print(f"[ERROR] Failed to initialize database: {e}")
 
     global producer
     max_retries = 30
@@ -994,15 +993,19 @@ async def startup_event():
                 sasl_plain_password=KAFKA_PASSWORD,
             )
             await producer.start()
-            logger.info(f"Kafka producer connected successfully")
+            print("[INFO] Kafka producer connected successfully")
             return
         except Exception as e:
             retry_count += 1
             if retry_count < max_retries:
-                logger.warning(f"Kafka connection attempt {retry_count}/{max_retries} failed: {e}. Retrying in {retry_delay}s...")
+                print(
+                    f"[WARN] Kafka connection attempt {retry_count}/{max_retries} failed: {e}. Retrying in {retry_delay}s..."
+                )
                 await asyncio.sleep(retry_delay)
             else:
-                logger.warning(f"Failed to connect to Kafka after {max_retries} attempts. Continuing without Kafka...")
+                print(
+                    f"[WARN] Failed to connect to Kafka after {max_retries} attempts. Continuing without Kafka..."
+                )
                 producer = None
                 return
 
@@ -1073,9 +1076,9 @@ async def create_transfer(
         
         await db.commit()
         return {"status": "success", "transaction_id": tx_id}
-    except SQLAlchemyError as e:
+    except Exception as e:
         await db.rollback()
-        logger.error(f"Database transfer failed: {e}")
+        print(f"[ERROR] Transfer failed: {e}")
         raise HTTPException(status_code=500, detail=f"Transaction failed: {str(e)}")
 
 
@@ -1260,7 +1263,7 @@ async def get_vendors():
             if resp.status_code == 200:
                 return resp.json().get("vendors", [])
         except Exception as e:
-            logger.error(f"Fetching vendors: {e}")
+            print(f"[ERROR] Fetching vendors: {e}")
         return []
 
 async def execute_vendor_payment_immediate(merchant_id: str, subscriber_id: str, amount: Decimal):
@@ -1278,7 +1281,7 @@ async def execute_vendor_payment_immediate(merchant_id: str, subscriber_id: str,
             )
             return resp.json()
         except Exception as e:
-            logger.error(f"Executing vendor payment: {e}")
+            print(f"[ERROR] Executing vendor payment: {e}")
             return {"status": "FAILED", "failure_reason": str(e)}
 
 @app.post("/p2p-transfer")
@@ -1508,9 +1511,9 @@ async def create_p2p_transfer(
     except HTTPException:
         await db.rollback()
         raise
-    except SQLAlchemyError as e:
+    except Exception as e:
         await db.rollback()
-        logger.error(f"P2P Transfer failed due to DB error: {e}")
+        print(f"[ERROR] P2P Transfer failed: {e}")
         raise HTTPException(status_code=500, detail="Internal financial processing error")
 
 
@@ -1862,7 +1865,7 @@ async def create_scheduled_transfer(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Scheduled Transfer failed: {e}")
+        print(f"[ERROR] Scheduled Transfer failed: {e}")
         raise HTTPException(status_code=500, detail="Internal processing error")
 
 
@@ -1986,7 +1989,7 @@ async def get_activity(
         return {"events": events, "total": total}
 
     except Exception as e:
-        logger.error(f"Activity query failed: {e}")
+        print(f"[ERROR] Activity query failed: {e}")
         return {"events": [], "total": 0}
 
 
@@ -2048,7 +2051,7 @@ async def get_balance_history(
             "current_balance": float(account.balance),
         }
     except Exception as e:
-        logger.error(f"Error querying ClickHouse: {e}")
+        print(f"Error querying ClickHouse: {e}")
         # Fallback: return just current balance
         return {"balance_history": [], "current_balance": float(account.balance)}
 
@@ -2197,9 +2200,9 @@ async def get_recent_transactions(
         return {"transactions": final_txs[:20]}
 
     except Exception as e:
-        logger.error(f"Error fetching transactions: {e}")
+        print(f"[ERROR] Error fetching transactions: {e}")
         import traceback
-        logger.exception("An exception occurred")
+        traceback.print_exc()
         # Fallback to empty list or partial data if critical failure
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch transactions: {str(e)}"
@@ -2496,7 +2499,7 @@ async def get_external_vendors():
                 return res.json()
             return {"vendors": []}
         except Exception as e:
-            logger.error(f"Error fetching vendors: {e}")
+            print(f"Error fetching vendors: {e}")
             return {"vendors": []}
 
 @app.get("/v1/banks")
@@ -2510,7 +2513,7 @@ async def get_external_banks():
                 return res.json()
             return {"banks": []}
         except Exception as e:
-            logger.error(f"Error fetching banks: {e}")
+            print(f"Error fetching banks: {e}")
             return {"banks": []}
 
 # --- Admin Endpoints ---
@@ -2727,10 +2730,10 @@ async def execute_admin_query(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Admin query error: {e}")
+        print(f"Admin query error: {e}")
         import traceback
 
-        logger.exception("An exception occurred")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Query execution failed: {str(e)}")
 
 
@@ -2868,10 +2871,10 @@ async def get_banking_metrics(
         }
 
     except Exception as e:
-        logger.error(f"Error fetching banking metrics: {e}")
+        print(f"Error fetching banking metrics: {e}")
         import traceback
 
-        logger.exception("An exception occurred")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to fetch banking metrics")
 
 
