@@ -3,6 +3,7 @@ Security Checks: Velocity Limiting & Anomaly Detection
 Called before P2P transfers to protect against suspicious activity.
 """
 import datetime
+from datetime import timezone, timedelta
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -24,7 +25,7 @@ async def check_velocity(db: AsyncSession, user_id: int) -> bool:
     Check if user is sending too many transactions in the last minute.
     Returns True if the user is within limits, raises HTTPException if not.
     """
-    one_minute_ago = datetime.datetime.utcnow() - datetime.timedelta(minutes=1)
+    one_minute_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1)
 
     # Get all account IDs for this user
     result = await db.execute(select(Account.id).filter(Account.user_id == user_id))

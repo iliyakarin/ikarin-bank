@@ -22,12 +22,15 @@ import clickhouse_connect
 from fastapi.middleware.cors import CORSMiddleware
 from confluent_kafka.admin import AdminClient
 from confluent_kafka import Consumer
-import clickhouse_connect
 from clickhouse_utils import get_ch_client, CH_DB
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sync_checker import run_sync_check
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Simple Bank API")
 
@@ -47,7 +50,6 @@ CH_HOST = os.getenv("CLICKHOUSE_HOST")
 CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
 CH_USER = os.getenv("CLICKHOUSE_USER")
 CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD")
-CH_DB = os.getenv("CLICKHOUSE_DB")
 
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 
@@ -645,7 +647,7 @@ async def get_stats(
         lag = -1
 
     # 5. System Volume (24h)
-    today = datetime.datetime.utcnow()
+    today = datetime.datetime.now(datetime.timezone.utc)
     yesterday = today - datetime.timedelta(days=1)
     
     result = await db.execute(
@@ -861,7 +863,7 @@ async def run_simulation(tps: int, count: int):
                 "category": "Simulation",
                 "merchant": f"Bot-{i}",
                 "status": "pending",
-                "timestamp": datetime.datetime.utcnow().isoformat(),
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             }
             if producer:
                 await producer.send(KAFKA_TOPIC, json.dumps(payload).encode("utf-8"))
@@ -991,7 +993,7 @@ async def startup_event():
                 sasl_plain_password=KAFKA_PASSWORD,
             )
             await producer.start()
-            print(f"[INFO] Kafka producer connected successfully")
+            print("[INFO] Kafka producer connected successfully")
             return
         except Exception as e:
             retry_count += 1
@@ -1062,7 +1064,7 @@ async def create_transfer(
             "merchant": transfer.merchant,
             "transaction_type": "expense",
             "status": "cleared", # legacy /transfer is cleared immediately
-            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
         
         outbox_entry = Outbox(
@@ -1226,7 +1228,7 @@ def _create_p2p_outbox_entries(
         "transaction_type": "transfer",
         "transaction_side": "DEBIT",
         "status": "cleared", # cleared in postgres already
-        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "commentary": commentary
     }
 
@@ -1243,7 +1245,7 @@ def _create_p2p_outbox_entries(
         "transaction_type": "transfer",
         "transaction_side": "CREDIT",
         "status": "cleared",
-        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "commentary": commentary
     }
 
@@ -1355,7 +1357,7 @@ async def create_p2p_transfer(
                     idempotency_key=transfer.idempotency_key or str(uuid.uuid4()),
                     ip_address=client_ip,
                     user_agent=user_agent,
-                    created_at=datetime.datetime.utcnow()
+                    created_at=datetime.datetime.now(datetime.timezone.utc)
                 )
                 db.add(vendor_tx)
 
@@ -1458,7 +1460,7 @@ async def create_p2p_transfer(
         # Mark payment request as paid if one was linked
         if payment_request:
             payment_request.status = "paid"
-            payment_request.updated_at = datetime.datetime.utcnow()
+            payment_request.updated_at = datetime.datetime.now(datetime.timezone.utc)
 
         # 6. Finalize Idempotency Key
         response_body = {"status": "success", "transaction_id": tx_id_parent}
@@ -1621,7 +1623,7 @@ async def counter_payment_request(
     req.amount = counter_data.amount
     # Flip the status depending on who just countered
     req.status = "pending_requester" if is_target else "pending_target"
-    req.updated_at = datetime.datetime.utcnow()
+    req.updated_at = datetime.datetime.now(datetime.timezone.utc)
     
     await db.commit()
     return {"status": "success", "request_id": req.id, "new_amount": float(req.amount), "new_status": req.status}
@@ -1645,7 +1647,7 @@ async def decline_payment_request(
         raise HTTPException(status_code=400, detail=f"Request cannot be modified in state: {req.status}")
 
     req.status = "declined"
-    req.updated_at = datetime.datetime.utcnow()
+    req.updated_at = datetime.datetime.now(datetime.timezone.utc)
     
     emit_activity(db, current_user.id, "p2p", "request_declined", f"Declined payment request #{req.id}", {
         "request_id": req.id,
@@ -1754,7 +1756,7 @@ async def create_scheduled_transfer(
         raise HTTPException(status_code=400, detail="Amount exceeds maximum scheduled transfer limit of $5000.")
 
     # Validation: start date in future
-    now_utc = datetime.datetime.utcnow()
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
     # Ensure start_date is naive UTC if it comes with tzinfo
     start_date = transfer.start_date
     if start_date.tzinfo is not None:
@@ -1930,7 +1932,7 @@ async def get_activity(
 
         if not from_date:
             # Default to last 24 hours if not specified
-            from_date = (datetime.datetime.utcnow() - datetime.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+            from_date = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
 
         conditions = ["user_id = {user_id:Int64}"]
         params = {"user_id": current_user.id}
@@ -2029,7 +2031,7 @@ async def get_balance_history(
         current_balance = float(account.balance)
 
         # Get start date
-        start_date = datetime.datetime.utcnow() - datetime.timedelta(days=days)
+        start_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
 
         for row in result:
             balance_history.append(
@@ -2081,7 +2083,7 @@ async def get_recent_transactions(
             select(Transaction)
             .filter(Transaction.account_id.in_(account_ids))
             .filter(
-                Transaction.created_at >= datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
+                Transaction.created_at >= datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
             )
             .order_by(Transaction.created_at.desc())
             .limit(10)
@@ -2233,7 +2235,7 @@ async def get_all_transactions(
     else:
         target_account_ids = user_account_ids
 
-    cutoff_time = datetime.datetime.utcnow() - datetime.timedelta(days=days)
+    cutoff_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
 
     try:
         ch_client = get_ch_client()

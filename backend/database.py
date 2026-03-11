@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import declarative_base
 import datetime
+from datetime import timezone, timedelta
 
 # Database Configuration
 POSTGRES_USER = os.getenv("POSTGRES_USER")
@@ -45,7 +46,7 @@ class User(Base):
     role = Column(String(20), default="user", server_default="user", nullable=False)
     time_format = Column(String(10), default="12h", server_default="12h", nullable=False)
     date_format = Column(String(10), default="US", server_default="US", nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.datetime.now(datetime.timezone.utc))
 
 class Account(Base):
     __tablename__ = "accounts"
@@ -92,8 +93,8 @@ class PaymentRequest(Base):
     amount = Column(Numeric(15, 2), nullable=False)
     purpose = Column(String, nullable=True)
     status = Column(String(50), default="pending_target", nullable=False) # pending_target, pending_requester, paid, declined, cancelled
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 class Contact(Base):
     __tablename__ = "contacts"
@@ -109,7 +110,7 @@ class Contact(Base):
     bank_name = Column(String(255), nullable=True)
     routing_number = Column(String(9), nullable=True)
     account_number = Column(String(50), nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
@@ -134,7 +135,7 @@ class Transaction(Base):
     internal_account_last_4 = Column(String(4), nullable=True)
     subscriber_id = Column(String(100), nullable=True) # For Vendor Payments
     payment_request_id = Column(Integer, ForeignKey("payment_requests.id"), index=True, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 
 
@@ -147,7 +148,7 @@ class IdempotencyKey(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     response_code = Column(Integer)
     response_body = Column(JSONB)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 class Outbox(Base):
     __tablename__ = "outbox"
@@ -156,5 +157,5 @@ class Outbox(Base):
     payload = Column(JSONB, nullable=False)
 
     status = Column(String(20), default="pending")
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     processed_at = Column(DateTime, nullable=True)

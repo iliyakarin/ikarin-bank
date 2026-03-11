@@ -5,6 +5,7 @@ Also pushes events in real-time to connected WebSocket clients.
 """
 import uuid
 import datetime
+from datetime import timezone, timedelta
 import json
 import asyncio
 from typing import Dict, Set
@@ -66,7 +67,7 @@ def emit_activity(
     Actions vary by category (e.g. sent, received, login, created, etc.)
     """
     event_id = str(uuid.uuid4())
-    now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     payload = {
         "event_id": event_id,
@@ -118,7 +119,7 @@ def emit_transaction_status_update(
     This creates a NEW row in ClickHouse with the same transaction_id but a new timestamp,
     preserving historical status changes as requested.
     """
-    now = datetime.datetime.utcnow().isoformat()
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     payload = {
         "transaction_id": transaction_id,
