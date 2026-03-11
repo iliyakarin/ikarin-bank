@@ -164,6 +164,7 @@ def mock_fastapi_dependency():
     mock_sqlalchemy_orm = MagicMock()
     mock_sqlalchemy_ext = MagicMock()
     mock_sqlalchemy_ext_asyncio = MagicMock()
+    mock_sqlalchemy_exc = MagicMock()
 
     mock_sync_checker = MagicMock()
 
@@ -185,12 +186,18 @@ def mock_fastapi_dependency():
         "sqlalchemy.orm": mock_sqlalchemy_orm,
         "sqlalchemy.ext": mock_sqlalchemy_ext,
         "sqlalchemy.ext.asyncio": mock_sqlalchemy_ext_asyncio,
+        "sqlalchemy.exc": mock_sqlalchemy_exc,
         "sync_checker": mock_sync_checker,
         "backend.sync_checker": mock_sync_checker
     }
 
     if "main" in sys.modules:
         del sys.modules["main"]
+
+    for m in list(sys.modules.keys()):
+        if m.startswith("backend.routers") or m.startswith("routers.") or m.startswith("backend.services") or m.startswith("services."):
+            del sys.modules[m]
+
 
 
     # Make mocks support comparisons for SQLAlchemy filter building
@@ -219,3 +226,8 @@ def mock_fastapi_dependency():
 
     if "main" in sys.modules:
         del sys.modules["main"]
+
+    for m in list(sys.modules.keys()):
+        if m.startswith("backend.routers") or m.startswith("routers.") or m.startswith("backend.services") or m.startswith("services."):
+            del sys.modules[m]
+
