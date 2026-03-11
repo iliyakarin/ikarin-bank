@@ -26,6 +26,35 @@ async def test_create_payment_intent(mock_fastapi_dependency):
     assert res.client_secret is not None
     assert res.status == "requires_payment_method"
 
+@pytest.mark.asyncio
+async def test_create_subscription_intent_prevents_double_sub(mock_fastapi_dependency):
+    import routers.stripe as stripe_router
+    from schemas.stripe_mock import PaymentIntentCreate
+    from database import Subscription
+    
+    mock_db = MagicMock()
+    mock_db.execute = AsyncMock()
+
+    mock_user = MagicMock()
+    mock_user.id = 1
+    
+    payload = PaymentIntentCreate(amount=Decimal("4900"))
+    
+    # Mocking active sub check
+    mock_result = MagicMock()
+    mock_scalars = MagicMock()
+    mock_scalars.first.return_value = Subscription(id=1, status="active")
+    mock_result.scalars.return_value = mock_scalars
+    mock_db.execute.return_value = mock_result
+    
+    from fastapi import HTTPException
+    fn = getattr(stripe_router.create_payment_intent, "__wrapped__", stripe_router.create_payment_intent)
+    
+    with pytest.raises(HTTPException) as exc:
+        await fn(payload=payload, db=mock_db, current_user=mock_user)
+    assert exc.value.status_code == 400
+    assert "User already subscribed" in exc.value.detail
+
 
 @pytest.mark.asyncio
 async def test_create_payment_method(mock_fastapi_dependency):
@@ -118,4 +147,47 @@ async def test_confirm_payment_intent(mock_fastapi_dependency):
     
     assert res.status == "succeeded"
     assert res.id == intent_id
+
+@pytest.mark.asyncio
+async def test_confirm_subscription_deducts_balance(mock_fastapi_dependency):
+    import routers.stripe as stripe_router
+    from schemas.stripe_mock import PaymentIntentConfirm
+    
+    mock_db = MagicMock()
+    mock_db.execute = AsyncMock()
+    mock_db.commit = AsyncMock()
+    mock_db.add = MagicMock()
+    
+    mock_user = MagicMock()
+    mock_user.id = 1
+    mock_user.is_black = False
+    
+    intent_id = f"pi_mock_4900"
+    payload = PaymentIntentConfirm(payment_method="pm_mock")
+    
+    mock_request = MagicMock()
+    mock_request.headers.get.return_value = "idem_sub"
+    
+    main_acc = MagicMock()
+    main_acc.id = 123
+    main_acc.balance = Decimal("100.00")
+    
+    call_idx = [0]
+    def execute_side_effect(*args, **kwargs):
+        idx = call_idx[0]
+        call_idx[0] += 1
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        if idx == 0: mock_scalars.first.return_value = None # Idem
+        elif idx == 1: mock_scalars.first.return_value = main_acc # Account
+        mock_result.scalars.return_value = mock_scalars
+        return mock_result
+
+    mock_db.execute.side_effect = execute_side_effect
+    fn = getattr(stripe_router.confirm_payment_intent, "__wrapped__", stripe_router.confirm_payment_intent)
+    
+    await fn(intent_id=intent_id, payload=payload, request=mock_request, db=mock_db, current_user=mock_user)
+    
+    assert main_acc.balance == Decimal("51.00") # 100 - 49
+    assert mock_user.is_black is True
 

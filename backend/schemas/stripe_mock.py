@@ -34,3 +34,10 @@ class PaymentIntentResponse(BaseModel):
     currency: str
     status: str
     client_secret: str
+
+class SubscriptionResponse(BaseModel):
+    active: bool
+    plan_name: Optional[str] = None
+    amount: Optional[float] = None
+    current_period_end: Optional[str] = None
+    status: Optional[str] = None
