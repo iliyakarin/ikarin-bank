@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Auth Flow', () => {
     const randomEmail = `testuser_${Math.floor(Math.random() * 100000)}@example.com`;
-    const password = 'TestPassword123!';
+    const password = process.env.ADMIN_PASSWORD!;
 
     test('should register and then login', async ({ page }) => {
         // 1. Registration

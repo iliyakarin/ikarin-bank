@@ -288,6 +288,7 @@ services:
   playwright:
     image: mcr.microsoft.com/playwright:v1.58.2-jammy
     container_name: bank-playwright
+    env_file: .env.dev
     security_opt:
       - no-new-privileges:true
     working_dir: /app/frontend

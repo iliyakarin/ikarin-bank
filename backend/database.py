@@ -64,6 +64,24 @@ class Account(Base):
     account_number_last_4 = Column(String(4), nullable=True)
     internal_reference_id = Column(String(100), unique=True, index=True, nullable=True)
 
+class PaymentMethod(Base):
+    __tablename__ = "payment_methods"
+    id = Column(Integer, primary_key=True, index=True)
+    stripe_pm_id = Column(String(100), unique=True, index=True, nullable=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"), index=True, nullable=False)
+    
+    # Encrypted sensitive data
+    card_number_encrypted = Column(String(255), nullable=False)
+    expiry_date_encrypted = Column(String(255), nullable=False)
+    cvc_encrypted = Column(String(255), nullable=False)
+    cardholder_name_encrypted = Column(String(255), nullable=False)
+    
+    # Safe display data
+    card_last_4 = Column(String(4), nullable=False)
+    card_brand = Column(String(20), default="unknown")
+    
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
+
 class ScheduledPayment(Base):
     __tablename__ = "scheduled_payments"
     id = Column(Integer, primary_key=True, index=True)
