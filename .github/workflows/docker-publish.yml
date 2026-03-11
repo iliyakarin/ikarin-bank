@@ -105,6 +105,8 @@ jobs:
             image_suffix: vendor-simulator
           - context: ./mock-fed-gateway
             image_suffix: mock-fed-gateway
+          - context: ./stripe-mock
+            image_suffix: stripe-mock
 
     steps:
       - name: Checkout repository

@@ -67,7 +67,7 @@ def emit_activity(
     Actions vary by category (e.g. sent, received, login, created, etc.)
     """
     event_id = str(uuid.uuid4())
-    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     payload = {
         "event_id": event_id,

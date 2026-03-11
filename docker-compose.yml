@@ -233,7 +233,7 @@ services:
     volumes:
       - ./data/vendor-simulator:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${VENDOR_SIMULATOR_DB_USER} -d ${VENDOR_SIMULATOR_DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -253,7 +253,7 @@ services:
     volumes:
       - ./data/fed-gateway:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${FED_GATEWAY_DB_USER} -d ${FED_GATEWAY_DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -274,6 +274,16 @@ services:
     depends_on:
       fed-gateway-db:
         condition: service_healthy
+
+  stripe-mock:
+    build: ./stripe-mock
+    container_name: stripe-mock
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "8003:8000"
 
   playwright:
     image: mcr.microsoft.com/playwright:v1.58.2-jammy

@@ -1,21 +1,23 @@
+#!/usr/bin/env python3
 import asyncio
 import os
 import uuid
 from decimal import Decimal
+import datetime # Moved import to top for consistent UTC-aware timestamps
+import random # Added for account number generation
 from sqlalchemy import select
 from database import User, Account, Transaction, Outbox, SessionLocal
 
-TARGET_EMAIL = "ikarin2@admin.com"
-AMOUNT_TO_ADD = Decimal("1000000.00")
+# TARGET_EMAIL and AMOUNT_TO_ADD are now passed as arguments to add_funds
 
-async def add_funds():
+async def add_funds(target_email: str, amount_to_add: Decimal):
     async with SessionLocal() as db:
         # 1. Find the user
-        result = await db.execute(select(User).filter(User.email == TARGET_EMAIL))
+        result = await db.execute(select(User).filter(User.email == target_email))
         user = result.scalars().first()
         
         if not user:
-            print(f"Error: User {TARGET_EMAIL} not found.")
+            print(f"Error: User {target_email} not found.")
             return
 
         # 2. Find the main account
@@ -25,32 +27,40 @@ async def add_funds():
         account = result.scalars().first()
         
         if not account:
-            print(f"Error: Main account for user {TARGET_EMAIL} not found.")
-            return
+            print(f"No main account for {target_email}. Creating one...")
+            account_number = "".join([str(random.randint(0, 9)) for _ in range(10)])
+            from account_service import encrypt_account_number
+            account = Account(
+                user_id=user.id,
+                account_number_encrypted=encrypt_account_number(account_number),
+                account_number_last_4=account_number[-4:],
+                balance=Decimal("0.00"),
+                is_main=True
+            )
+            db.add(account)
+            await db.flush() # Get the ID
 
         print(f"Found user {user.email} (ID: {user.id})")
         print(f"Current balance: {account.balance}")
 
         # 3. Update account balance
-        account.balance += AMOUNT_TO_ADD
+        account.balance += amount_to_add
         
         # 4. Create a transaction record
         tx_id = str(uuid.uuid4())
         transaction = Transaction(
             id=tx_id,
             account_id=account.id,
-            amount=AMOUNT_TO_ADD,
+            amount=amount_to_add,
             category="Adjustment",
             merchant="System Admin",
             status="cleared",
             transaction_type="income",
             transaction_side="CREDIT",
-            commentary="Manual fund injection for dev test",
-            created_at=asyncio.get_event_loop().time() # This will be replaced by datetime in actual execution
+            commentary="Manual fund injection for dev test"
         )
-        # Fix created_at to use datetime
-        import datetime
-        transaction.created_at = datetime.datetime.utcnow()
+        # Fix created_at to use datetime with timezone
+        transaction.created_at = datetime.datetime.now(datetime.timezone.utc)
         
         db.add(transaction)
 
@@ -58,12 +68,20 @@ async def add_funds():
         outbox_event = Outbox(
             event_type="transaction.created",
             payload={
-                "id": tx_id,
+                "transaction_id": tx_id,
+                "parent_id": tx_id,
                 "account_id": account.id,
-                "user_id": user.id,
-                "amount": str(AMOUNT_TO_ADD),
-                "type": "income",
-                "status": "cleared"
+                "internal_account_last_4": account.account_number_last_4,
+                "sender_email": "system@karinbank.com",
+                "recipient_email": user.email,
+                "amount": float(amount_to_add),
+                "category": "Adjustment",
+                "merchant": "System Admin",
+                "transaction_type": "income",
+                "transaction_side": "CREDIT",
+                "status": "cleared",
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "commentary": "Manual fund injection for dev test"
             }
         )
         db.add(outbox_event)
@@ -71,9 +89,12 @@ async def add_funds():
         # Commit all changes
         await db.commit()
         
-        print(f"Successfully added {AMOUNT_TO_ADD} to {TARGET_EMAIL}.")
+        print(f"Successfully added {amount_to_add} to {target_email}.")
         print(f"New balance: {account.balance}")
         print(f"Transaction ID: {tx_id}")
 
 if __name__ == "__main__":
-    asyncio.run(add_funds())
+    import sys
+    email = sys.argv[1] if len(sys.argv) > 1 else "ikarin@admin.com"
+    amount = Decimal(sys.argv[2]) if len(sys.argv) > 2 else Decimal("10000000.00")
+    asyncio.run(add_funds(email, amount))
