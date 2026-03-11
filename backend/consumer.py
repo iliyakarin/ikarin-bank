@@ -133,7 +133,7 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
             )
             logger.info(f"🚀 Async flush completed in {time.time() - start_time:.2f}s")
             return True
-            return True
+
         except Exception as e:
             logger.warning(f"⚠️ Async flush failed, falling back to sync: {e}")
             # Fallback to sync insert
@@ -181,7 +181,7 @@ async def flush_activity_to_clickhouse(batch: List[Dict[str, Any]]) -> bool:
                 msg["user_id"],
                 msg["category"],
                 msg["action"],
-                datetime.strptime(msg["event_time"], "%Y-%m-%d %H:%M:%S") if isinstance(msg["event_time"], str) and "T" not in msg["event_time"] else (datetime.fromisoformat(msg["event_time"].replace("Z", "+00:00")) if isinstance(msg["event_time"], str) else msg["event_time"]),
+                datetime.fromisoformat(msg["event_time"].replace("Z", "+00:00")) if isinstance(msg["event_time"], str) else msg["event_time"],
                 msg["title"],
                 msg.get("details", "{}"),
             ]

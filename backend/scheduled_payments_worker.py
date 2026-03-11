@@ -2,7 +2,8 @@ import asyncio
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
+from datetime import timezone, timedelta
 import uuid
 import httpx
 
@@ -49,7 +50,7 @@ async def execute_vendor_payment(merchant_id: str, subscriber_id: str, amount: f
 async def process_scheduled_payments():
     async with SessionLocal() as db:
         try:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             # Find due payments: (Active or Retrying) and next_run_at <= now
             result = await db.execute(select(ScheduledPayment).filter(
                 ScheduledPayment.status.in_(["Active", "Retrying"]),
@@ -139,7 +140,7 @@ async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, no
                 recipient_email=vendor["email"],
                 subscriber_id=payment.subscriber_id,
                 idempotency_key=str(uuid.uuid4()),
-                created_at=datetime.utcnow()
+                created_at=datetime.now(timezone.utc)
             )
             db.add(vendor_tx)
 
@@ -271,7 +272,7 @@ async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment,
         sender_email=sender.email,
         recipient_email=recipient.email,
         subscriber_id=getattr(payment, 'subscriber_id', None),
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc)
     )
     db.add(failed_tx)
     
@@ -291,7 +292,7 @@ async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment,
             "transaction_side": failed_tx.transaction_side,
             "status": "failed",
             "failure_reason": failed_tx.failure_reason,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "commentary": failed_tx.commentary
         }
     ))
@@ -302,7 +303,7 @@ async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment,
         logger.info(f"Payment {payment.id} permanently failed after 3 retries.")
     else:
         payment.status = "Retrying"
-        payment.next_run_at = datetime.utcnow() + timedelta(days=1)
+        payment.next_run_at = datetime.now(timezone.utc) + timedelta(days=1)
         logger.info(f"Payment {payment.id} failed logic due to funds. Retry {payment.retry_count}/3 scheduled for +24h.")
 
 def fail_payment(db: AsyncSession, payment: ScheduledPayment, reason: str, permanently: bool = True):
@@ -317,7 +318,7 @@ def fail_payment(db: AsyncSession, payment: ScheduledPayment, reason: str, perma
             payment.next_run_at = None
         else:
             payment.status = "Retrying"
-            payment.next_run_at = datetime.utcnow() + timedelta(days=1)
+            payment.next_run_at = datetime.now(timezone.utc) + timedelta(days=1)
 
 async def main():
     logger.info("Starting Scheduled Payments Worker...")

@@ -3,6 +3,7 @@ import os
 import time
 import asyncio
 import datetime
+from datetime import timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from database import SessionLocal, Outbox, Transaction
@@ -69,7 +70,7 @@ async def process_outbox():
                             
                             # Update outbox status
                             event.status = "processed"
-                            event.processed_at = datetime.datetime.utcnow()
+                            event.processed_at = datetime.datetime.now(datetime.timezone.utc)
                             
                             # Update transaction status in Postgres
                             if tx_id:

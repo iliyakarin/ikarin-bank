@@ -2,7 +2,8 @@ import time
 import os
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
+from datetime import timezone, timedelta
 import asyncio
 import clickhouse_connect
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +34,7 @@ async def run_sync_check():
             )
 
             # 1. Get recent transactions from Postgres (e.g. past 7 days)
-            cutoff_date = datetime.utcnow() - timedelta(days=7)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=7)
             result = await db.execute(select(Transaction).filter(
                 Transaction.created_at >= cutoff_date
             ))
@@ -91,7 +92,7 @@ async def run_sync_check():
                     "transaction_type": tx.transaction_type,
                     "transaction_side": tx.transaction_side,
                     "status": tx.status,
-                    "timestamp": tx.created_at.isoformat() if tx.created_at else datetime.utcnow().isoformat(),
+                    "timestamp": tx.created_at.isoformat() if tx.created_at else datetime.now(timezone.utc).isoformat(),
                     # Logic for sender/recipient
                     "sender_email": tx.merchant.replace("Received from ", "") if tx.transaction_type == "transfer" and tx.amount > 0 else None,
                     "recipient_email": tx.merchant.replace("Transfer to ", "") if tx.transaction_type == "transfer" and tx.amount < 0 else None
