@@ -19,6 +19,7 @@ async def create_checkout_session(
     user=Depends(get_current_user)
 ):
     try:
+        frontend_url = os.getenv("FRONTEND_URL")
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[{
@@ -32,8 +33,8 @@ async def create_checkout_session(
                 'quantity': 1,
             }],
             mode='payment',
-            success_url='http://localhost:3000/dashboard/stripe/success?session_id={CHECKOUT_SESSION_ID}',
-            cancel_url='http://localhost:3000/dashboard/stripe',
+            success_url=f'{frontend_url}/client/stripe/success?session_id={{CHECKOUT_SESSION_ID}}',
+            cancel_url=f'{frontend_url}/client/stripe',
             metadata={
                 'user_id': user.email
             }
