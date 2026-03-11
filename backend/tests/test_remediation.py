@@ -35,7 +35,8 @@ async def test_delete_user_not_found(mock_fastapi_dependency):
     res.scalars().first.return_value = None
     db.execute.return_value = res
     
-    with pytest.raises(main.HTTPException) as excinfo:
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as excinfo:
         await delete_user(user_id=999, db=db, current_user=admin_user)
     assert excinfo.value.status_code == 404
 
@@ -68,9 +69,9 @@ async def test_delete_user_full_cleanup(mock_fastapi_dependency):
     
     # 3. Mock ClickHouse client
     mock_ch = MagicMock()
-    with patch('main.get_ch_client', return_value=mock_ch), \
-         patch('main.emit_activity') as mock_emit, \
-         patch('main.CH_DB', "banking_log"):
+    with patch('routers.admin.get_ch_client', return_value=mock_ch), \
+         patch('routers.admin.emit_activity') as mock_emit, \
+         patch('routers.admin.CH_DB', "banking_log"):
         
         await delete_user(user_id=10, db=db, current_user=admin_user)
         

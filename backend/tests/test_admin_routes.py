@@ -49,7 +49,7 @@ async def test_get_ch_logs_requires_admin(mock_fastapi_dependency):
     mock_client.query.return_value = mock_result
 
     # Patch the utility function used by main.py
-    with patch('main.get_ch_client', return_value=mock_client):
+    with patch('routers.admin.get_ch_client', return_value=mock_client):
         logs = get_ch_logs(current_user=admin_user)
         assert len(logs) == 1
         # The endpoint adds status="cleared" and created_at=event_time
@@ -67,7 +67,7 @@ async def test_get_kafka_status_requires_admin(mock_fastapi_dependency):
     mock_metadata = MagicMock()
     mock_metadata.topics = {"topic1": {}, "topic2": {}}
     
-    with patch('main.AdminClient') as mock_admin_cls:
+    with patch('routers.admin.AdminClient') as mock_admin_cls:
         mock_admin_instance = mock_admin_cls.return_value
         mock_admin_instance.list_topics.return_value = mock_metadata
         
@@ -84,12 +84,12 @@ async def test_simulate_traffic_api(mock_fastapi_dependency):
     
     # Use real Pydantic model if available, else mock
     try:
-        req = main.SimulationRequest(tps=10, count=100)
+        req = main.SimulationRequest(batch_size=10, tps=10, count=100)
     except:
         req = MagicMock()
-        req.tps = 10
-        req.count = 100
-        req.transactions_per_second = 10
+        req.batch_size = 10
+        req.count = 1
+        
     
     mock_bg = MagicMock()
     
