@@ -282,6 +282,9 @@ from routers import contacts, vendors
 app.include_router(contacts.router)
 app.include_router(vendors.router)
 
+from routers import stripe
+app.include_router(stripe.router)
+
 if __name__ == "__main__":
     import uvicorn
 

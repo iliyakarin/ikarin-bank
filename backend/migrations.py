@@ -57,6 +57,25 @@ async def run_postgres_migrations():
         # 5. scheduled_payments table
         await conn.execute(text("ALTER TABLE scheduled_payments ADD COLUMN IF NOT EXISTS funding_account_id INTEGER REFERENCES accounts(id)"))
         await conn.execute(text("ALTER TABLE scheduled_payments ADD COLUMN IF NOT EXISTS subscriber_id VARCHAR(100)"))
+
+        # 6. Standardization: Convert all timestamp columns to WITH TIME ZONE
+        # This fixes the "can't subtract offset-naive and offset-aware datetimes" errors
+        tables_to_fix = {
+            "users": ["created_at"],
+            "scheduled_payments": ["start_date", "end_date", "next_run_at"],
+            "payment_requests": ["created_at", "updated_at"],
+            "contacts": ["created_at"],
+            "transactions": ["created_at"],
+            "idempotency_keys": ["created_at"],
+            "outbox": ["created_at", "processed_at"]
+        }
+        
+        for table, columns in tables_to_fix.items():
+            for col in columns:
+                try:
+                    await conn.execute(text(f"ALTER TABLE {table} ALTER COLUMN {col} TYPE TIMESTAMP WITH TIME ZONE USING {col} AT TIME ZONE 'UTC'"))
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not convert {table}.{col} to TZ-aware: {e}")
         
     logger.info("✅ PostgreSQL column checks complete.")
 

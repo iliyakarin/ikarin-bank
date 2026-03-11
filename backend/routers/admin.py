@@ -7,7 +7,7 @@ from database import User, Account, Transaction, Outbox, SessionLocal
 from schemas.users import UserResponse
 from schemas.admin import SimulationRequest, QueryRequest
 from auth_utils import get_db, get_current_user, RoleChecker
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 import logging
 import random
@@ -73,8 +73,8 @@ async def get_stats(
         lag = -1
 
     # 5. System Volume (24h)
-    today = datetime.datetime.now(datetime.timezone.utc)
-    yesterday = today - datetime.timedelta(days=1)
+    today = datetime.now(timezone.utc)
+    yesterday = today - timedelta(days=1)
     
     result = await db.execute(
         select(func.sum(Transaction.amount))
@@ -228,7 +228,7 @@ async def get_traces(
                 "merchant": tx.merchant,
                 "postgres_at": tx.created_at.isoformat(),
                 "kafka_at": (
-                    tx.created_at + datetime.timedelta(milliseconds=50)
+                    tx.created_at + timedelta(milliseconds=50)
                 ).isoformat(),  # Simulated
                 "clickhouse_at": ch_time.isoformat() if ch_time else None,
                 "latency": (ch_time - tx.created_at).total_seconds() * 1000
@@ -285,7 +285,7 @@ async def run_simulation(tps: int, count: int):
                 "category": "Simulation",
                 "merchant": f"Bot-{i}",
                 "status": "pending",
-                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             if producer:
                 await producer.send(KAFKA_TOPIC, json.dumps(payload).encode("utf-8"))
@@ -568,7 +568,7 @@ async def execute_admin_query(
     """Execute admin query against ClickHouse, PostgreSQL, or Kafka"""
     try:
         source = request.params.get("source", "clickhouse")
-        start_time = datetime.datetime.now()
+        start_time = datetime.now()
 
         if source == "clickhouse":
             data, columns = _execute_clickhouse_query(request)
@@ -579,7 +579,7 @@ async def execute_admin_query(
         else:
             raise HTTPException(status_code=400, detail="Invalid data source specified")
 
-        execution_time = (datetime.datetime.now() - start_time).total_seconds() * 1000
+        execution_time = (datetime.now() - start_time).total_seconds() * 1000
 
         return {
             "columns": columns,
@@ -610,7 +610,7 @@ async def get_banking_metrics(
         total_balance = total_balance_result.scalar() or 0
         active_users_result = await db.execute(
             select(func.count(User.id)).filter(
-                User.created_at >= datetime.datetime.now() - datetime.timedelta(days=1)
+                User.created_at >= datetime.now() - timedelta(days=1)
             )
         )
         active_users_24h = active_users_result.scalar() or 0

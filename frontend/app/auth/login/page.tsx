@@ -41,8 +41,13 @@ export default function LoginPage() {
             if (res.ok) {
                 const data = await res.json();
                 await login(data.access_token);
-            } else {
+            } else if (res.status === 401) {
                 setError('Invalid email or password');
+            } else if (res.status === 400) {
+                const data = await res.json();
+                setError(data.detail || 'Invalid request');
+            } else {
+                setError('Server error (500). Please check backend logs.');
             }
         } catch (err) {
             setError('Connection error. Is the API running?');
