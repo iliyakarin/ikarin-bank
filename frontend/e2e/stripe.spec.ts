@@ -18,7 +18,7 @@ test.describe('Stripe E2E Flow', () => {
     // Navigate to Stripe
     await page.click('text="Pay with Stripe"');
     await expect(page).toHaveURL(/.*\/stripe/);
-    await expect(page.locator('h1')).toContainText('Pay with Stripe');
+    await expect(page.locator('h1')).toContainText('Deposit with Stripe');
   });
 
   test('Validates Top-Up Flow', async ({ page }) => {
@@ -35,7 +35,7 @@ test.describe('Stripe E2E Flow', () => {
     expect(intentResponse.status()).toBe(200);
 
     // Verify Modal Appears
-    await expect(page.locator('text="Complete Payment (10 USD)"')).toBeVisible();
+    await expect(page.locator('text="Complete Deposit (10 USD)"')).toBeVisible();
 
     // Fill form
     await page.fill('input[placeholder="Jane Doe"]', 'Jane Doe');
@@ -55,8 +55,7 @@ test.describe('Stripe E2E Flow', () => {
 
     // Provide handler for alert
     page.on('dialog', dialog => dialog.accept());
-
-    await page.click('button:has-text("Pay $10")');
+    await page.click('button:has-text("Deposit $10 to Main Account")');
 
     const pmResponse = await pmPromise;
     console.log(`pm response status: ${pmResponse.status()}`);

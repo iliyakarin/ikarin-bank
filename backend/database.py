@@ -46,6 +46,7 @@ class User(Base):
     role = Column(String(20), default="user", server_default="user", nullable=False)
     time_format = Column(String(10), default="12h", server_default="12h", nullable=False)
     date_format = Column(String(10), default="US", server_default="US", nullable=False)
+    is_black = Column(Boolean, default=False, server_default="false", nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 class Account(Base):
@@ -158,6 +159,16 @@ class Transaction(Base):
 
 
 
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    plan_name = Column(String(100), default="Karin Black", nullable=False)
+    amount = Column(Numeric(15, 2), nullable=False)
+    status = Column(String(20), default="active", nullable=False) # active, cancelled, expired
+    current_period_end = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 class IdempotencyKey(Base):
     __tablename__ = "idempotency_keys"
