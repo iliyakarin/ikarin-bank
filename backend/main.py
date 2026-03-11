@@ -14,7 +14,7 @@ from sqlalchemy import func, text, or_, select
 from decimal import Decimal
 from aiokafka import AIOKafkaProducer
 from pydantic import BaseModel
-from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest, Contact, Base, engine
+from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest, Contact, PaymentMethod, Base, engine
 from activity import emit_activity, ws_register, ws_unregister
 from security_checks import check_velocity, check_anomaly
 from account_service import assign_account_credentials, mask_account_number, decrypt_account_number
