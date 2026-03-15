@@ -103,7 +103,7 @@ def emit_transaction_status_update(
     transaction_id: str,
     account_id: int,
     status: str,
-    amount: float,
+    amount: int, # Amount in cents
     category: str,
     merchant: str,
     transaction_type: str = "transfer",

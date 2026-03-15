@@ -1,19 +1,10 @@
-import os
-import uuid
-import datetime
-from decimal import Decimal
-from typing import Optional, Tuple
-import httpx
-from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-from database import User, Account, Transaction, Outbox
-from schemas.transfers import P2PTransferRequest
-import logging
+from config import settings
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+SIMULATOR_URL = settings.SIMULATOR_URL
+SIMULATOR_API_KEY = settings.SIMULATOR_API_KEY
 
 async def _validate_p2p_transfer(
     transfer: P2PTransferRequest,
@@ -37,7 +28,7 @@ async def _execute_p2p_balances(
     db: AsyncSession,
     sender_account_id: int,
     recipient_account_id: int,
-    amount: Decimal
+    amount: int # Amount is now in cents
 ) -> Tuple[Account, Account]:
     """Locks accounts and updates balances atomically."""
     # Order by ID to prevent deadlocks.
@@ -76,7 +67,7 @@ def _create_p2p_transactions(
     db: Session,
     sender_account_id: int,
     recipient_account_id: int,
-    amount: Decimal,
+    amount: int, # Amount in cents
     recipient_email: str,
     sender_email: str,
     idempotency_key: Optional[str],
@@ -142,7 +133,7 @@ def _create_p2p_outbox_entries(
     db: Session,
     sender_account: Account,
     recipient_account: Account,
-    amount: Decimal,
+    amount: int, # Amount in cents
     sender_email: str,
     recipient_email: str,
     tx_id_parent: str,
@@ -155,10 +146,11 @@ def _create_p2p_outbox_entries(
         "transaction_id": tx_id_sender,
         "parent_id": tx_id_parent,
         "account_id": sender_account.id,
+        "account_uuid": sender_account.account_uuid,
         "internal_account_last_4": sender_account.account_number_last_4,
         "sender_email": sender_email,
         "recipient_email": recipient_email,
-        "amount": -float(amount),
+        "amount": -amount,
         "category": "Transfer",
         "merchant": f"Transfer to {recipient_email}",
         "transaction_type": "transfer",
@@ -172,10 +164,11 @@ def _create_p2p_outbox_entries(
         "transaction_id": tx_id_recipient,
         "parent_id": tx_id_parent,
         "account_id": recipient_account.id,
+        "account_uuid": recipient_account.account_uuid,
         "internal_account_last_4": recipient_account.account_number_last_4,
         "sender_email": sender_email,
         "recipient_email": recipient_email,
-        "amount": float(amount),
+        "amount": amount,
         "category": "Transfer",
         "merchant": f"Received from {sender_email}",
         "transaction_type": "transfer",
@@ -190,27 +183,14 @@ def _create_p2p_outbox_entries(
 
 
 
-SIMULATOR_URL = os.getenv("SIMULATOR_URL")
-SIMULATOR_API_KEY = os.getenv("SIMULATOR_API_KEY")
-
-async def get_vendors():
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(f"{SIMULATOR_URL}/vendors")
-            if resp.status_code == 200:
-                return resp.json().get("vendors", [])
-        except Exception as e:
-            logger.error(f"Fetching vendors: {e}")
-        return []
-
-
-async def execute_vendor_payment_immediate(merchant_id: str, subscriber_id: str, amount: Decimal):
+async def execute_vendor_payment_immediate(merchant_id: str, subscriber_id: str, amount: int):
     async with httpx.AsyncClient() as client:
         try:
             payload = {
                 "merchant_id": merchant_id,
                 "subscriber_id": subscriber_id,
-                "amount": float(amount)
+                "amount": float(amount / 100) # Simulator still expects decimal dollars? Or cents? 
+                # Assuming simulator expects dollars for now to maintain compat, but passing cents locally.
             }
             resp = await client.post(
                 f"{SIMULATOR_URL}/billpay/execute",

@@ -80,7 +80,8 @@ async def get_stats(
         select(func.sum(Transaction.amount))
         .filter(Transaction.category == "P2P", Transaction.created_at >= yesterday)
     )
-    system_volume = result.scalar() or 0.0
+    system_volume_cents = result.scalar() or 0
+    system_volume = float(system_volume_cents / 100)
 
     return {
         "postgres_count": pg_count,
@@ -267,7 +268,7 @@ async def run_simulation(tps: int, count: int):
             new_tx = Transaction(
                 id=tx_id,
                 account_id=1,
-                amount=10.0,
+                amount=1000, # 10.00 as 1000 cents
                 category="Simulation",
                 merchant=f"Bot-{i}",
                 status="pending",
@@ -281,7 +282,7 @@ async def run_simulation(tps: int, count: int):
             payload = {
                 "transaction_id": tx_id,
                 "account_id": 1,
-                "amount": 10.0,
+                "amount": 1000, # 1000 cents
                 "category": "Simulation",
                 "merchant": f"Bot-{i}",
                 "status": "pending",
@@ -721,14 +722,20 @@ async def get_banking_metrics(
         ]
 
         return {
-            "totalVolume": total_volume,
+            "totalVolume": float(total_volume / 100), # Convert to dollar-float for UI if needed, or keep cents
             "transactionCount": transaction_count,
-            "totalBalance": float(total_balance),
+            "totalBalance": float(total_balance / 100),
             "activeUsers": active_users_24h,
-            "avgTransactionSize": avg_transaction_size,
-            "topTransactions": top_transactions,
-            "hourlyVolume": hourly_volume,
-            "merchantStats": merchant_stats,
+            "avgTransactionSize": float(avg_transaction_size / 100),
+            "topTransactions": [
+                {**tx, "amount": float(tx["amount"] / 100)} for tx in top_transactions
+            ],
+            "hourlyVolume": [
+                {**h, "total": float(h["total"] / 100)} for h in hourly_volume
+            ],
+            "merchantStats": [
+                {**m, "total_amount": float(m["total_amount"] / 100)} for m in merchant_stats
+            ],
             "userGrowth": user_growth,
         }
 

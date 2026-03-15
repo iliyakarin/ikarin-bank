@@ -11,8 +11,6 @@ from activity import emit_activity, emit_transaction_status_update
 import datetime
 import uuid
 import logging
-from decimal import Decimal
-from sqlalchemy.exc import SQLAlchemyError
 from security_checks import check_velocity, check_anomaly
 
 logger = logging.getLogger(__name__)
@@ -183,7 +181,7 @@ async def create_p2p_transfer(
             detail="Rate limit exceeded: too many transactions in the last minute. Please try again shortly."
         )
 
-    anomaly_flagged = await check_anomaly(db, current_user.id, Decimal(str(transfer.amount)))
+    anomaly_flagged = await check_anomaly(db, current_user.id, transfer.amount)
 
     # Validate Payment Request if paying one
     payment_request = None
@@ -277,11 +275,11 @@ async def create_p2p_transfer(
             current_user.id, 
             "p2p", 
             "sent", 
-            f"Sent ${float(transfer.amount):.2f} to {recipient.email}", 
+            f"Sent {transfer.amount / 100:.2f} to {recipient.email}", 
             {
                 "transaction_id": tx_id_parent,
                 "recipient_email": recipient.email,
-                "amount": float(transfer.amount),
+                "amount": transfer.amount,
                 "commentary": transfer.commentary,
                 "source_account_id": resolved_sender_account.id,
             },
@@ -293,11 +291,11 @@ async def create_p2p_transfer(
             recipient.id, 
             "p2p", 
             "received", 
-            f"Received ${float(transfer.amount):.2f} from {current_user.email}", 
+            f"Received {transfer.amount / 100:.2f} from {current_user.email}", 
             {
                 "transaction_id": tx_id_parent,
                 "sender_email": current_user.email,
-                "amount": float(transfer.amount),
+                "amount": transfer.amount,
                 "commentary": transfer.commentary,
             },
             ip=client_ip,
@@ -345,9 +343,9 @@ async def create_payment_request(
     
     db.add(new_request)
 
-    emit_activity(db, current_user.id, "p2p", "requested", f"Requested ${float(request_data.amount):.2f} from {request_data.target_email}", {
+    emit_activity(db, current_user.id, "p2p", "requested", f"Requested {request_data.amount / 100:.2f} from {request_data.target_email}", {
         "target_email": request_data.target_email,
-        "amount": float(request_data.amount),
+        "amount": request_data.amount,
         "purpose": request_data.purpose,
     })
     await db.commit()
@@ -379,7 +377,7 @@ async def get_payment_requests(
             "requester_name": f"{requester.first_name} {requester.last_name}" if requester else "Unknown",
             "requester_email": requester.email if requester else "unknown",
             "target_email": req.target_email,
-            "amount": float(req.amount),
+            "amount": req.amount,
             "purpose": req.purpose,
             "status": req.status,
             "created_at": req.created_at.isoformat(),
@@ -450,7 +448,7 @@ async def decline_payment_request(
     
     emit_activity(db, current_user.id, "p2p", "request_declined", f"Declined payment request #{req.id}", {
         "request_id": req.id,
-        "amount": float(req.amount),
+        "amount": req.amount,
     })
 
     # If this request was tied to a transaction (e.g. pending), update its status in ClickHouse
@@ -465,7 +463,7 @@ async def decline_payment_request(
             transaction_id=str(tx.id),
             account_id=tx.account_id,
             status="declined",
-            amount=float(tx.amount),
+            amount=tx.amount,
             category=tx.category,
             merchant=tx.merchant,
             transaction_type=tx.transaction_type,
@@ -483,8 +481,8 @@ async def create_scheduled_transfer(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Scheduled Limit check (e.g., max $5000 per scheduled transfer)
-    if transfer.amount > 5000:
+    # Scheduled Limit check (e.g., max $5000 per scheduled transfer = 500000 cents)
+    if transfer.amount > 500000:
         raise HTTPException(status_code=400, detail="Amount exceeds maximum scheduled transfer limit of $5000.")
 
     # Validation: start date in future
@@ -577,11 +575,11 @@ async def create_scheduled_transfer(
             current_user.id, 
             "scheduled", 
             "setup", 
-            f"Scheduled ${float(transfer.amount):.2f} {transfer.frequency} to {transfer.recipient_email}", 
+            f"Scheduled {transfer.amount / 100:.2f} {transfer.frequency} to {transfer.recipient_email}", 
             {
                 "scheduled_payment_id": new_scheduled_payment.id,
                 "recipient_email": transfer.recipient_email,
-                "amount": float(transfer.amount),
+                "amount": transfer.amount,
                 "frequency": transfer.frequency,
                 "start_date": str(transfer.start_date),
             },
@@ -638,7 +636,7 @@ async def cancel_scheduled_payment(
     emit_activity(db, current_user.id, "scheduled", "cancelled", f"Cancelled scheduled payment #{payment.id}", {
         "scheduled_payment_id": payment.id,
         "recipient_email": payment.recipient_email,
-        "amount": float(payment.amount),
+        "amount": payment.amount,
     })
     await db.commit()
     
