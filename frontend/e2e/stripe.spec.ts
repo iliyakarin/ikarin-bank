@@ -16,9 +16,10 @@ test.describe('Stripe E2E Flow', () => {
     await expect(page).toHaveURL(/.*\/client/);
 
     // Navigate to Stripe
+    // Navigate to Stripe
     await page.click('text="Pay with Stripe"');
     await expect(page).toHaveURL(/.*\/stripe/);
-    await expect(page.locator('h1')).toContainText('Deposit with Stripe');
+    await expect(page.locator('h1')).toContainText('Pay with Stripe');
   });
 
   test('Validates Top-Up Flow', async ({ page }) => {
@@ -29,7 +30,8 @@ test.describe('Stripe E2E Flow', () => {
       response.url().includes('/stripe/payment_intents')
     );
 
-    await page.click('text="Add $10.00"');
+    // Click the "Starter" button ($10.00)
+    await page.click('button:has-text("Starter")');
     const intentResponse = await intentPromise;
     console.log(`intent response status: ${intentResponse.status()}`);
     expect(intentResponse.status()).toBe(200);

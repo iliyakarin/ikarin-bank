@@ -11,12 +11,7 @@ from database import User, Base, engine as pg_engine
 
 logger = logging.getLogger(__name__)
 
-# ClickHouse Configuration
-CH_HOST = os.getenv("CLICKHOUSE_HOST")
-CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
-CH_USER = os.getenv("CLICKHOUSE_USER")
-CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD")
-CH_DB = os.getenv("CLICKHOUSE_DB")
+from config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SessionLocal = async_sessionmaker(bind=pg_engine, class_=AsyncSession)
@@ -82,8 +77,8 @@ async def run_postgres_migrations():
 
 async def setup_admin_user():
     """Ensures the admin user exists and has the correct role/password."""
-    admin_email = os.getenv("ADMIN_EMAIL")
-    admin_password = os.getenv("ADMIN_PASSWORD")
+    admin_email = settings.ADMIN_EMAIL
+    admin_password = settings.ADMIN_PASSWORD
     
     if not admin_email or not admin_password:
         logger.warning("⚠️ Skipping admin user setup: ADMIN_EMAIL or ADMIN_PASSWORD not set in environment.")
@@ -117,15 +112,18 @@ def run_clickhouse_migrations():
     logger.info("🚀 Starting ClickHouse migrations...")
     try:
         client = clickhouse_connect.get_client(
-            host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
+            host=settings.CLICKHOUSE_HOST, 
+            port=settings.CLICKHOUSE_PORT, 
+            username=settings.CLICKHOUSE_USER, 
+            password=settings.CLICKHOUSE_PASSWORD
         )
         
         # Ensure database exists
-        client.command(f"CREATE DATABASE IF NOT EXISTS {CH_DB}")
+        client.command(f"CREATE DATABASE IF NOT EXISTS {settings.CLICKHOUSE_DB}")
 
         # 1. Activity Events Table
         client.command(f"""
-            CREATE TABLE IF NOT EXISTS {CH_DB}.activity_events (
+            CREATE TABLE IF NOT EXISTS {settings.CLICKHOUSE_DB}.activity_events (
                 event_id        String,
                 user_id         Int64,
                 category        LowCardinality(String),
@@ -133,34 +131,27 @@ def run_clickhouse_migrations():
                 event_time      DateTime,
                 title           String,
                 details         String
-            ) ENGINE = MergeTree()
+            ) ENGINE = ReplacingMergeTree()
             PARTITION BY toYYYYMM(event_time)
-            ORDER BY (user_id, event_time, event_id)
+            ORDER BY (user_id, event_time, event_id);
         """)
-        logger.info(f"✅ Verified {CH_DB}.activity_events table")
+        logger.info(f"✅ Verified {settings.CLICKHOUSE_DB}.activity_events table")
 
         # 2. Transactions Table
-        table_exists = client.command(f"EXISTS TABLE {CH_DB}.transactions")
+        table_exists = client.command(f"EXISTS TABLE {settings.CLICKHOUSE_DB}.transactions")
         
         if table_exists:
             client.command(f"""
-                ALTER TABLE {CH_DB}.transactions 
-                ADD COLUMN IF NOT EXISTS parent_id Nullable(String),
-                ADD COLUMN IF NOT EXISTS account_id Int64,
-                ADD COLUMN IF NOT EXISTS sender_email Nullable(String),
-                ADD COLUMN IF NOT EXISTS merchant String,
-                ADD COLUMN IF NOT EXISTS transaction_type String,
-                ADD COLUMN IF NOT EXISTS transaction_side String,
-                ADD COLUMN IF NOT EXISTS event_time DateTime DEFAULT now(),
-                ADD COLUMN IF NOT EXISTS category String,
+                ALTER TABLE {settings.CLICKHOUSE_DB}.transactions 
                 ADD COLUMN IF NOT EXISTS internal_account_last_4 Nullable(String),
                 ADD COLUMN IF NOT EXISTS subscriber_id Nullable(String),
-                ADD COLUMN IF NOT EXISTS failure_reason Nullable(String)
+                ADD COLUMN IF NOT EXISTS failure_reason Nullable(String),
+                ADD COLUMN IF NOT EXISTS status String DEFAULT 'cleared'
             """)
-            logger.info(f"✅ Synchronized {CH_DB}.transactions columns")
+            logger.info(f"✅ Synchronized {settings.CLICKHOUSE_DB}.transactions columns")
         else:
             client.command(f"""
-                CREATE TABLE {CH_DB}.transactions (
+                CREATE TABLE {settings.CLICKHOUSE_DB}.transactions (
                     transaction_id String,
                     parent_id Nullable(String),
                     account_id Int64,
@@ -175,12 +166,12 @@ def run_clickhouse_migrations():
                     internal_account_last_4 Nullable(String),
                     subscriber_id Nullable(String),
                     failure_reason Nullable(String),
-                    status String
+                    status String DEFAULT 'cleared'
                 ) ENGINE = ReplacingMergeTree()
                 PARTITION BY toYYYYMM(event_time)
-                ORDER BY (account_id, event_time, transaction_id)
+                ORDER BY (account_id, event_time, transaction_id);
             """)
-            logger.info(f"✅ Created {CH_DB}.transactions table")
+            logger.info(f"✅ Created {settings.CLICKHOUSE_DB}.transactions table")
             
     except Exception as e:
         logger.error(f"❌ ClickHouse migration failed: {e}")

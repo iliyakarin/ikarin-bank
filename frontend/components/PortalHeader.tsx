@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { Bell, LogOut, Clock, UserCircle, Shield, Star } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useBalance } from "@/hooks/useDashboard";
+import { formatCurrency } from "@/lib/transactionUtils";
 
 export default function PortalHeader() {
   const { user, token, logout, settings } = useAuth();
@@ -125,7 +126,7 @@ export default function PortalHeader() {
                             </span>
                             {notif.amount && (
                               <span className="text-xs font-bold text-white/80">
-                                ${notif.amount.toFixed(2)}
+                                {formatCurrency(notif.amount)}
                               </span>
                             )}
                           </div>

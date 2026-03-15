@@ -20,10 +20,14 @@ class Settings(BaseSettings):
     CLICKHOUSE_DB: str
     CLICKHOUSE_USER: str
     CLICKHOUSE_PASSWORD: str
+    CLICKHOUSE_READONLY_PASSWORD: Optional[str] = None
 
     # Kafka
     KAFKA_BOOTSTRAP_SERVERS: str
     KAFKA_TOPIC: str
+    KAFKA_ACTIVITY_TOPIC: str = "bank_activity_events"
+    KAFKA_USER: Optional[str] = None
+    KAFKA_PASSWORD: Optional[str] = None
 
     # Security
     JWT_SECRET_KEY: str
@@ -31,15 +35,17 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int
     ACCOUNT_ENCRYPTION_KEY: str
 
-    # Stripe
-    STRIPE_API_KEY: str
-    STRIPE_WEBHOOK_SECRET: str
-    STRIPE_MOCK_URL: str
-
     # Internal Services
     SIMULATOR_URL: str
     GATEWAY_API_KEY: str
     SIMULATOR_API_KEY: str
+    TURNSTILE_SECRET_KEY: Optional[str] = "1x0000000000000000000000000000000AA"
+    CORS_ORIGINS: str = "http://localhost:3000"
+    ADMIN_EMAIL: str = "admin@example.com"
+    ADMIN_PASSWORD: str = "REDACTED"
+    STRIPE_API_KEY: Optional[str] = "sk_test_placeholder"
+    STRIPE_WEBHOOK_SECRET: Optional[str] = "whsec_placeholder"
+    STRIPE_MOCK_URL: Optional[str] = None
 
     model_config = SettingsConfigDict(
         env_file=(

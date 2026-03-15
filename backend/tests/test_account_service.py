@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from account_service import calculate_aba_checksum, generate_aba, generate_account_number, encrypt_account_number, decrypt_account_number, mask_account_number
+from services.account_service import calculate_aba_checksum, generate_aba, encrypt_account_number, decrypt_account_number, mask_account_number
 import secrets
 
 def test_aba_checksum_validation():
@@ -22,17 +22,36 @@ def test_generate_aba():
         assert aba.startswith("1234")
         assert calculate_aba_checksum(aba) == 0
 
-def test_generate_account_number():
-    numbers = set()
-    for _ in range(1000):
-        acc_num = generate_account_number()
-        assert 10 <= len(acc_num) <= 12
-        assert acc_num.isdigit()
-        assert acc_num[0] != "0"
-        numbers.add(acc_num)
+import pytest
+from database import Account
+from sqlalchemy.ext.asyncio import AsyncSession
+from unittest.mock import AsyncMock, MagicMock
+from services.account_service import assign_account_credentials
+
+@pytest.mark.asyncio
+async def test_assign_account_credentials():
+    # Mock AsyncSession
+    db = AsyncMock(spec=AsyncSession)
     
-    # Check for uniqueness in a small sample (entropy check)
-    assert len(numbers) == 1000
+    # Setup mock result
+    mock_scalars = MagicMock()
+    mock_scalars.first.return_value = None
+    
+    mock_result = MagicMock()
+    mock_result.scalars.return_value = mock_scalars
+    
+    # db.execute is awaited, so it returns mock_result
+    db.execute.return_value = mock_result
+    
+    account = Account()
+    await assign_account_credentials(db, account)
+    
+    assert account.routing_number.startswith("1234")
+    assert len(account.routing_number) == 9
+    assert account.account_uuid is not None
+    assert account.account_number_encrypted is not None
+    assert len(account.account_number_last_4) == 4
+    assert account.internal_reference_id.startswith("KB-")
 
 def test_encryption_roundtrip():
     original = "123456789012"

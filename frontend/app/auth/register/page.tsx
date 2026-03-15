@@ -36,7 +36,7 @@ export default function RegisterPage() {
         setError('');
 
         try {
-            const res = await fetch('/api/auth/register', {
+            const res = await fetch('/api/v1/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...formData, captcha_token: captchaToken }),

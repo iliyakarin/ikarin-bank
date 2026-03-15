@@ -9,22 +9,18 @@ from sqlalchemy import select
 from database import SessionLocal, Outbox, Transaction
 from aiokafka import AIOKafkaProducer
 
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
-KAFKA_ACTIVITY_TOPIC = os.getenv("KAFKA_ACTIVITY_TOPIC")
-KAFKA_USER = os.getenv("KAFKA_USER")
-KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
+from config import settings
 
 async def process_outbox():
     print("🚀 Outbox worker started...")
     
     producer = AIOKafkaProducer(
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
         enable_idempotence=True,
         security_protocol="SASL_PLAINTEXT",
         sasl_mechanism="PLAIN",
-        sasl_plain_username=KAFKA_USER,
-        sasl_plain_password=KAFKA_PASSWORD,
+        sasl_plain_username=settings.KAFKA_USER,
+        sasl_plain_password=settings.KAFKA_PASSWORD,
     )
     
     max_retries = 30
@@ -57,9 +53,9 @@ async def process_outbox():
                             
                             # Route to the correct topic based on event type
                             if event.event_type == "activity_event":
-                                target_topic = "bank_activity_events"
+                                target_topic = settings.KAFKA_ACTIVITY_TOPIC
                             else:
-                                target_topic = KAFKA_TOPIC
+                                target_topic = settings.KAFKA_TOPIC
                             
                             # Send to Kafka
                             await producer.send_and_wait(

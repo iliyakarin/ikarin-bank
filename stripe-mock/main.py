@@ -25,6 +25,27 @@ async def create_checkout_session(request: Request):
         "status": "open"
     })
 
+@app.post("/v1/payment_intents")
+async def create_payment_intent(request: Request):
+    """
+    Mock Stripe Payment Intent creation.
+    """
+    form_data = await request.form()
+    amount = form_data.get("amount")
+    currency = form_data.get("currency", "usd")
+    
+    intent_id = f"pi_test_{uuid.uuid4().hex}"
+    client_secret = f"{intent_id}_secret_{uuid.uuid4().hex}"
+    
+    return JSONResponse({
+        "id": intent_id,
+        "object": "payment_intent",
+        "amount": amount,
+        "currency": currency,
+        "status": "requires_payment_method",
+        "client_secret": client_secret
+    })
+
 @app.post("/_mock/trigger_webhook")
 async def trigger_webhook(request: Request):
     """

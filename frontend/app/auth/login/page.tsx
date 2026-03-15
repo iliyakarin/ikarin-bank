@@ -32,7 +32,7 @@ export default function LoginPage() {
                 params.append('captcha_token', captchaToken);
             }
 
-            const res = await fetch('/api/auth/login', {
+            const res = await fetch('/api/v1/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: params,

@@ -9,14 +9,11 @@ from alembic import context
 # Add your project path to sys.path so we can import database models
 import os
 import sys
-from dotenv import load_dotenv
-
-# Load env from project root
-load_dotenv(os.path.realpath(os.path.join(os.path.dirname(__file__), '../../.env.dev')))
 
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..')))
 
-from database import Base, DATABASE_URL
+from config import settings
+from database import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -28,7 +25,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Set the sqlalchemy.url from the database module
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
@@ -88,9 +85,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     asyncio.run(run_migrations_online())
-
-
-if context.is_offline_mode():
-    run_migrations_offline()
-else:
-    run_migrations_online()

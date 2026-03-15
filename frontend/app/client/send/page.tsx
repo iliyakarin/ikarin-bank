@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
+import { toCents } from "@/lib/transactionUtils";
 import { useBalance } from "@/hooks/useDashboard";
 import {
   Send,
@@ -161,7 +162,7 @@ export default function SendMoneyPage() {
     setInstantHistoryLoading(true);
     try {
       const res = await fetch(
-        "/api/transactions?tx_type=transfer&days=30",
+        "/api/v1/transactions?tx_type=transfer&days=30",
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -263,7 +264,7 @@ export default function SendMoneyPage() {
         : selectedRepeatTx.sender_email;
 
       const cleanCommentary = DOMPurify.sanitize(repeatCommentary);
-      const res = await fetch("/api/p2p-transfer", {
+      const res = await fetch("/api/v1/p2p-transfer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -271,7 +272,7 @@ export default function SendMoneyPage() {
         },
         body: JSON.stringify({
           recipient_email: targetEmail,
-          amount: parseFloat(repeatAmount),
+          amount: toCents(repeatAmount),
           commentary: cleanCommentary || null,
           source_account_id: repeatSourceAccountId || undefined,
         }),
@@ -316,7 +317,7 @@ export default function SendMoneyPage() {
 
     try {
       const cleanCommentary = DOMPurify.sanitize(commentary);
-      const res = await fetch("/api/p2p-transfer", {
+      const res = await fetch("/api/v1/p2p-transfer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -324,7 +325,7 @@ export default function SendMoneyPage() {
         },
         body: JSON.stringify({
           recipient_email: recipient,
-          amount: parseFloat(amount),
+          amount: toCents(amount),
           commentary: cleanCommentary || null,
           source_account_id: sourceAccountId || undefined,
           subscriber_id: subscriberId || undefined,
@@ -414,7 +415,7 @@ export default function SendMoneyPage() {
     try {
       const payload = {
         recipient_email: schedRecipient,
-        amount: amt,
+        amount: toCents(amt),
         frequency: frequency,
         frequency_interval: freqInterval,
         start_date: new Date(startDate).toISOString(),
@@ -492,7 +493,7 @@ export default function SendMoneyPage() {
         },
         body: JSON.stringify({
           target_email: requestEmail,
-          amount: amt,
+          amount: toCents(amt),
           purpose: cleanPurpose || null,
         }),
       });
@@ -527,7 +528,7 @@ export default function SendMoneyPage() {
 
     if (action === "pay") {
       // Re-route 'pay' to the standard p2p-transfer endpoint, linking the request
-      endpoint = "/api/p2p-transfer";
+      endpoint = "/api/v1/p2p-transfer";
       // Need the original target email from the request object:
       const reqObj = paymentRequests.find((r) => r.id === requestId);
       if (!reqObj) return;
@@ -538,7 +539,7 @@ export default function SendMoneyPage() {
         payment_request_id: requestId,
       };
     } else if (action === "counter") {
-      body = { amount };
+      body = { amount: toCents(amount || 0) };
     }
 
     try {

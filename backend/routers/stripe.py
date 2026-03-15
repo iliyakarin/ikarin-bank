@@ -10,20 +10,23 @@ from auth_utils import get_db, get_current_user
 from database import User, Subscription
 from schemas.stripe import (
     CheckoutSessionCreate, CheckoutSessionResponse,
-    PortalSessionCreate, PortalSessionResponse
+    PortalSessionCreate, PortalSessionResponse,
+    PaymentIntentCreate, PaymentIntentResponse
 )
 from services.stripe_service import handle_checkout_completed, handle_subscription_deleted
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/v1/stripe", tags=["Stripe"])
+router = APIRouter(prefix="/stripe", tags=["Stripe"])
+
+from config import settings
 
 # Initialize Stripe
-stripe.api_key = os.getenv("STRIPE_API_KEY")
-WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+stripe.api_key = settings.STRIPE_API_KEY
+WEBHOOK_SECRET = settings.STRIPE_WEBHOOK_SECRET
 # Optional: Use stripe-mock if STRIPE_MOCK_URL is provided for tests
-if os.getenv("STRIPE_MOCK_URL"):
-    stripe.api_base = os.getenv("STRIPE_MOCK_URL")
+if settings.STRIPE_MOCK_URL:
+    stripe.api_base = settings.STRIPE_MOCK_URL
 
 @router.post("/create-checkout-session", response_model=CheckoutSessionResponse)
 async def create_checkout_session(
@@ -68,6 +71,41 @@ async def create_checkout_session(
         return CheckoutSessionResponse(id=session.id, url=session.url)
     except Exception as e:
         logger.error(f"Stripe Checkout error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.post("/payment_intents", response_model=PaymentIntentResponse)
+async def create_payment_intent(
+    payload: PaymentIntentCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Creates a Stripe PaymentIntent for use with Payment Element.
+    """
+    try:
+        # Standardize metadata
+        metadata = payload.metadata or {}
+        metadata.update({
+            "user_id": current_user.id,
+            "user_email": current_user.email,
+            "type": "deposit"
+        })
+
+        intent = stripe.PaymentIntent.create(
+            amount=payload.amount,
+            currency=payload.currency,
+            automatic_payment_methods={"enabled": True},
+            metadata=metadata,
+        )
+
+        return PaymentIntentResponse(
+            client_secret=intent.client_secret,
+            id=intent.id
+        )
+    except Exception as e:
+        logger.error(f"PaymentIntent error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
@@ -125,6 +163,13 @@ async def stripe_webhook(
     if event['type'] == 'checkout.session.completed':
         session = event['data']['object']
         await handle_checkout_completed(session, db)
+    
+    elif event['type'] == 'payment_intent.succeeded':
+        intent = event['data']['object']
+        # Only fulfill if it's not from a checkout session (which has its own handler)
+        # We check metadata for 'type': 'deposit' which we set in create_payment_intent
+        if intent.get("metadata", {}).get("type") == "deposit":
+            await handle_checkout_completed(intent, db)
     
     elif event['type'] == 'customer.subscription.deleted':
         subscription = event['data']['object']

@@ -10,14 +10,16 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from database import SessionLocal, ScheduledPayment, Account, User, Transaction, Outbox
-from main import _create_p2p_transactions, _create_p2p_outbox_entries, _calculate_next_run_at
+from services.transfer_service import _create_p2p_transactions, _create_p2p_outbox_entries, _calculate_next_run_at
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-SIMULATOR_URL = os.getenv("SIMULATOR_URL")
-SIMULATOR_API_KEY = os.getenv("SIMULATOR_API_KEY")
+from config import settings
+
+SIMULATOR_URL = settings.SIMULATOR_URL
+SIMULATOR_API_KEY = settings.SIMULATOR_API_KEY
 
 async def get_vendors():
     async with httpx.AsyncClient() as client:
@@ -30,7 +32,7 @@ async def get_vendors():
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error fetching vendors: {e}")
 
-async def execute_vendor_payment(merchant_id: str, subscriber_id: str, amount: float):
+async def execute_vendor_payment(merchant_id: str, subscriber_id: str, amount: int):
     async with httpx.AsyncClient() as client:
         try:
             payload = {
@@ -120,7 +122,7 @@ async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, no
             sim_resp = await execute_vendor_payment(
                 merchant_id=vendor["id"],
                 subscriber_id=payment.subscriber_id or "UNKNOWN",
-                amount=float(payment.amount)
+                amount=int(payment.amount)
             )
 
             # Update Balance
@@ -289,7 +291,7 @@ async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment,
         payload={
             "transaction_id": failed_tx.id,
             "account_id": funding_account.id,
-            "amount": float(failed_tx.amount),
+            "amount": int(failed_tx.amount),
             "category": failed_tx.category,
             "merchant": failed_tx.merchant,
             "transaction_type": failed_tx.transaction_type,

@@ -9,6 +9,7 @@ import TransactionList from "@/components/TransactionList";
 import BalanceHistoryChart from "@/components/BalanceHistoryChart";
 import SubAccountManager from "@/components/SubAccountManager";
 import { TrendingUp, RefreshCw, ShieldCheck } from "lucide-react";
+import { formatCurrency } from "@/lib/transactionUtils";
 import {
   LineChart,
   Line,
@@ -53,12 +54,6 @@ export default function DashboardPage() {
 
   const isRefreshing = transactionsLoading || balanceLoading || refetching;
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount);
-  };
 
   const stats = {
     totalIncome: transactions

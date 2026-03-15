@@ -39,7 +39,7 @@ export default function TransactionsPage() {
         params.set("sort", sortAsc ? "asc" : "desc");
 
         const res = await fetch(
-          `/api/transactions?${params.toString()}`,
+          `/api/v1/dashboard/transactions?${params.toString()}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           },

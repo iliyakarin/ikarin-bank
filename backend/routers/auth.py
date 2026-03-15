@@ -5,11 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func
 from sqlalchemy.orm import Session
 from database import User, Account, Transaction, PaymentRequest
-from account_service import assign_account_credentials
+from services.account_service import assign_account_credentials
 from schemas.users import UserCreate, Token, UserResponse, NotificationResponse, UserBackupUpdate, UserPasswordUpdate, UserPreferencesUpdate
 from auth_utils import get_db, get_current_user, create_access_token, get_password_hash, verify_password, ACCESS_TOKEN_EXPIRE_MINUTES
 from activity import emit_activity
 import datetime
+from money_utils import from_cents
 import httpx
 import os
 import uuid
@@ -17,23 +18,23 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(tags=["Auth"])
 
-TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY")
-ENV = os.getenv("ENV")
+from config import settings
 
 async def verify_turnstile(token: str, ip: str = None):
-    if ENV != "production": return True
+    if settings.ENV != "production": return True
     if not token: return False
     async with httpx.AsyncClient() as client:
+        # Siteverify with Turnstile
         response = await client.post(
             "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-            data={"secret": TURNSTILE_SECRET_KEY, "response": token, "remoteip": ip}
+            data={"secret": settings.TURNSTILE_SECRET_KEY, "response": token, "remoteip": ip}
         )
         data = response.json()
         return data.get("success", False)
 
-@router.post("/auth/register", response_model=UserResponse)
+@router.post("/register", response_model=UserResponse)
 async def register(request: Request, user: UserCreate, db: AsyncSession = Depends(get_db)):
     # Verify Turnstile in production (if secret key is set and not using test key)
     if not await verify_turnstile(user.captcha_token, request.client.host):
@@ -76,7 +77,7 @@ async def register(request: Request, user: UserCreate, db: AsyncSession = Depend
     return new_user
 
 
-@router.post("/auth/login", response_model=Token)
+@router.post("/login", response_model=Token)
 async def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
@@ -123,11 +124,11 @@ async def login(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.get("/auth/me", response_model=UserResponse)
+@router.get("/me", response_model=UserResponse)
 async def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
-@router.post("/v1/users/me/backup", response_model=UserResponse)
+@router.post("/users/me/backup", response_model=UserResponse)
 async def update_backup_email(
     update_data: UserBackupUpdate,
     request: Request,
@@ -163,7 +164,7 @@ async def update_backup_email(
     
     return current_user
 
-@router.post("/v1/users/me/password")
+@router.post("/users/me/password")
 async def update_password(
     password_data: UserPasswordUpdate,
     request: Request,
@@ -194,7 +195,7 @@ async def update_password(
     
     return {"status": "success"}
 
-@router.patch("/v1/users/me/preferences", response_model=UserResponse)
+@router.patch("/users/me/preferences", response_model=UserResponse)
 async def update_preferences(
     pref_data: UserPreferencesUpdate,
     db: AsyncSession = Depends(get_db),
@@ -210,7 +211,7 @@ async def update_preferences(
     return current_user
 
 
-@router.post("/auth/logout")
+@router.post("/logout")
 async def logout(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -240,7 +241,7 @@ async def logout(
     return {"status": "success", "message": "Logged out successfully"}
 
 
-@router.get("/v1/users/me/notifications", response_model=List[NotificationResponse])
+@router.get("/users/me/notifications", response_model=List[NotificationResponse])
 async def get_notifications(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -281,7 +282,7 @@ async def get_notifications(
                 "type": "transaction",
                 "title": title,
                 "message": msg,
-                "amount": float(tx.amount / 100) if tx.amount else None,
+                "amount": int(tx.amount) if tx.amount else None,
                 "created_at": tx.created_at,
                 "link": "/client/transactions"
             })
@@ -301,17 +302,17 @@ async def get_notifications(
         is_requester = req.requester_id == current_user.id
         if is_requester:
             title = "Request Sent"
-            msg = f"You requested {req.amount / 100:.2f} from {req.target_email}"
+            msg = f"You requested {from_cents(req.amount)} from {req.target_email}"
         else:
             title = "Request Received"
-            msg = f"Someone requested {req.amount / 100:.2f} from you"
+            msg = f"Someone requested {from_cents(req.amount)} from you"
             
         notifications.append({
             "id": f"pr_{req.id}",
             "type": "payment_request",
             "title": title,
             "message": msg,
-            "amount": float(req.amount / 100) if req.amount else None,
+            "amount": int(req.amount) if req.amount else None,
             "created_at": req.created_at,
             "link": "/client/send?tab=request"
         })

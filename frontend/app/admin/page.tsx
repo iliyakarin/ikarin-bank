@@ -130,29 +130,29 @@ export default function AdminPage() {
         console.error('Failed to load banking metrics, response status:', response.status);
         // Set fallback data for demonstration
         setBankingMetrics({
-          totalVolume: 1456780.50,
+          totalVolume: 145678050,
           transactionCount: 3421,
-          totalBalance: 8923456.78,
+          totalBalance: 892345678,
           activeUsers: 1247,
-          avgTransactionSize: 425.67,
+          avgTransactionSize: 42567,
           topTransactions: [
-            { merchant: "Amazon", amount: 2847.50, created_at: new Date().toISOString(), account_id: 1234 },
-            { merchant: "Apple Store", amount: 1999.00, created_at: new Date().toISOString(), account_id: 5678 },
-            { merchant: "Best Buy", amount: 1567.89, created_at: new Date().toISOString(), account_id: 9012 },
-            { merchant: "Tesla", amount: 1200.00, created_at: new Date().toISOString(), account_id: 3456 },
-            { merchant: "Home Depot", amount: 987.43, created_at: new Date().toISOString(), account_id: 7890 }
+            { merchant: "Amazon", amount: 284750, created_at: new Date().toISOString(), account_id: 1234 },
+            { merchant: "Apple Store", amount: 199900, created_at: new Date().toISOString(), account_id: 5678 },
+            { merchant: "Best Buy", amount: 156789, created_at: new Date().toISOString(), account_id: 9012 },
+            { merchant: "Tesla", amount: 120000, created_at: new Date().toISOString(), account_id: 3456 },
+            { merchant: "Home Depot", amount: 98743, created_at: new Date().toISOString(), account_id: 7890 }
           ],
           hourlyVolume: Array.from({ length: 24 }, (_, i) => ({
             hour: i,
             count: Math.floor(Math.random() * 200) + 50,
-            total: Math.floor(Math.random() * 50000) + 10000
+            total: Math.floor(Math.random() * 5000000) + 1000000
           })),
           merchantStats: [
-            { merchant: "Amazon", transaction_count: 234, total_amount: 45678.90 },
-            { merchant: "Walmart", transaction_count: 189, total_amount: 32145.67 },
-            { merchant: "Target", transaction_count: 156, total_amount: 28934.12 },
-            { merchant: "Starbucks", transaction_count: 342, total_amount: 8934.56 },
-            { merchant: "McDonald's", transaction_count: 267, total_amount: 6789.23 }
+            { merchant: "Amazon", transaction_count: 234, total_amount: 4567890 },
+            { merchant: "Walmart", transaction_count: 189, total_amount: 3214567 },
+            { merchant: "Target", transaction_count: 156, total_amount: 2893412 },
+            { merchant: "Starbucks", transaction_count: 342, total_amount: 893456 },
+            { merchant: "McDonald's", transaction_count: 267, total_amount: 678923 }
           ],
           userGrowth: Array.from({ length: 30 }, (_, i) => ({
             date: new Date(Date.now() - (29 - i) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -164,29 +164,29 @@ export default function AdminPage() {
       console.error('Failed to load banking metrics:', error);
       // Set fallback data
       setBankingMetrics({
-        totalVolume: 1456780.50,
+        totalVolume: 145678050,
         transactionCount: 3421,
-        totalBalance: 8923456.78,
+        totalBalance: 892345678,
         activeUsers: 1247,
-        avgTransactionSize: 425.67,
+        avgTransactionSize: 42567,
         topTransactions: [
-          { merchant: "Amazon", amount: 2847.50, created_at: new Date().toISOString(), account_id: 1234 },
-          { merchant: "Apple Store", amount: 1999.00, created_at: new Date().toISOString(), account_id: 5678 },
-          { merchant: "Best Buy", amount: 1567.89, created_at: new Date().toISOString(), account_id: 9012 },
-          { merchant: "Tesla", amount: 1200.00, created_at: new Date().toISOString(), account_id: 3456 },
-          { merchant: "Home Depot", amount: 987.43, created_at: new Date().toISOString(), account_id: 7890 }
+          { merchant: "Amazon", amount: 284750, created_at: new Date().toISOString(), account_id: 1234 },
+          { merchant: "Apple Store", amount: 199900, created_at: new Date().toISOString(), account_id: 5678 },
+          { merchant: "Best Buy", amount: 156789, created_at: new Date().toISOString(), account_id: 9012 },
+          { merchant: "Tesla", amount: 120000, created_at: new Date().toISOString(), account_id: 3456 },
+          { merchant: "Home Depot", amount: 98743, created_at: new Date().toISOString(), account_id: 7890 }
         ],
         hourlyVolume: Array.from({ length: 24 }, (_, i) => ({
           hour: i,
           count: Math.floor(Math.random() * 200) + 50,
-          total: Math.floor(Math.random() * 50000) + 10000
+          total: Math.floor(Math.random() * 5000000) + 1000000
         })),
         merchantStats: [
-          { merchant: "Amazon", transaction_count: 234, total_amount: 45678.90 },
-          { merchant: "Walmart", transaction_count: 189, total_amount: 32145.67 },
-          { merchant: "Target", transaction_count: 156, total_amount: 28934.12 },
-          { merchant: "Starbucks", transaction_count: 342, total_amount: 8934.56 },
-          { merchant: "McDonald's", transaction_count: 267, total_amount: 6789.23 }
+          { merchant: "Amazon", transaction_count: 234, total_amount: 4567890 },
+          { merchant: "Walmart", transaction_count: 189, total_amount: 3214567 },
+          { merchant: "Target", transaction_count: 156, total_amount: 2893412 },
+          { merchant: "Starbucks", transaction_count: 342, total_amount: 893456 },
+          { merchant: "McDonald's", transaction_count: 267, total_amount: 678923 }
         ],
         userGrowth: Array.from({ length: 30 }, (_, i) => ({
           date: new Date(Date.now() - (29 - i) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],

@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
+import { formatCurrency } from '@/lib/transactionUtils';
 
 interface BalanceHistoryChartProps {
     history: { date: string; balance: number; daily_change: number }[];
@@ -25,14 +26,6 @@ export default function BalanceHistoryChart({ history, loading, error }: Balance
         }));
     }, [history]);
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-        }).format(amount);
-    };
 
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);

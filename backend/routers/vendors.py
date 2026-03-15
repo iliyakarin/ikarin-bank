@@ -6,11 +6,11 @@ from auth_utils import get_current_user
 from database import User
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(tags=["Vendors"])
 
-SIMULATOR_URL = os.getenv("SIMULATOR_URL")
+from config import settings
 
-@router.get("/v1/vendors")
+@router.get("/vendors")
 async def get_external_vendors():
     """Proxy to get vendors from vendor-simulator."""
     # This service doesn't require an API key for listing vendors
@@ -24,7 +24,7 @@ async def get_external_vendors():
             logger.error(f"Error fetching vendors: {e}")
             return {"vendors": []}
 
-@router.get("/v1/banks")
+@router.get("/banks")
 async def get_external_banks():
     """Proxy to get banks from mock-fed-gateway."""
     async with httpx.AsyncClient() as client:

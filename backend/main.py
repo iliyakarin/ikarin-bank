@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest, Contact, PaymentMethod, Base, engine
 from activity import emit_activity, ws_register, ws_unregister
 from security_checks import check_velocity, check_anomaly
-from account_service import assign_account_credentials, mask_account_number, decrypt_account_number
+from services.account_service import mask_account_number, decrypt_account_number
 import clickhouse_connect
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,7 +27,7 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sync_checker import run_sync_check
-from services.transfer_service import _validate_p2p_transfer, _execute_p2p_balances, _create_p2p_transactions, _create_p2p_outbox_entries, get_vendors, execute_vendor_payment_immediate, _calculate_next_run_at
+from services.transfer_service import process_p2p_transfer, get_vendors, _calculate_next_run_at
 
 import logging
 
@@ -41,23 +41,11 @@ async def health_check():
     return {"status": "ok"}
 
 
-# Configuration
-# Admins are defined by role="admin" in the database
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
-KAFKA_USER = os.getenv("KAFKA_USER")
-KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
-
-CH_HOST = os.getenv("CLICKHOUSE_HOST")
-CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
-CH_USER = os.getenv("CLICKHOUSE_USER")
-CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD")
-
-CORS_ORIGINS = os.getenv("CORS_ORIGINS").split(",")
+from config import settings
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origins=settings.CORS_ORIGINS.split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -77,13 +65,17 @@ from schemas.transfers import P2PTransferRequest, PaymentRequestCreate, PaymentR
 from schemas.contacts import ContactCreate, ContactResponse, ContactUpdate
 from schemas.admin import SimulationRequest, QueryRequest
 
-# For backward compatibility with existing tests
-from routers.admin import *
-from routers.transfers import *
-from routers.dashboard import *
-from routers.contacts import *
-from routers.vendors import *
-from services.transfer_service import *
+# Router Inclusions
+from routers import admin, transfers, dashboard, contacts, vendors, auth, stripe, accounts
+
+app.include_router(accounts.router, prefix="/v1")
+app.include_router(auth.router, prefix="/v1")
+app.include_router(admin.router, prefix="/v1")
+app.include_router(transfers.router, prefix="/v1")
+app.include_router(dashboard.router, prefix="/v1")
+app.include_router(contacts.router, prefix="/v1")
+app.include_router(vendors.router, prefix="/v1")
+app.include_router(stripe.router, prefix="/v1")
 
 
 
@@ -105,12 +97,9 @@ from services.transfer_service import *
 admin_only = RoleChecker(["admin"])
 support_only = RoleChecker(["admin", "support"])
 
-TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY")
-ENV = os.getenv("ENV")
-
 async def verify_turnstile(token: str, ip: Optional[str] = None):
     # Skip verification in development
-    if ENV != "production":
+    if settings.ENV != "production":
         return True
     
     if not token:
@@ -119,7 +108,7 @@ async def verify_turnstile(token: str, ip: Optional[str] = None):
         response = await client.post(
             "https://challenges.cloudflare.com/turnstile/v0/siteverify",
             data={
-                "secret": TURNSTILE_SECRET_KEY,
+                "secret": settings.TURNSTILE_SECRET_KEY,
                 "response": token,
                 "remoteip": ip
             }
@@ -176,45 +165,7 @@ async def ws_activity(websocket: WebSocket, token: str):
 
 
 
-@app.get("/accounts/{user_id}")
-async def get_account_balance(
-    user_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    if current_user.id != user_id and current_user.role not in ["admin", "support"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="You do not have permission to access these accounts"
-        )
-    
-    result = await db.execute(select(Account).filter(Account.user_id == user_id))
-    accounts = result.scalars().all()
-    if not accounts:
-        raise HTTPException(status_code=404, detail="Account not found")
-
-    total_balance_cents = sum(acc.balance for acc in accounts)
-    total_reserved_cents = sum(acc.reserved_balance or 0 for acc in accounts)
-    
-    sub_accounts = [{
-        "id": acc.id,
-        "name": acc.name,
-        "balance": float(acc.balance / 100),
-        "reserved_balance": float((acc.reserved_balance or 0) / 100),
-        "is_main": acc.is_main,
-        "routing_number": acc.routing_number,
-        "masked_account_number": mask_account_number(decrypt_account_number(acc.account_number_encrypted)) if acc.account_number_encrypted else None
-    } for acc in accounts]
-
-    return {
-        "balance": float(total_balance_cents / 100), 
-        "reserved_balance": float(total_reserved_cents / 100),
-        "user_id": user_id,
-        "accounts": sub_accounts
-    }
-
-
-# --- Observability Endpoints ---
+# --- WebSocket Endpoint ---
 
 
 @app.on_event("startup")
@@ -239,12 +190,12 @@ async def startup_event():
     while retry_count < max_retries:
         try:
             producer = AIOKafkaProducer(
-                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
                 enable_idempotence=True,
                 security_protocol="SASL_PLAINTEXT",
                 sasl_mechanism="PLAIN",
-                sasl_plain_username=KAFKA_USER,
-                sasl_plain_password=KAFKA_PASSWORD,
+                sasl_plain_username=settings.KAFKA_USER,
+                sasl_plain_password=settings.KAFKA_PASSWORD,
             )
             await producer.start()
             logger.info("Kafka producer connected successfully")
@@ -267,22 +218,7 @@ async def shutdown_event():
 
 
 
-from routers import accounts
-app.include_router(accounts.router)
-from routers import auth
-app.include_router(auth.router)
-from routers import admin
-app.include_router(admin.router)
-from routers import transfers
-app.include_router(transfers.router)
-from routers import dashboard
-app.include_router(dashboard.router)
-from routers import contacts, vendors
-app.include_router(contacts.router)
-app.include_router(vendors.router)
-
-from routers import stripe
-app.include_router(stripe.router)
+# Main entry point (moved router inclusions up)
 
 if __name__ == "__main__":
     import uvicorn
