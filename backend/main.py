@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func, text, or_, select
-from decimal import Decimal
 from aiokafka import AIOKafkaProducer
 from pydantic import BaseModel
 from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest, Contact, PaymentMethod, Base, engine
@@ -194,22 +193,22 @@ async def get_account_balance(
     if not accounts:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    total_balance = sum(float(acc.balance) for acc in accounts)
-    total_reserved = sum(float(acc.reserved_balance or 0.0) for acc in accounts)
+    total_balance_cents = sum(acc.balance for acc in accounts)
+    total_reserved_cents = sum(acc.reserved_balance or 0 for acc in accounts)
     
     sub_accounts = [{
         "id": acc.id,
         "name": acc.name,
-        "balance": float(acc.balance),
-        "reserved_balance": float(acc.reserved_balance or 0.0),
+        "balance": float(acc.balance / 100),
+        "reserved_balance": float((acc.reserved_balance or 0) / 100),
         "is_main": acc.is_main,
         "routing_number": acc.routing_number,
         "masked_account_number": mask_account_number(decrypt_account_number(acc.account_number_encrypted)) if acc.account_number_encrypted else None
     } for acc in accounts]
 
     return {
-        "balance": total_balance, 
-        "reserved_balance": total_reserved,
+        "balance": float(total_balance_cents / 100), 
+        "reserved_balance": float(total_reserved_cents / 100),
         "user_id": user_id,
         "accounts": sub_accounts
     }

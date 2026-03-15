@@ -126,7 +126,7 @@ async def get_balance_history(
 
         # Build cumulative balance history
         balance_history = []
-        current_balance = float(account.balance)
+        current_balance = float(account.balance / 100)
 
         # Get start date
         start_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
@@ -138,7 +138,7 @@ async def get_balance_history(
                     if hasattr(row["date"], "isoformat")
                     else str(row["date"]),
                     "balance": current_balance,
-                    "daily_change": float(row["daily_change"])
+                    "daily_change": float(row["daily_change"] / 100)
                     if row["daily_change"]
                     else 0,
                 }
@@ -146,12 +146,12 @@ async def get_balance_history(
 
         return {
             "balance_history": balance_history,
-            "current_balance": float(account.balance),
+            "current_balance": float(account.balance / 100),
         }
     except Exception as e:
         logger.error(f"Error querying ClickHouse: {e}")
         # Fallback: return just current balance
-        return {"balance_history": [], "current_balance": float(account.balance)}
+        return {"balance_history": [], "current_balance": float(account.balance / 100)}
 
 
 @router.get("/dashboard/recent-transactions")
@@ -239,7 +239,7 @@ async def get_recent_transactions(
             if tx_id not in latest_ch_txs:
                 latest_ch_txs[tx_id] = {
                     "id": tx_id,
-                    "amount": float(row[1]),
+                    "amount": float(row[1] / 100),
                     "category": row[2],
                     "merchant": row[3],
                     "sender_email": row[4],
@@ -282,7 +282,7 @@ async def get_recent_transactions(
                 
                 final_txs.append({
                     "id": str(tx.id),
-                    "amount": float(tx.amount),
+                    "amount": float(tx.amount / 100),
                     "category": tx.category,
                     "merchant": tx.merchant,
                     "sender_email": sender_email,
@@ -311,8 +311,8 @@ async def get_recent_transactions(
 async def get_all_transactions(
     days: int = 1,
     tx_type: str = None,  # 'incoming', 'outgoing', or None for all
-    min_amount: float = None,
-    max_amount: float = None,
+    min_amount: float = None, # Input in dollars
+    max_amount: float = None, # Input in dollars
     sort: str = "desc",  # 'asc' or 'desc'
     account_id: int = None,
     current_user: User = Depends(get_current_user),
@@ -355,10 +355,10 @@ async def get_all_transactions(
 
         # Amount range filtering (use absolute value so user-entered ranges apply to magnitude)
         if min_amount is not None:
-            where_clauses.append(f"abs(amount) >= {min_amount}")
+            where_clauses.append(f"abs(amount) >= {int(min_amount * 100)}")
 
         if max_amount is not None:
-            where_clauses.append(f"abs(amount) <= {max_amount}")
+            where_clauses.append(f"abs(amount) <= {int(max_amount * 100)}")
 
         where_clause = " AND ".join(where_clauses)
 
@@ -398,7 +398,7 @@ async def get_all_transactions(
                 "id": row["transaction_id"],
                 "sender_email": row.get("sender_email"),
                 "recipient_email": row.get("recipient_email"),
-                "amount": float(row["amount"]),
+                "amount": float(row["amount"] / 100),
                 "category": row["category"],
                 "merchant": row["merchant"],
                 "type": row["transaction_type"],
@@ -430,9 +430,9 @@ async def get_all_transactions(
                 query = query.filter(Transaction.transaction_side == "CREDIT")
 
         if min_amount is not None:
-            query = query.filter(func.abs(Transaction.amount) >= min_amount)
+            query = query.filter(func.abs(Transaction.amount) >= int(min_amount * 100))
         if max_amount is not None:
-            query = query.filter(func.abs(Transaction.amount) <= max_amount)
+            query = query.filter(func.abs(Transaction.amount) <= int(max_amount * 100))
 
         sort_fn = Transaction.created_at.asc() if sort and sort.lower() == "asc" else Transaction.created_at.desc()
         query = query.order_by(sort_fn).limit(100)
@@ -444,7 +444,7 @@ async def get_all_transactions(
             tx = {
                 "id": str(row.id),
                 "merchant": row.merchant or "",
-                "amount": float(row.amount),
+                "amount": float(row.amount / 100),
                 "category": row.category or "Transfer",
                 "type": row.transaction_type or "expense",
                 "side": row.transaction_side or "",

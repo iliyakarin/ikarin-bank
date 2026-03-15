@@ -154,7 +154,7 @@ async def get_my_subscription(
     return {
         "active": True,
         "plan_name": sub.plan_name,
-        "amount": float(sub.amount),
+        "amount": float(sub.amount / 100),
         "current_period_end": sub.current_period_end.isoformat(),
         "status": sub.status
     }
