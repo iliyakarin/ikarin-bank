@@ -4,6 +4,7 @@ import { Transaction } from '@/lib/types';
 import { useMemo } from 'react';
 import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLOR } from '@/lib/constants';
 import { ArrowUpRight, ArrowDownLeft, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
+import { formatCurrency } from '@/lib/transactionUtils';
 
 interface SpendingStatsProps {
     transactions: Transaction[];
@@ -50,12 +51,6 @@ export default function SpendingStats({ transactions, period }: SpendingStatsPro
         };
     }, [transactions]);
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD',
-        }).format(amount);
-    };
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -97,7 +92,7 @@ export default function SpendingStats({ transactions, period }: SpendingStatsPro
                     <p className="text-white/40 text-sm font-medium mb-1">Net Flow</p>
                     <p className={`text-2xl lg:text-3xl font-bold ${stats.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'
                         }`}>
-                        {stats.netFlow >= 0 ? '+' : ''}{formatCurrency(stats.netFlow)}
+                        {stats.netFlow > 0 ? '+' : ''}{formatCurrency(stats.netFlow)}
                     </p>
                     <p className="text-white/30 text-xs mt-1">{period}</p>
                 </div>
@@ -150,14 +145,6 @@ export function SpendingByCategory({ transactions, limit = 5 }: SpendingByCatego
             }));
     }, [transactions, limit]);
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-        }).format(amount);
-    };
 
     if (spendingData.length === 0) {
         return (
@@ -211,13 +198,6 @@ export function QuickSummary({ balance, transactions, loading }: QuickSummaryPro
         return recent;
     }, [transactions]);
 
-    const formatCurrency = (amount: number | null) => {
-        if (amount === null) return '--';
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD',
-        }).format(amount);
-    };
 
     return (
         <div className="glass-panel p-8 rounded-[2rem] space-y-6">

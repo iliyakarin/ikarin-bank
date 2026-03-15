@@ -12,12 +12,7 @@ from database import SessionLocal, Transaction, Outbox
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-CH_HOST = os.getenv("CLICKHOUSE_HOST")
-CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
-CH_USER = os.getenv("CLICKHOUSE_USER")
-CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD")
-CH_DB = os.getenv("CLICKHOUSE_DB")
+from config import settings
 
 CHECK_INTERVAL_SECONDS = 86400 # Run every 24 hours
 
@@ -30,7 +25,10 @@ async def run_sync_check():
         try:
             # Connect to ClickHouse
             ch_client = clickhouse_connect.get_client(
-                host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD
+                host=settings.CLICKHOUSE_HOST, 
+                port=settings.CLICKHOUSE_PORT, 
+                username=settings.CLICKHOUSE_USER, 
+                password=settings.CLICKHOUSE_PASSWORD
             )
 
             # 1. Get recent transactions from Postgres (e.g. past 7 days)
@@ -54,11 +52,11 @@ async def run_sync_check():
                 chunk = pg_ids[i:i + chunk_size]
                 query = f"""
                     SELECT toString(transaction_id) as id, status
-                    FROM {CH_DB}.transactions 
-                    WHERE transaction_id IN ({','.join([f"'{tid}'" for tid in chunk])})
+                    FROM {settings.CLICKHOUSE_DB}.transactions 
+                    WHERE transaction_id IN {{ids:Array(String)}}
                     ORDER BY event_time DESC
                 """
-                ch_results = ch_client.query(query).result_rows
+                ch_results = ch_client.query(query, parameters={'ids': chunk}).result_rows
                 for row in ch_results:
                     tid, status = row
                     if tid not in ch_status_map: # Only keep the latest one because of ORDER BY
@@ -86,7 +84,7 @@ async def run_sync_check():
                     "transaction_id": str(tx.id),
                     "parent_id": str(tx.parent_id) if tx.parent_id else None,
                     "account_id": tx.account_id,
-                    "amount": float(tx.amount),
+                    "amount": int(tx.amount),
                     "category": tx.category,
                     "merchant": tx.merchant,
                     "transaction_type": tx.transaction_type,

@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from database import User, Account, Transaction, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest
 from schemas.transfers import TransferRequest, P2PTransferRequest, PaymentRequestCreate, PaymentRequestCounter, ScheduledTransferCreate, ScheduledPaymentResponse
 from auth_utils import get_db, get_current_user
-from services.transfer_service import _validate_p2p_transfer, _execute_p2p_balances, _create_p2p_transactions, _create_p2p_outbox_entries, get_vendors, execute_vendor_payment_immediate, _calculate_next_run_at
+from services.transfer_service import process_p2p_transfer, get_vendors, _calculate_next_run_at
 from activity import emit_activity, emit_transaction_status_update
 import datetime
 import uuid
@@ -14,7 +15,7 @@ import logging
 from security_checks import check_velocity, check_anomaly
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(tags=["Transfers"])
 
 @router.post("/transfer")
 async def create_transfer(
@@ -85,13 +86,13 @@ async def create_transfer(
 async def create_p2p_transfer(
     transfer: P2PTransferRequest,
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     client_ip = request.client.host
     user_agent = request.headers.get("user-agent", "unknown")
 
-    # 1. Idempotency Check
+    # 1. Idempotency Check (Shared Layer)
     if transfer.idempotency_key:
         result = await db.execute(select(IdempotencyKey).filter(
             IdempotencyKey.key == transfer.idempotency_key,
@@ -101,222 +102,44 @@ async def create_p2p_transfer(
         if existing_key:
             return existing_key.response_body
 
-    # 2. Validation & Recipient Lookup
+    # 2. Delegate Orchestration to Service
     try:
-        recipient = await _validate_p2p_transfer(transfer, current_user, db)
-    except HTTPException as e:
-        if e.status_code == 404 and "Recipient not found" in str(e.detail):
-            # Check for vendor
-            vendors = await get_vendors()
-            vendor = next((v for v in vendors if v["email"] == transfer.recipient_email), None)
-            if vendor:
-                # Resolve Sender Account
-                sender_account_query = select(Account).filter(Account.user_id == current_user.id)
-                if transfer.source_account_id:
-                    sender_account_query = sender_account_query.filter(Account.id == transfer.source_account_id)
-                else:
-                    sender_account_query = sender_account_query.filter(Account.is_main == True)
-                    
-                result = await db.execute(sender_account_query.with_for_update())
-                sender_account = result.scalars().first()
-                if not sender_account:
-                    raise HTTPException(status_code=404, detail="Source account not found")
-
-                if sender_account.balance < transfer.amount:
-                     raise HTTPException(status_code=400, detail="Insufficient funds")
-
-                # Execute Vendor Payment
-                sim_resp = await execute_vendor_payment_immediate(
-                    vendor["id"], transfer.subscriber_id or "UNKNOWN", transfer.amount
-                )
-
-                # Update Balance
-                sender_account.balance -= transfer.amount
-
-                # Create Transaction Record
-                status_map = {"CLEARED": "cleared", "FAILED": "failed"}
-                tx_id = str(uuid.uuid4())
-                vendor_tx = Transaction(
-                    id=tx_id,
-                    account_id=sender_account.id,
-                    amount=-transfer.amount,
-                    category="Bill Pay",
-                    merchant=vendor["name"],
-                    status=status_map.get(sim_resp.get("status"), "failed"),
-                    transaction_type="expense",
-                    transaction_side="DEBIT",
-                    failure_reason=sim_resp.get("failure_reason"),
-                    commentary=f"Bill Payment to {vendor['name']} (Instant)",
-                    internal_account_last_4=sender_account.account_number_last_4,
-                    recipient_email=vendor["email"],
-                    sender_email=current_user.email,
-                    subscriber_id=transfer.subscriber_id,
-                    idempotency_key=transfer.idempotency_key or str(uuid.uuid4()),
-                    ip_address=client_ip,
-                    user_agent=user_agent,
-                    created_at=datetime.datetime.now(datetime.timezone.utc)
-                )
-                db.add(vendor_tx)
-
-                response_body = {"status": "success", "transaction_id": tx_id, "vendor_status": sim_resp.get("status")}
-                if transfer.idempotency_key:
-                    db.add(IdempotencyKey(
-                        key=transfer.idempotency_key,
-                        user_id=current_user.id,
-                        response_code=200,
-                        response_body=response_body
-                    ))
-
-                await db.commit()
-                return response_body
-            else:
-                raise # Re-raise original 404
-        else:
-            raise
-
-    # 2.5 Security Checks
-    if not await check_velocity(db, current_user.id):
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded: too many transactions in the last minute. Please try again shortly."
-        )
-
-    anomaly_flagged = await check_anomaly(db, current_user.id, transfer.amount)
-
-    # Validate Payment Request if paying one
-    payment_request = None
-    if transfer.payment_request_id:
-        result = await db.execute(select(PaymentRequest).filter(PaymentRequest.id == transfer.payment_request_id))
-        payment_request = result.scalars().first()
-        if not payment_request:
-            raise HTTPException(status_code=404, detail="Payment request not found")
-        # Ensure that the current_user is the target of the request
-        if payment_request.target_email != current_user.email:
-             raise HTTPException(status_code=403, detail="You are not the target of this payment request")
-        if payment_request.status not in ["pending_target", "pending_requester"]:
-             raise HTTPException(status_code=400, detail="Payment request is no longer active")
-        # Ensure that the amount paid is at least the requested amount
-        if transfer.amount < payment_request.amount:
-            raise HTTPException(status_code=400, detail=f"Transfer amount must be at least the requested amount (${payment_request.amount})")
-
-    # Resolve Sender Account
-    sender_account_query = select(Account).filter(Account.user_id == current_user.id)
-    if transfer.source_account_id:
-        sender_account_query = sender_account_query.filter(Account.id == transfer.source_account_id)
-    else:
-        sender_account_query = sender_account_query.filter(Account.is_main == True)
-        
-    result = await db.execute(sender_account_query)
-    resolved_sender_account = result.scalars().first()
-    if not resolved_sender_account:
-        raise HTTPException(status_code=404, detail="Source account not found or access denied")
-
-    # Resolve Recipient Main Account
-    result = await db.execute(select(Account).filter(Account.user_id == recipient.id, Account.is_main == True))
-    resolved_recipient_account = result.scalars().first()
-    if not resolved_recipient_account:
-        raise HTTPException(status_code=404, detail="Recipient main account not found")
-
-    try:
-        # 3. Atomic Locking & Balance Verification (ACID)
-        sender_account, recipient_account = await _execute_p2p_balances(
-            db, resolved_sender_account.id, resolved_recipient_account.id, transfer.amount
-        )
-
-        # 4. Create Transaction Records
-        tx_id_parent, tx_id_sender, tx_id_recipient = _create_p2p_transactions(
-            db,
-            sender_account.id,
-            recipient_account.id,
-            transfer.amount,
-            recipient.email,
-            current_user.email,
-            transfer.idempotency_key,
-            client_ip,
-            user_agent,
-            sender_account_last_4=sender_account.account_number_last_4,
-            recipient_account_last_4=recipient_account.account_number_last_4,
+        response_body = await process_p2p_transfer(
+            db=db,
+            current_user=current_user,
+            recipient_email=transfer.recipient_email,
+            amount=transfer.amount,
+            source_account_id=transfer.source_account_id,
             commentary=transfer.commentary,
-            payment_request_id=transfer.payment_request_id
+            idempotency_key=transfer.idempotency_key,
+            payment_request_id=transfer.payment_request_id,
+            client_ip=client_ip,
+            user_agent=user_agent
         )
 
-        # 5. Create Outbox Entries
-        _create_p2p_outbox_entries(
-            db,
-            sender_account,
-            recipient_account,
-            transfer.amount,
-            current_user.email,
-            recipient.email,
-            tx_id_parent,
-            tx_id_sender,
-            tx_id_recipient,
-            transfer.commentary
-        )
-
-        # Mark payment request as paid if one was linked
-        if payment_request:
-            payment_request.status = "paid"
-            payment_request.updated_at = datetime.datetime.now(datetime.timezone.utc)
-
-        # 6. Finalize Idempotency Key
-        response_body = {"status": "success", "transaction_id": tx_id_parent}
+        # 3. Finalize Idempotency (if not already handled by service or if we want router to manage it)
+        # Note: process_p2p_transfer commits the transaction.
         if transfer.idempotency_key:
-            db.add(IdempotencyKey(
+             db.add(IdempotencyKey(
                 key=transfer.idempotency_key,
                 user_id=current_user.id,
                 response_code=200,
                 response_body=response_body
             ))
+             await db.commit()
 
-        # Emit activity events for sender and recipient
-        emit_activity(
-            db, 
-            current_user.id, 
-            "p2p", 
-            "sent", 
-            f"Sent {transfer.amount / 100:.2f} to {recipient.email}", 
-            {
-                "transaction_id": tx_id_parent,
-                "recipient_email": recipient.email,
-                "amount": transfer.amount,
-                "commentary": transfer.commentary,
-                "source_account_id": resolved_sender_account.id,
-            },
-            ip=client_ip,
-            user_agent=user_agent
-        )
-        emit_activity(
-            db, 
-            recipient.id, 
-            "p2p", 
-            "received", 
-            f"Received {transfer.amount / 100:.2f} from {current_user.email}", 
-            {
-                "transaction_id": tx_id_parent,
-                "sender_email": current_user.email,
-                "amount": transfer.amount,
-                "commentary": transfer.commentary,
-            },
-            ip=client_ip,
-            user_agent=user_agent
-        )
-
-        await db.commit()
         return response_body
 
     except HTTPException:
-        await db.rollback()
         raise
-    except SQLAlchemyError as e:
-        await db.rollback()
-        logger.error(f"P2P Transfer failed due to DB error: {e}")
-        raise HTTPException(status_code=500, detail="Internal financial processing error")
+    except Exception as e:
+        logger.error(f"P2P Transfer Error: {e}")
+        raise HTTPException(status_code=500, detail="Internal processing error")
 
 
 # --- Payment Requests Endpoints ---
 
-@router.post("/v1/requests/create")
+@router.post("/requests/create")
 async def create_payment_request(
     request_data: PaymentRequestCreate,
     db: Session = Depends(get_db),
@@ -354,7 +177,7 @@ async def create_payment_request(
     return {"status": "success", "request_id": new_request.id}
 
 
-@router.get("/v1/requests")
+@router.get("/requests")
 async def get_payment_requests(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -387,7 +210,7 @@ async def get_payment_requests(
     return result
 
 
-@router.post("/v1/requests/{request_id}/counter")
+@router.post("/requests/{request_id}/counter")
 async def counter_payment_request(
     request_id: int,
     counter_data: PaymentRequestCounter,
@@ -423,10 +246,10 @@ async def counter_payment_request(
     req.updated_at = datetime.datetime.now(datetime.timezone.utc)
     
     await db.commit()
-    return {"status": "success", "request_id": req.id, "new_amount": float(req.amount), "new_status": req.status}
+    return {"status": "success", "request_id": req.id, "new_amount": int(req.amount), "new_status": req.status}
 
 
-@router.post("/v1/requests/{request_id}/decline")
+@router.post("/requests/{request_id}/decline")
 async def decline_payment_request(
     request_id: int,
     db: Session = Depends(get_db),
@@ -474,7 +297,7 @@ async def decline_payment_request(
     await db.commit()
     return {"status": "success", "request_id": req.id, "new_status": req.status}
 
-@router.post("/v1/transfers/scheduled")
+@router.post("/transfers/scheduled")
 async def create_scheduled_transfer(
     transfer: ScheduledTransferCreate,
     request: Request,
@@ -599,7 +422,7 @@ async def create_scheduled_transfer(
         raise HTTPException(status_code=500, detail="Internal processing error")
 
 
-@router.get("/v1/transfers/scheduled", response_model=List[ScheduledPaymentResponse])
+@router.get("/transfers/scheduled", response_model=List[ScheduledPaymentResponse])
 async def get_scheduled_payments(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -612,7 +435,7 @@ async def get_scheduled_payments(
     
     return payments
 
-@router.post("/v1/transfers/scheduled/{payment_id}/cancel")
+@router.post("/transfers/scheduled/{payment_id}/cancel")
 async def cancel_scheduled_payment(
     payment_id: int,
     db: Session = Depends(get_db),

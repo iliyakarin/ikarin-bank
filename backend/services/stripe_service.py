@@ -77,7 +77,7 @@ async def _atomic_topup_balance(
         "internal_account_last_4": account.account_number_last_4,
         "sender_email": "stripe@karinbank.com",
         "recipient_email": user.email,
-        "amount": float(amount),
+        "amount": int(amount),
         "category": "Deposit",
         "merchant": "Stripe Top-Up",
         "transaction_type": "deposit",
@@ -94,8 +94,8 @@ async def _atomic_topup_balance(
         user_id=user.id,
         category="p2p",
         action="deposit_success",
-        title=f"Deposited ${float(amount):.2f} via Stripe",
-        details={"transaction_id": tx_id, "amount": float(amount)}
+        title=f"Deposited ${from_cents(int(amount))} via Stripe",
+        details={"transaction_id": tx_id, "amount": int(amount)}
     )
 
     await db.commit()
@@ -103,7 +103,7 @@ async def _atomic_topup_balance(
 
 async def handle_checkout_completed(session: dict, db: AsyncSession):
     """
-    Handles a successful checkout session completion.
+    Handles a successful checkout session completion or PaymentIntent success.
     Supports both one-time payments and subscriptions.
     """
     session_id = session.get("id")
@@ -112,7 +112,7 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
     mode = metadata.get("mode", "payment")
     
     if not user_id:
-        logger.error(f"No user ID in metadata for session {session_id}")
+        logger.error(f"No user ID in metadata for session/intent {session_id}")
         return
 
     try:
@@ -121,14 +121,16 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
         logger.error(f"Invalid user ID in metadata: {user_id}")
         return
 
+    # For PaymentIntent, amount is 'amount', for Checkout Session it's 'amount_total'
+    amount_total = session.get("amount_total") or session.get("amount")
+    
     if mode == "payment":
-        amount_total = session.get("amount_total")
         if not amount_total:
-             logger.error("No amount found in session")
+             logger.error("No amount found in session/intent")
              return
 
         amount_dollars = Decimal(str(amount_total)) / Decimal("100")
-        idempotency_key = f"stripe_topup_{session_id}"
+        idempotency_key = f"stripe_deposit_{session_id}"
 
         try:
             await _atomic_topup_balance(
@@ -138,10 +140,10 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
                 idempotency_key=idempotency_key,
                 stripe_session_id=session_id
             )
-            logger.info(f"Top-up successful for user {user_id}: {amount_dollars}")
+            logger.info(f"Deposit successful for user {user_id}: {amount_dollars}")
         except Exception as e:
             await db.rollback()
-            logger.error(f"Top-up failed for user {user_id}: {e}")
+            logger.error(f"Deposit failed for user {user_id}: {e}")
 
     elif mode == "subscription":
         # Handle subscription creation

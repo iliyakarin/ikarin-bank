@@ -10,14 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from database import User, SessionLocal
 
-# Auth Configuration
-SECRET_KEY = os.getenv("JWT_SECRET_KEY")
-if not SECRET_KEY:
-    # In some test environments this might be set via fixture, but we need it here
-    SECRET_KEY = "test_secret_key" 
+from config import settings
 
-ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+# Auth Configuration
+SECRET_KEY = settings.JWT_SECRET_KEY
+ALGORITHM = settings.JWT_ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")

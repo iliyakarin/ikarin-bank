@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CreditCard, Zap, CheckCircle2 } from "lucide-react";
+import { Wallet, Shield, ArrowRight, CreditCard, ChevronRight, Zap, CheckCircle2 } from 'lucide-react';
+import { toCents, formatCurrency } from '@/lib/transactionUtils';
 import { useAuth } from "@/lib/AuthContext";
+import StripePaymentModal from "@/components/StripePaymentModal";
 
 interface Transaction {
     id: string;
@@ -25,13 +27,33 @@ export default function StripePage() {
     const router = useRouter();
     const { token } = useAuth();
 
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [subscription, setSubscription] = useState<UserSubscription | null>(null);
+    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [selectedAmount, setSelectedAmount] = useState(0);
     const [loading, setLoading] = useState<string | null>(null);
     const [amountCents, setAmountCents] = useState(0);
     const [customAmount, setCustomAmount] = useState("");
-
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [renderCount, setRenderCount] = useState(0);
     const [txLoading, setTxLoading] = useState(true);
-    const [subscription, setSubscription] = useState<UserSubscription | null>(null);
+
+    useEffect(() => {
+        setRenderCount(prev => prev + 1);
+    }, [loading, amountCents, customAmount, transactions, subscription, isPaymentModalOpen, selectedAmount]);
+
+    console.log("StripePage Render:", renderCount, { isPaymentModalOpen, selectedAmount });
+    console.log("StripePage State Check:", { isPaymentModalOpen, selectedAmount, loading });
+
+    useEffect(() => {
+        console.log("StripePage State Update:", {
+            loading,
+            amountCents,
+            customAmount,
+            transactionsCount: transactions.length,
+            isPaymentModalOpen,
+            selectedAmount
+        });
+    }, [loading, amountCents, customAmount, transactions.length, isPaymentModalOpen, selectedAmount]);
 
     useEffect(() => {
         const fetchTransactions = async () => {
@@ -43,7 +65,7 @@ export default function StripePage() {
                 params.set("tx_type", "incoming");
 
                 const res = await fetch(
-                    `/api/transactions?${params.toString()}`,
+                    `/api/v1/dashboard/transactions?${params.toString()}`,
                     {
                         headers: { Authorization: `Bearer ${token}` },
                     },
@@ -59,6 +81,8 @@ export default function StripePage() {
                         (t.merchant && t.merchant.includes("Stripe"))
                     );
                     setTransactions(stripeTxs);
+                } else {
+                    console.log("Transactions fetch failed with status:", res.status);
                 }
             } catch (error) {
                 console.error("Failed to load transactions", error);
@@ -87,9 +111,18 @@ export default function StripePage() {
     }, [token]);
 
     const startCheckout = async (type: string, amount: number) => {
-        setLoading(type);
-        setAmountCents(amount);
         try {
+            console.log("startCheckout called with:", { type, amount });
+            if (type.startsWith("topup")) {
+                console.log("TOPUP BRANCH REACHED. Setting state for modal.");
+                setSelectedAmount(amount);
+                setIsPaymentModalOpen(true);
+                console.log("State set: isPaymentModalOpen=true, selectedAmount=", amount);
+                return;
+            }
+
+            setLoading(type);
+            setAmountCents(amount);
             const response = await fetch("/api/v1/stripe/create-checkout-session", {
                 method: "POST",
                 headers: {
@@ -107,15 +140,22 @@ export default function StripePage() {
 
             if (!response.ok) throw new Error("Failed to create session");
             const data = await response.json() as { id: string, url: string };
-            
+
             // Redirect to Stripe Checkout
             window.location.href = data.url;
         } catch (e) {
-            console.error(e);
-            alert("Failed to initialize checkout session");
+            console.error("CRITICAL ERROR IN startCheckout:", e);
+            alert("Failed to initialize checkout session. Check console for details.");
         } finally {
             setLoading(null);
         }
+    };
+
+    const handlePaymentSuccess = () => {
+        setIsPaymentModalOpen(false);
+        // Refresh transactions after success
+        // fetchTransactions() could be pulled out if needed, but for now we'll just reload or wait for webhook
+        window.location.reload();
     };
 
     const handleManageSubscription = async () => {
@@ -137,7 +177,7 @@ export default function StripePage() {
                 throw new Error(errorData.detail || "Failed to create portal session");
             }
             const data = await response.json() as { url: string };
-            
+
             // Redirect to Stripe Customer Portal
             window.location.href = data.url;
         } catch (e) {
@@ -169,44 +209,83 @@ export default function StripePage() {
                                 <CreditCard className="h-5 w-5 text-zinc-400" />
                             </div>
                             <div className="space-y-2">
-                                <h2 className="text-2xl font-medium tracking-tight text-zinc-100">Deposit Funds</h2>
+                                <h2 className="text-2xl font-medium tracking-tight text-zinc-100">Deposit Funds from card</h2>
                                 <p className="text-zinc-500 font-light text-sm">
                                     Add liquidity to your internal ledger instantly using any major credit card.
                                 </p>
                             </div>
 
-                            <div className="pt-4 flex flex-col gap-4">
-                                <div className="flex items-center gap-4">
+                            <div className="pt-4 flex flex-col gap-6">
+                                <div className="flex flex-wrap items-stretch gap-3">
                                     <button
-                                        onClick={() => startCheckout("topup", 1000)}
+                                        onClick={(e) => { e.preventDefault(); console.log("Starter Button Clicked"); startCheckout("topup_10", 1000); }}
                                         disabled={loading !== null}
-                                        className="bg-white text-black px-6 py-2.5 rounded-full text-sm font-medium transition-transform active:scale-95 disabled:opacity-50 hover:bg-zinc-200"
+                                        className="flex-1 min-w-[120px] py-3 px-4 rounded-xl font-bold transition-all flex flex-col gap-3 group bg-zinc-900 border border-zinc-800 hover:border-indigo-500/50 hover:bg-zinc-800/50"
                                     >
-                                        {loading === "topup" ? "Connecting..." : "Add $10.00"}
+                                        <div className="flex items-center justify-between w-full">
+                                            <div className="h-8 w-8 rounded-lg bg-zinc-950 flex items-center justify-center border border-zinc-800 group-hover:border-indigo-500/30 transition-colors">
+                                                <CreditCard className="h-4 w-4 text-indigo-500" />
+                                            </div>
+                                            <ArrowRight className="h-4 w-4 text-zinc-700 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
+                                        </div>
+                                        <div className="text-left">
+                                            <div className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold group-hover:text-zinc-400 transition-colors">Starter</div>
+                                            <div className="text-base text-white tracking-tight">$10.00</div>
+                                        </div>
                                     </button>
+
                                     <button
-                                        onClick={() => startCheckout("topup-100", 10000)}
+                                        onClick={(e) => { e.preventDefault(); console.log("Popular Button Clicked"); startCheckout("topup_100", 10000); }}
                                         disabled={loading !== null}
-                                        className="bg-zinc-900 border border-zinc-800 text-white px-6 py-2.5 rounded-full text-sm font-medium transition-all active:scale-95 disabled:opacity-50 hover:bg-zinc-800 hover:border-zinc-700"
+                                        className="flex-1 min-w-[120px] py-3 px-4 rounded-xl font-bold transition-all flex flex-col gap-3 group bg-white text-black hover:bg-zinc-200"
                                     >
-                                        {loading === "topup-100" ? "Connecting..." : "Add $100.00"}
+                                        <div className="flex items-center justify-between w-full">
+                                            <div className="h-8 w-8 rounded-lg bg-black/5 flex items-center justify-center border border-black/10">
+                                                <Zap className="h-4 w-4 text-indigo-600" />
+                                            </div>
+                                            <ArrowRight className="h-4 w-4 text-black/30 group-hover:translate-x-1 transition-all" />
+                                        </div>
+                                        <div className="text-left">
+                                            <div className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">Popular</div>
+                                            <div className="text-base text-black font-extrabold tracking-tight">$100.00</div>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={(e) => { e.preventDefault(); startCheckout("topup_250", 25000); }}
+                                        disabled={loading !== null}
+                                        className="flex-1 min-w-[120px] py-3 px-4 rounded-xl font-bold transition-all flex flex-col gap-3 group bg-zinc-900 border border-zinc-800 hover:border-indigo-500/50 hover:bg-zinc-800/50"
+                                    >
+                                        <div className="flex items-center justify-between w-full">
+                                            <div className="h-8 w-8 rounded-lg bg-zinc-950 flex items-center justify-center border border-zinc-800 group-hover:border-indigo-500/30 transition-colors">
+                                                <Shield className="h-4 w-4 text-indigo-400" />
+                                            </div>
+                                            <ArrowRight className="h-4 w-4 text-zinc-700 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
+                                        </div>
+                                        <div className="text-left">
+                                            <div className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold group-hover:text-zinc-400 transition-colors">Pro</div>
+                                            <div className="text-base text-white tracking-tight">$250.00</div>
+                                        </div>
                                     </button>
                                 </div>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="number"
-                                        placeholder="Custom Amount ($)"
-                                        className="flex-1 bg-zinc-900 border border-zinc-800 text-white px-4 py-2.5 rounded-full text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                        value={customAmount}
-                                        onChange={(e) => setCustomAmount(e.target.value)}
-                                        min="1"
-                                    />
+                                <div className="flex items-stretch gap-3">
+                                    <div className="relative flex-1">
+                                        <input
+                                            type="number"
+                                            placeholder="Custom Amount ($)"
+                                            className="w-full h-12 bg-zinc-900 border border-zinc-800 text-white px-5 rounded-xl text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all hover:bg-zinc-800/50"
+                                            value={customAmount}
+                                            onChange={(e) => setCustomAmount(e.target.value)}
+                                            min="1"
+                                        />
+                                    </div>
                                     <button
-                                        onClick={() => startCheckout("topup-custom", Math.round(parseFloat(customAmount) * 100))}
-                                        disabled={loading !== null || !customAmount || parseFloat(customAmount) <= 0}
-                                        className="bg-zinc-900 border border-zinc-800 text-white px-6 py-2.5 rounded-full text-sm font-medium transition-all active:scale-95 disabled:opacity-50 hover:bg-zinc-800 hover:border-zinc-700"
+                                        onClick={(e) => { e.preventDefault(); startCheckout("topup_custom", toCents(parseFloat(customAmount))); }}
+                                        disabled={loading !== null || !customAmount || isNaN(parseFloat(customAmount)) || parseFloat(customAmount) <= 0}
+                                        className="h-12 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2 group whitespace-nowrap active:scale-95 shadow-lg shadow-indigo-500/10"
                                     >
-                                        {loading === "topup-custom" ? "..." : "Add Custom"}
+                                        {loading === "topup_custom" ? "..." : "Add Funds"}
+                                        <ChevronRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
                                     </button>
                                 </div>
                             </div>
@@ -248,7 +327,7 @@ export default function StripePage() {
                                     </button>
                                 ) : (
                                     <button
-                                        onClick={() => startCheckout("subscribe", 4900)}
+                                        onClick={(e) => { e.preventDefault(); startCheckout("subscribe", 4900); }}
                                         disabled={loading !== null}
                                         className="w-full bg-emerald-500 text-emerald-950 px-6 py-3 rounded-xl text-sm font-medium transition-all active:scale-95 disabled:opacity-50 hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.1)]"
                                     >
@@ -302,9 +381,9 @@ export default function StripePage() {
                                                         {tx.status || "Cleared"}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4 text-right font-mono font-medium">
+                                                 <td className="px-6 py-4 text-right font-mono font-medium">
                                                     <span className={tx.amount > 0 ? "text-emerald-400" : "text-zinc-400"}>
-                                                        {tx.amount > 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
+                                                        {formatCurrency(tx.amount)}
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
@@ -329,6 +408,13 @@ export default function StripePage() {
                     </div>
                 </div>
             </div>
+
+            <StripePaymentModal
+                isOpen={isPaymentModalOpen}
+                onClose={() => setIsPaymentModalOpen(false)}
+                amount={selectedAmount}
+                onSuccess={handlePaymentSuccess}
+            />
         </div>
     );
 }

@@ -17,3 +17,12 @@ class PortalSessionCreate(BaseModel):
 
 class PortalSessionResponse(BaseModel):
     url: str
+
+class PaymentIntentCreate(BaseModel):
+    amount: int  # in cents
+    currency: str = "usd"
+    metadata: Optional[Dict[str, Any]] = None
+
+class PaymentIntentResponse(BaseModel):
+    client_secret: str
+    id: str

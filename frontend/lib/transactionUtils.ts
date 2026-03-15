@@ -33,3 +33,64 @@ export const getStatusLabel = (status: string) => {
             return 'Unknown Status';
     }
 };
+
+/**
+ * Safely converts a dollar amount (string or number) to integer cents.
+ * Avoids floating point precision issues by using string manipulation.
+ */
+export const toCents = (amount: string | number): number => {
+    if (amount === undefined || amount === null || amount === '') return 0;
+    
+    // Ensure we have a string, remove commas (if any) and whitespace
+    const s = amount.toString().replace(/,/g, '').trim();
+    
+    if (!s || s === '.') return 0;
+
+    const parts = s.split('.');
+    let dollars = parts[0] || '0';
+    let cents = parts[1] || '00';
+
+    // Handle negative sign
+    const isNegative = dollars.startsWith('-');
+    if (isNegative) dollars = dollars.substring(1);
+
+    // Normalize cents to exactly 2 digits
+    cents = cents.padEnd(2, '0').slice(0, 2);
+
+    const totalCents = parseInt(dollars, 10) * 100 + parseInt(cents, 10);
+    return isNegative ? -totalCents : totalCents;
+};
+
+/**
+ * Safely converts integer cents to a dollar string.
+ * Avoids floating point precision issues by using integer arithmetic.
+ * Returns a string with exactly 2 decimal places.
+ */
+export const fromCents = (cents: number): string => {
+    if (cents === undefined || cents === null) return '0.00';
+    
+    const isNegative = cents < 0;
+    const absCents = Math.abs(cents);
+    
+    const dollars = Math.floor(absCents / 100);
+    const remainingCents = absCents % 100;
+    
+    const result = `${dollars}.${remainingCents.toString().padStart(2, '0')}`;
+    return isNegative ? `-${result}` : result;
+};
+
+/**
+ * Formats integer cents into a human-readable currency string.
+ * Uses fromCents internally to ensure precision.
+ */
+export const formatCurrency = (cents: number | null | undefined, showSymbol: boolean = true): string => {
+    if (cents === null || cents === undefined) return showSymbol ? '$0.00' : '0.00';
+    const formatted = fromCents(cents);
+    if (!showSymbol) return formatted;
+    
+    // Add symbol and handle negative sign placement
+    if (formatted.startsWith('-')) {
+        return `-$${formatted.substring(1)}`;
+    }
+    return `$${formatted}`;
+};

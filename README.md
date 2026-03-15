@@ -5,12 +5,12 @@ A full-stack banking application built with Next.js 15, FastAPI, PostgreSQL, Cli
 ## Features
 
 ### Banking Capabilities
-- **Account Management**: Create and manage multiple accounts with different currencies
-- **Scheduled Payments**: Set up recurring or one-time payments
-- **P2P Transfers**: Send money to other users
-- **Money Requests**: Request payments from contacts
-- **Transaction History**: Complete ledger with detailed information
-- **Contact Management**: Store contacts for easy transfers (karin, merchant, bank)
+- **Account Management**: UUID-based account identities with secure encryption
+- **Scheduled Payments**: Recurring or one-time orchestration via `transfer_service`
+- **P2P Transfers**: Simplified flow using integer-cents for precision
+- **Money Requests**: Atomic request/pay cycle with idempotency
+- **Transaction History**: Real-time sync between Postgres (ledger) and ClickHouse (analytics)
+- **Contact Management**: Reusable contact types (karinbank, merchant, bank)
 
 ### System Features
 - **Event-Driven Architecture**: Async transaction processing via Kafka
@@ -22,10 +22,10 @@ A full-stack banking application built with Next.js 15, FastAPI, PostgreSQL, Cli
 ## Architecture
 
 ### Backend Stack
-- **FastAPI** (Python) - REST API
-- **PostgreSQL 16** - Relational data storage
-- **ClickHouse** - Analytics and reporting
-- **Apache Kafka** - Event streaming with SASL_PLAINTEXT authentication
+- **FastAPI** (Python) - REST API with thin router handlers
+- **PostgreSQL 16** - Primary relational ledger (integers for money, UUIDs for accounts)
+- **ClickHouse** - Scalable analytics and audit logs
+- **Apache Kafka** - High-throughput event streaming with SASL auth
 
 ### Frontend Stack
 - **Next.js 15** (App Router) - React framework
@@ -44,7 +44,7 @@ A full-stack banking application built with Next.js 15, FastAPI, PostgreSQL, Cli
 ### Prerequisites
 - Docker and Docker Compose
 - Python 3.10+
-- Node.js 18+
+- Node.js 20+
 
 ### Installation
 
@@ -57,7 +57,7 @@ A full-stack banking application built with Next.js 15, FastAPI, PostgreSQL, Cli
 2. **Setup environment**
    ```bash
    cp .env.dev .env
-   # Edit .env with your configuration
+   # The application will automatically use .env based on the ENV variable
    ```
 
 3. **Start all services**
@@ -134,40 +134,34 @@ A full-stack banking application built with Next.js 15, FastAPI, PostgreSQL, Cli
 
 ### Environment Variables (.env)
 
-Required variables:
-```env
-# PostgreSQL
-POSTGRES_USER=your_user
-POSTGRES_PASSWORD=your_password
-POSTGRES_DB=banking_db
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
+The application uses `backend/config.py` as the source of truth.
 
-# Kafka
-KAFKA_BOOTSTRAP_SERVERS=localhost:9092
-KAFKA_ADMIN_PASSWORD=your_password
-KAFKA_CLIENT_PASSWORD=your_password
+```env
+# System
+ENV=development # or production
+JWT_SECRET_KEY=...
+
+# Postgres (Integer cents, UUID accounts)
+POSTGRES_USER=...
+POSTGRES_PASSWORD=...
+POSTGRES_DB=banking_db
+POSTGRES_HOST=db
 
 # ClickHouse
-CLICKHOUSE_HOST=localhost
+CLICKHOUSE_HOST=clickhouse
 CLICKHOUSE_PORT=8123
 CLICKHOUSE_USER=default
-CLICKHOUSE_PASSWORD=
+CLICKHOUSE_PASSWORD=...
 
-# Database URL (vendor simulator and mock fed gateway)
-DATABASE_URL=postgresql://user:password@localhost:5432/bank
+# Kafka (SASL Auth)
+KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+KAFKA_USER=user
+KAFKA_PASSWORD=...
 
-# API Keys
-SIMULATOR_API_KEY=your_key
-GATEWAY_API_KEY=your_key
-
-# CORS
-CORS_ORIGINS=http://localhost:3000
-
-# JWT
-JWT_SECRET_KEY=your_secret_key
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+# External Integrations
+STRIPE_API_KEY=...
+STRIPE_WEBHOOK_SECRET=...
+SIMULATOR_URL=http://vendor-simulator:8001
 ```
 
 ## Project Structure

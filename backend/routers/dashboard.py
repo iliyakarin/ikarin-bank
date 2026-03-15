@@ -6,14 +6,23 @@ from typing import Dict, Any, List, Optional
 from database import User, Account, Transaction
 from auth_utils import get_db, get_current_user
 from clickhouse_utils import get_ch_client, CH_DB
+from money_utils import from_cents
 import datetime
 import logging
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(tags=["Dashboard"])
 
-@router.get("/v1/activity")
+@router.get("/summary")
+async def get_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Placeholder for summary logic until fully implemented."""
+    return {"status": "ok"}
+
+@router.get("/activity")
 async def get_activity(
     category: Optional[str] = None,
     from_date: Optional[str] = None,
@@ -126,7 +135,7 @@ async def get_balance_history(
 
         # Build cumulative balance history
         balance_history = []
-        current_balance = float(account.balance / 100)
+        current_balance = int(account.balance)
 
         # Get start date
         start_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
@@ -138,20 +147,20 @@ async def get_balance_history(
                     if hasattr(row["date"], "isoformat")
                     else str(row["date"]),
                     "balance": current_balance,
-                    "daily_change": float(row["daily_change"] / 100)
+                    "daily_change": int(row["daily_change"])
                     if row["daily_change"]
-                    else 0,
+                    else "0.00",
                 }
             )
 
         return {
             "balance_history": balance_history,
-            "current_balance": float(account.balance / 100),
+            "current_balance": int(account.balance),
         }
     except Exception as e:
         logger.error(f"Error querying ClickHouse: {e}")
         # Fallback: return just current balance
-        return {"balance_history": [], "current_balance": float(account.balance / 100)}
+        return {"balance_history": [], "current_balance": int(account.balance)}
 
 
 @router.get("/dashboard/recent-transactions")
@@ -239,7 +248,7 @@ async def get_recent_transactions(
             if tx_id not in latest_ch_txs:
                 latest_ch_txs[tx_id] = {
                     "id": tx_id,
-                    "amount": float(row[1] / 100),
+                    "amount": int(row[1]),
                     "category": row[2],
                     "merchant": row[3],
                     "sender_email": row[4],
@@ -398,7 +407,7 @@ async def get_all_transactions(
                 "id": row["transaction_id"],
                 "sender_email": row.get("sender_email"),
                 "recipient_email": row.get("recipient_email"),
-                "amount": float(row["amount"] / 100),
+                "amount": int(row["amount"]),
                 "category": row["category"],
                 "merchant": row["merchant"],
                 "type": row["transaction_type"],
@@ -444,7 +453,7 @@ async def get_all_transactions(
             tx = {
                 "id": str(row.id),
                 "merchant": row.merchant or "",
-                "amount": float(row.amount / 100),
+                "amount": int(row.amount),
                 "category": row.category or "Transfer",
                 "type": row.transaction_type or "expense",
                 "side": row.transaction_side or "",

@@ -21,23 +21,39 @@ from clickhouse_utils import get_ch_client, CH_DB
 import clickhouse_connect
 from activity import emit_activity
 from sync_checker import run_sync_check
+from config import settings
+from services.admin_service import compliance_delete_user, get_system_metrics
 
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "bank_transactions")
-KAFKA_USER = os.getenv("KAFKA_USER")
-KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
+KAFKA_BOOTSTRAP_SERVERS = settings.KAFKA_BOOTSTRAP_SERVERS
+KAFKA_TOPIC = settings.KAFKA_TOPIC
+KAFKA_USER = settings.KAFKA_USER
+KAFKA_PASSWORD = settings.KAFKA_PASSWORD
 
-CH_HOST = os.getenv("CLICKHOUSE_HOST")
-CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
-CH_USER = os.getenv("CLICKHOUSE_USER")
-CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD")
+CH_HOST = settings.CLICKHOUSE_HOST
+CH_PORT = settings.CLICKHOUSE_PORT
+CH_USER = settings.CLICKHOUSE_USER
+CH_PASSWORD = settings.CLICKHOUSE_PASSWORD
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 admin_only = RoleChecker(["admin"])
 
-@router.get("/v1/admin/stats")
+# Security: Predefined query registry to prevent arbitrary SQL execution
+PREDEFINED_QUERIES = {
+    "clickhouse": {
+        "get_recent_transactions": f"SELECT * FROM {settings.CLICKHOUSE_DB}.transactions ORDER BY event_time DESC LIMIT :limit",
+        "get_transaction_trace": f"SELECT transaction_id, event_time FROM {settings.CLICKHOUSE_DB}.transactions WHERE transaction_id IN :tx_ids",
+        "get_activity_log": f"SELECT * FROM {settings.CLICKHOUSE_DB}.activity_events WHERE user_id = :user_id ORDER BY event_time DESC LIMIT :limit",
+    },
+    "postgres": {
+        "get_recent_transactions": "SELECT * FROM transactions ORDER BY created_at DESC LIMIT :limit",
+        "get_user_details": "SELECT id, email, full_name, role, created_at FROM users WHERE id = :user_id",
+        "get_account_details": "SELECT id, user_id, name, balance, account_uuid FROM accounts WHERE id = :account_id",
+    }
+}
+
+@router.get("/admin/stats")
 async def get_stats(
     db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_only)
 ):
@@ -47,7 +63,7 @@ async def get_stats(
 
     # 2. ClickHouse Count
     ch_client = get_ch_client()
-    ch_result = ch_client.query("SELECT count() FROM transactions")
+    ch_result = ch_client.query(f"SELECT count() FROM {settings.CLICKHOUSE_DB}.transactions")
     ch_count = ch_result.result_rows[0][0]
 
     # 3. Delta
@@ -81,20 +97,20 @@ async def get_stats(
         .filter(Transaction.category == "P2P", Transaction.created_at >= yesterday)
     )
     system_volume_cents = result.scalar() or 0
-    system_volume = float(system_volume_cents / 100)
+    system_volume = int(system_volume_cents)
 
     return {
         "postgres_count": pg_count,
         "clickhouse_count": ch_count,
         "delta": delta,
         "kafka_lag": lag,
-        "system_volume": float(system_volume),
+        "system_volume": int(system_volume),
         "sync_health": "in_sync" if delta < 5 else "syncing",
         "status": "healthy" if lag < 5000 and lag >= 0 else "degraded",
     }
 
 
-@router.get("/v1/admin/users", response_model=List[UserResponse])
+@router.get("/admin/users", response_model=List[UserResponse])
 async def list_users(
     skip: int = 0,
     limit: int = 100,
@@ -109,7 +125,7 @@ async def list_users(
     return users
 
 
-@router.get("/v1/admin/users/search", response_model=UserResponse)
+@router.get("/users/search", response_model=UserResponse)
 async def search_user_by_email(
     email: str,
     db: AsyncSession = Depends(get_db),
@@ -123,7 +139,7 @@ async def search_user_by_email(
     return user
 
 
-@router.delete("/v1/admin/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/admin/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
     user_id: int,
     db: AsyncSession = Depends(get_db),
@@ -131,69 +147,12 @@ async def delete_user(
 ):
     """
     Compliance-grade User Deletion (Right to Erasure).
-    Anonymizes audit logs in Postgres and purges transaction data from ClickHouse.
+    Delegates anonymization and purging to the admin service.
     """
-    # 1. Verify User Exists
-    result = await db.execute(select(User).filter(User.id == user_id))
-    target_user = result.scalars().first()
-    if not target_user:
+    success = await compliance_delete_user(db, current_user.id, user_id)
+    if not success:
         raise HTTPException(status_code=404, detail="User not found")
-
-    # 2. Collect accounts for ClickHouse purge
-    result = await db.execute(select(Account.id).filter(Account.user_id == user_id))
-    account_ids = [acc_id for acc_id in result.scalars().all()]
     
-    # 3. Emit Audit Event BEFORE deletion
-    emit_activity(
-        db,
-        current_user.id,
-        "security",
-        "user_deleted",
-        f"Admin deleted user ID {user_id}",
-        {"target_user_id": user_id, "target_user_email": target_user.email},
-        ip=None, # Simplified for now
-        user_agent=None
-    )
-    # emit_activity adds to db session, so it will be committed below
-    
-    # 4. Anonymize Postgres Transactions
-    if account_ids:
-        # We keep the transactions for accounting integrity but scrub PII
-        await db.execute(
-            text("""
-                UPDATE transactions 
-                SET merchant = 'DELETED_USER', 
-                    commentary = NULL, 
-                    ip_address = NULL, 
-                    user_agent = NULL
-                WHERE account_id = ANY(:account_ids)
-            """),
-            {"account_ids": account_ids}
-        )
-
-    # 5. Manual Cascade Deletion (since DB doesn't have ON DELETE CASCADE)
-    # Delete dependent rows in order
-    await db.execute(text("DELETE FROM scheduled_payments WHERE user_id = :uid"), {"uid": user_id})
-    await db.execute(text("DELETE FROM payment_requests WHERE requester_id = :uid"), {"uid": user_id})
-    await db.execute(text("DELETE FROM contacts WHERE user_id = :uid"), {"uid": user_id})
-    await db.execute(text("DELETE FROM idempotency_keys WHERE user_id = :uid"), {"uid": user_id})
-    await db.execute(text("DELETE FROM accounts WHERE user_id = :uid"), {"uid": user_id})
-    await db.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
-
-    # 6. ClickHouse Purge (Mutations)
-    try:
-        ch = get_ch_client()
-        # Purge Transactions
-        if account_ids:
-            ch.command(f"ALTER TABLE {CH_DB}.transactions DELETE WHERE account_id IN ({','.join(map(str, account_ids))})")
-        
-        # Purge Activity Events
-        ch.command(f"ALTER TABLE {CH_DB}.activity_events DELETE WHERE user_id = {user_id}")
-    except Exception as e:
-        # We log and continue, as the primary source of truth (Postgres) is already handled
-        logger.error(f"ClickHouse purge failed for user {user_id}: {e}")
-
-    await db.commit()
     return None
 
 
@@ -246,7 +205,7 @@ async def get_traces(
 
 
 
-@router.post("/v1/admin/simulate")
+@router.post("/admin/simulate")
 async def simulate_traffic(
     req: SimulationRequest,
     background_tasks: BackgroundTasks,
@@ -343,7 +302,7 @@ def get_ch_logs(current_user: User = Depends(admin_only)):
     return logs
 
 
-@router.post("/v1/admin/sync-clickhouse")
+@router.post("/admin/sync-clickhouse")
 def manual_sync_clickhouse(
     background_tasks: BackgroundTasks,
     current_user: User = Depends(admin_only)
@@ -352,32 +311,31 @@ def manual_sync_clickhouse(
     return {"status": "success", "message": "Manual ClickHouse sync started in the background."}
 
 
-@router.get("/v1/admin/config")
+@router.get("/admin/config")
 async def get_admin_config(current_user: User = Depends(admin_only)):
     """Returns full configuration for database connectivity (admin-only)."""
-    from database import POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
     
     return {
-        "env": os.getenv("ENV", "development"),
+        "env": settings.ENV,
         "clickhouse": {
-            "host": CH_HOST,
-            "port": CH_PORT,
-            "username": CH_USER,
-            "password": CH_PASSWORD,
-            "database": os.getenv("CLICKHOUSE_DB", "banking")
+            "host": settings.CLICKHOUSE_HOST,
+            "port": settings.CLICKHOUSE_PORT,
+            "username": settings.CLICKHOUSE_USER,
+            "password": settings.CLICKHOUSE_PASSWORD,
+            "database": settings.CLICKHOUSE_DB
         },
         "postgres": {
-            "host": POSTGRES_HOST,
-            "port": POSTGRES_PORT,
-            "username": POSTGRES_USER,
-            "password": POSTGRES_PASSWORD,
-            "database": POSTGRES_DB
+            "host": settings.POSTGRES_HOST,
+            "port": settings.POSTGRES_PORT,
+            "username": settings.POSTGRES_USER,
+            "password": settings.POSTGRES_PASSWORD,
+            "database": settings.POSTGRES_DB
         },
         "kafka": {
-            "bootstrap_servers": KAFKA_BOOTSTRAP_SERVERS,
-            "username": KAFKA_USER,
-            "password": KAFKA_PASSWORD,
-            "topic": KAFKA_TOPIC
+            "bootstrap_servers": settings.KAFKA_BOOTSTRAP_SERVERS,
+            "username": settings.KAFKA_USER,
+            "password": settings.KAFKA_PASSWORD,
+            "topic": settings.KAFKA_TOPIC
         }
     }
 
@@ -386,59 +344,43 @@ async def get_admin_config(current_user: User = Depends(admin_only)):
 producer = None
 
 
-def _validate_sql_query(query: str):
-    """Validates SQL query for safety."""
-    query_upper = query.strip().upper()
-    if not query_upper.startswith("SELECT"):
-        raise HTTPException(
-            status_code=400, detail="Only SELECT queries are allowed"
-        )
 
-    # Block forbidden keywords that could be used for injection or destructive actions
-    forbidden = [
-        "DROP",
-        "DELETE",
-        "UPDATE",
-        "INSERT",
-        "TRUNCATE",
-        "ALTER",
-        "CREATE",
-        "GRANT",
-        "REVOKE",
-        "RENAME",
-    ]
-    for word in forbidden:
-        if re.search(r"\b" + word + r"\b", query_upper):
-            raise HTTPException(
-                status_code=400, detail=f"Forbidden keyword '{word}' detected"
-            )
+# _validate_sql_query removed as we now use a predefined query registry.
 
 
 def _execute_clickhouse_query(request: QueryRequest) -> Tuple[List, List]:
-    """Executes a query against ClickHouse."""
-    _validate_sql_query(request.query)
+    """Executes a predefined query against ClickHouse."""
+    query_name = request.query  # Now we expect the name of the predefined query
+    source_queries = PREDEFINED_QUERIES.get("clickhouse", {})
+    
+    if query_name not in source_queries:
+        raise HTTPException(status_code=400, detail=f"Invalid ClickHouse query name: {query_name}")
+    
+    query_template = source_queries[query_name]
 
-    # Connect to ClickHouse using readonly credentials for safety
     ch_client = clickhouse_connect.get_client(
-        host=CH_HOST,
-        port=CH_PORT,
-        username=CH_USER,
-        password=os.getenv("CLICKHOUSE_READONLY_PASSWORD", "REDACTED"),
+        host=settings.CLICKHOUSE_HOST,
+        port=settings.CLICKHOUSE_PORT,
+        username=settings.CLICKHOUSE_USER,
+        password=settings.CLICKHOUSE_READONLY_PASSWORD or settings.CLICKHOUSE_PASSWORD,
     )
 
-    # Corrected query execution with parameter support
-    # Only allow params that are used in actual placeholder syntax {param}
-    # Note: clickhouse_connect supports parameter binding
-    result = ch_client.query(request.query, parameters=request.params)
+    result = ch_client.query(query_template, parameters=request.params)
     return result.result_rows, result.column_names
 
 
 async def _execute_postgres_query(request: QueryRequest, db: AsyncSession) -> Tuple[List, List]:
-    """Executes a query against PostgreSQL."""
-    _validate_sql_query(request.query)
+    """Executes a predefined query against PostgreSQL."""
+    query_name = request.query
+    source_queries = PREDEFINED_QUERIES.get("postgres", {})
+    
+    if query_name not in source_queries:
+        raise HTTPException(status_code=400, detail=f"Invalid Postgres query name: {query_name}")
+    
+    query_template = source_queries[query_name]
 
     # Execute PostgreSQL query with parameter binding to prevent SQL injection
-    result = await db.execute(text(request.query), request.params)
+    result = await db.execute(text(query_template), request.params)
     data = [dict(row._mapping) for row in result]
     columns = list(data[0].keys()) if data else []
     return data, columns
@@ -560,7 +502,7 @@ def _get_kafka_topic_stats() -> Tuple[List, List]:
         )
 
 
-@router.post("/v1/admin/query")
+@router.post("/admin/query")
 async def execute_admin_query(
     request: QueryRequest,
     current_user: User = Depends(admin_only),
@@ -600,7 +542,7 @@ async def execute_admin_query(
 
 
 
-@router.get("/v1/admin/banking-metrics")
+@router.get("/admin/banking-metrics")
 async def get_banking_metrics(
     current_user: User = Depends(admin_only), db: Session = Depends(get_db)
 ):
@@ -634,9 +576,9 @@ async def get_banking_metrics(
 
         volume_result = ch_client.query(volume_query.format(CH_DB=CH_DB))
         volume_data = volume_result.result_rows[0]
-        total_volume = float(volume_data[0]) if volume_data[0] else 0
+        total_volume = int(volume_data[0]) if volume_data[0] else 0
         transaction_count = int(volume_data[1]) if volume_data[1] else 0
-        avg_transaction_size = float(volume_data[2]) if volume_data[2] else 0
+        avg_transaction_size = int(volume_data[2]) if volume_data[2] else 0
 
         # Top transactions in last 24h
         top_transactions_query = """
@@ -652,7 +594,7 @@ async def get_banking_metrics(
         top_transactions = [
             {
                 "merchant": row[0],
-                "amount": float(row[1]),
+                "amount": int(row[1]),
                 "account_id": row[2],
                 "created_at": row[3].isoformat() if row[3] else None,
             }
@@ -676,7 +618,7 @@ async def get_banking_metrics(
             {
                 "hour": int(row[0]),
                 "count": int(row[1]),
-                "total": float(row[2]) if row[2] else 0,
+                "total": int(row[2]) if row[2] else 0,
             }
             for row in hourly_result.result_rows
         ]
@@ -700,7 +642,7 @@ async def get_banking_metrics(
             {
                 "merchant": row[0],
                 "transaction_count": int(row[1]),
-                "total_amount": float(row[2]) if row[2] else 0,
+                "total_amount": int(row[2]) if row[2] else 0,
             }
             for row in merchant_result.result_rows
         ]
@@ -722,19 +664,19 @@ async def get_banking_metrics(
         ]
 
         return {
-            "totalVolume": float(total_volume / 100), # Convert to dollar-float for UI if needed, or keep cents
+            "totalVolume": int(total_volume),
             "transactionCount": transaction_count,
-            "totalBalance": float(total_balance / 100),
+            "totalBalance": int(total_balance),
             "activeUsers": active_users_24h,
-            "avgTransactionSize": float(avg_transaction_size / 100),
+            "avgTransactionSize": int(avg_transaction_size),
             "topTransactions": [
-                {**tx, "amount": float(tx["amount"] / 100)} for tx in top_transactions
+                {**tx, "amount": int(tx["amount"])} for tx in top_transactions
             ],
             "hourlyVolume": [
-                {**h, "total": float(h["total"] / 100)} for h in hourly_volume
+                {**h, "total": int(h["total"])} for h in hourly_volume
             ],
             "merchantStats": [
-                {**m, "total_amount": float(m["total_amount"] / 100)} for m in merchant_stats
+                {**m, "total_amount": int(m["total_amount"])} for m in merchant_stats
             ],
             "userGrowth": user_growth,
         }

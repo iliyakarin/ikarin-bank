@@ -1,15 +1,15 @@
-import os
 import clickhouse_connect
 import logging
+from config import settings
 
 logger = logging.getLogger(__name__)
 
 # Configuration
-CH_HOST = os.getenv("CLICKHOUSE_HOST")
-CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
-CH_USER = os.getenv("CLICKHOUSE_USER")
-CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD")
-CH_DB = os.getenv("CLICKHOUSE_DB")
+CH_HOST = settings.CLICKHOUSE_HOST
+CH_PORT = settings.CLICKHOUSE_PORT
+CH_USER = settings.CLICKHOUSE_USER
+CH_PASSWORD = settings.CLICKHOUSE_PASSWORD
+CH_DB = settings.CLICKHOUSE_DB
 
 _ch_client = None
 

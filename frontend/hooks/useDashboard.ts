@@ -46,7 +46,7 @@ export function useTransactions(hours: number = 24, autoRefresh: boolean = true)
             }
 
             const response = await fetch(
-                `/api/dashboard/recent-transactions?hours=${hours}`,
+                `/api/v1/dashboard/recent-transactions?hours=${hours}`,
                 {
                     headers: {
                         'Authorization': `Bearer ${authToken}`,
@@ -164,7 +164,7 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
 
             if (mountedRef.current && user) {
                 const balanceResponse = await fetch(
-                    `/api/accounts/${user.id}`,
+                    `/api/v1/accounts/${user.id}`,
                     {
                         headers: { 'Authorization': `Bearer ${authToken}` },
                         signal: controller.signal,

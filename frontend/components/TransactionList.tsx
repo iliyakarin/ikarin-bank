@@ -1,7 +1,7 @@
 "use client";
 import React from 'react';
 import { Transaction } from '@/lib/types';
-import { getTransactionStatus, getStatusLabel } from '@/lib/transactionUtils';
+import { getTransactionStatus, getStatusLabel, formatCurrency } from '@/lib/transactionUtils';
 import { CATEGORY_ICONS, DEFAULT_CATEGORY_ICON } from '@/lib/constants';
 import { motion } from 'framer-motion';
 import { Check, Clock, AlertCircle } from 'lucide-react';
@@ -20,7 +20,6 @@ function TransactionItem({ transaction, index }: { transaction: Transaction, ind
 
     // Apply colors and prefixes
     const amountColor = isIncome ? 'text-emerald-400' : 'text-rose-400';
-    const amountPrefix = isIncome ? '+' : '-';
 
 
 
@@ -82,7 +81,7 @@ function TransactionItem({ transaction, index }: { transaction: Transaction, ind
             </div>
             <div className="text-right flex flex-col justify-end items-end gap-1">
                 <p className={`font-bold text-lg ${amountColor}`}>
-                    {amountPrefix}${Math.abs(transaction.amount).toFixed(2)}
+                    {formatCurrency(transaction.amount)}
                 </p>
                 <p className="text-xs text-white/40 font-medium">
                     {new Date(transaction.created_at + 'Z').toLocaleDateString(settings.useEUDates ? 'en-GB' : 'en-US', { month: 'short', day: 'numeric' })}

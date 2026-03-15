@@ -49,7 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const fetchUser = async (authToken: string) => {
         try {
-            const res = await fetch('/api/auth/me', {
+            const res = await fetch('/api/v1/me', {
                 headers: {
                     'Authorization': `Bearer ${authToken}`
                 }
@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Call server-side logout to record the event
         try {
             if (token) {
-                await fetch('/api/auth/logout', {
+                await fetch('/api/v1/logout', {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` },
                 });

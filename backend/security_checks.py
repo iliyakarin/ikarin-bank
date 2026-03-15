@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from database import Transaction, Account
 from activity import emit_activity
+from money_utils import from_cents
 import os
 import logging
 from clickhouse_utils import get_ch_client, CH_DB
@@ -79,25 +80,25 @@ async def check_anomaly(db: AsyncSession, user_id: int, amount: int) -> bool:
         if not account_ids:
             return False
 
-        ids_str = ",".join(str(i) for i in account_ids)
-
         result = ch.query(
             f"""
             SELECT
                 avg(abs(amount)) as avg_amount,
                 stddevPop(abs(amount)) as std_amount,
                 count() as tx_count
-            FROM {CH_DB}.transactions FINAL
-            WHERE account_id IN ({ids_str})
+            FROM {{CH_DB}}.transactions FINAL
+            WHERE account_id IN {{ids:Array(Int64)}}
               AND event_time >= now() - INTERVAL 90 DAY
-            """
+            """,
+            parameters={'ids': account_ids},
+            settings={'substitute_params': True}
         )
 
         if not result.result_rows or result.result_rows[0][2] < 5:
             # Not enough history to compute meaningful average
             return False
 
-        avg_amount = float(result.result_rows[0][0])
+        avg_amount = int(result.result_rows[0][0])
         tx_count = result.result_rows[0][2]
 
         if avg_amount <= 0:
@@ -110,11 +111,11 @@ async def check_anomaly(db: AsyncSession, user_id: int, amount: int) -> bool:
                 user_id,
                 "security",
                 "anomaly_alert",
-                f"🔍 Unusual amount: {amount / 100:.2f} (avg: {avg_amount / 100:.2f})",
+                f"🔍 Unusual amount: {from_cents(amount)} (avg: {from_cents(avg_amount)})",
                 {
                     "amount": amount,
-                    "average": round(avg_amount, 2),
-                    "multiplier": round(amount / avg_amount, 1) if avg_amount > 0 else 0,
+                    "average": avg_amount,
+                    "multiplier": amount // avg_amount if avg_amount > 0 else 0,
                     "history_count": tx_count,
                 },
             )
