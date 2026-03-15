@@ -6,22 +6,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import HTTPException
 
-from database import Account, Transaction, Outbox, User, IdempotencyKey
+from database import Account, Transaction, Outbox, User, IdempotencyKey, Subscription
+from activity import emit_activity
 
 logger = logging.getLogger(__name__)
 
 async def _atomic_topup_balance(
     db: AsyncSession,
-    user_email: str,
+    user_id: int,
     amount: Decimal,
     idempotency_key: str,
     stripe_session_id: str
 ):
     # 1. Get User & Primary Account
-    result = await db.execute(select(User).filter(User.email == user_email))
+    result = await db.execute(select(User).filter(User.id == user_id))
     user = result.scalars().first()
     if not user:
-        logger.error(f"User not found for topup: {user_email}")
+        logger.error(f"User not found for topup ID: {user_id}")
         return
 
     # 2. Idempotency Check
@@ -40,7 +41,7 @@ async def _atomic_topup_balance(
     )
     account = result.scalars().first()
     if not account:
-        logger.error(f"Main account not found for user: {user_email}")
+        logger.error(f"Main account not found for user ID: {user_id}")
         return
 
     # 3. Update Balance
@@ -62,7 +63,7 @@ async def _atomic_topup_balance(
         ip_address="stripe_webhook",
         user_agent="stripe",
         sender_email="stripe@karinbank.com",
-        recipient_email=user_email,
+        recipient_email=user.email,
         commentary=f"Stripe Session: {stripe_session_id}",
         internal_account_last_4=account.account_number_last_4
     )
@@ -75,7 +76,7 @@ async def _atomic_topup_balance(
         "account_id": account.id,
         "internal_account_last_4": account.account_number_last_4,
         "sender_email": "stripe@karinbank.com",
-        "recipient_email": user_email,
+        "recipient_email": user.email,
         "amount": float(amount),
         "category": "Deposit",
         "merchant": "Stripe Top-Up",
@@ -87,40 +88,142 @@ async def _atomic_topup_balance(
     }
     db.add(Outbox(event_type="stripe.deposit", payload=outbox_payload))
     
+    # 6. Emit Activity
+    emit_activity(
+        db=db,
+        user_id=user.id,
+        category="p2p",
+        action="deposit_success",
+        title=f"Deposited ${float(amount):.2f} via Stripe",
+        details={"transaction_id": tx_id, "amount": float(amount)}
+    )
+
     await db.commit()
 
 
-async def handle_topup(session_event: dict, db: AsyncSession):
+async def handle_checkout_completed(session: dict, db: AsyncSession):
     """
-    Handles a successful top-up from Stripe checkout session.
-    Expects amount to be in cents, converts to Decimal dollars.
+    Handles a successful checkout session completion.
+    Supports both one-time payments and subscriptions.
     """
-    session_id = session_event.get("id")
-    metadata = session_event.get("metadata", {})
-    user_email = metadata.get("user_id")  # stored as 'sub' in standard jwt which is email
+    session_id = session.get("id")
+    metadata = session.get("metadata", {})
+    user_id = metadata.get("user_id")
+    mode = metadata.get("mode", "payment")
     
-    if not user_email:
+    if not user_id:
         logger.error(f"No user ID in metadata for session {session_id}")
         return
 
-    amount_total = session_event.get("amount_total")
-    if not amount_total:
-         logger.error("No amount found in session")
-         return
-
-    amount_dollars = Decimal(str(amount_total)) / Decimal("100")
-    
-    idempotency_key = f"stripe_topup_{session_id}"
-
     try:
-        await _atomic_topup_balance(
-            db=db,
-            user_email=user_email,
-            amount=amount_dollars,
-            idempotency_key=idempotency_key,
-            stripe_session_id=session_id
-        )
-        logger.info(f"Top-up successful for {user_email}: {amount_dollars}")
-    except Exception as e:
-        await db.rollback()
-        logger.error(f"Top-up failed for {user_email}: {e}")
+        user_id = int(user_id)
+    except ValueError:
+        logger.error(f"Invalid user ID in metadata: {user_id}")
+        return
+
+    if mode == "payment":
+        amount_total = session.get("amount_total")
+        if not amount_total:
+             logger.error("No amount found in session")
+             return
+
+        amount_dollars = Decimal(str(amount_total)) / Decimal("100")
+        idempotency_key = f"stripe_topup_{session_id}"
+
+        try:
+            await _atomic_topup_balance(
+                db=db,
+                user_id=user_id,
+                amount=amount_dollars,
+                idempotency_key=idempotency_key,
+                stripe_session_id=session_id
+            )
+            logger.info(f"Top-up successful for user {user_id}: {amount_dollars}")
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Top-up failed for user {user_id}: {e}")
+
+    elif mode == "subscription":
+        # Handle subscription creation
+        stripe_sub_id = session.get("subscription")
+        idempotency_key = f"stripe_sub_{stripe_sub_id}"
+        
+        # Check idempotency
+        res = await db.execute(select(IdempotencyKey).filter(IdempotencyKey.key == idempotency_key))
+        if res.scalars().first():
+            logger.info(f"Subscription fulfillment skipped (idempotent): {idempotency_key}")
+            return
+
+        db.add(IdempotencyKey(key=idempotency_key, user_id=user_id))
+        
+        # Update User
+        res = await db.execute(select(User).filter(User.id == user_id))
+        user = res.scalars().first()
+        if user:
+            user.is_black = True
+            
+            # Create Subscription record
+            new_sub = Subscription(
+                user_id=user_id,
+                plan_name="Karin Black",
+                amount=Decimal("49.00"),
+                status="active",
+                current_period_end=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)
+            )
+            db.add(new_sub)
+            
+            emit_activity(
+                db=db,
+                user_id=user_id,
+                category="settings",
+                action="subscription_started",
+                title="Upgraded to Karin Black",
+                details={"stripe_subscription_id": stripe_sub_id}
+            )
+            await db.commit()
+            logger.info(f"Subscription activated for user {user_id}")
+
+async def handle_subscription_deleted(stripe_subscription: dict, db: AsyncSession):
+    """
+    Handles subscription cancellation from Stripe.
+    """
+    stripe_sub_id = stripe_subscription.get("id")
+    # Finding user by searching for active subscription with this ID would be ideal
+    # For now, we'll search by user_id if present in metadata or just find the user's active sub
+    customer_id = stripe_subscription.get("customer")
+    
+    # Normally we'd look up user by stripe_customer_id
+    # But for simplicity in this mock-to-real transition, let's find the user's most recent active sub
+    # In production, you MUST store stripe_customer_id and stripe_subscription_id.
+    
+    # For this exercise, we'll try to find the User via metadata if available
+    metadata = stripe_subscription.get("metadata", {})
+    user_id = metadata.get("user_id")
+    
+    if user_id:
+        res = await db.execute(select(User).filter(User.id == int(user_id)))
+        user = res.scalars().first()
+        if user:
+            user.is_black = False
+            
+            # Deactivate all active subs for this user
+            res = await db.execute(
+                select(Subscription).filter(
+                    Subscription.user_id == user.id,
+                    Subscription.status == "active"
+                )
+            )
+            active_subs = res.scalars().all()
+            for sub in active_subs:
+                sub.status = "cancelled"
+            
+            emit_activity(
+                db=db,
+                user_id=user.id,
+                category="settings",
+                action="subscription_cancelled",
+                title="Karin Black Subscription Ended",
+                details={"stripe_subscription_id": stripe_sub_id}
+            )
+            await db.commit()
+            logger.info(f"Subscription deactivated for user {user.id}")

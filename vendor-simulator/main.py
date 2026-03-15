@@ -20,6 +20,13 @@ from typing import List
 
 # Configuration
 DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    user = os.getenv("VENDOR_SIMULATOR_DB_USER", "admin")
+    password = os.getenv("VENDOR_SIMULATOR_DB_PASSWORD", "password123")
+    host = os.getenv("VENDOR_SIMULATOR_DB_HOST", "vendor-simulator-db")
+    db_name = os.getenv("VENDOR_SIMULATOR_DB_NAME", "vendor_simulator_db")
+    DATABASE_URL = f"postgresql+asyncpg://{user}:{password}@{host}:5432/{db_name}"
+
 SIMULATOR_API_KEY = os.getenv("SIMULATOR_API_KEY")
 
 # Engine & Session
