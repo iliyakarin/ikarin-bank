@@ -1,5 +1,3 @@
-import re
-from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
@@ -28,7 +26,7 @@ class SubAccountRename(BaseModel):
 class InternalTransferRequest(BaseModel):
     from_account_id: int
     to_account_id: int
-    amount: Decimal
+    amount: int
     commentary: Optional[str] = None
 
 def is_valid_name(name: str) -> bool:
@@ -81,8 +79,8 @@ async def create_sub_account(
         is_main=False,
         parent_account_id=main_account.id,
         name=name,
-        balance=Decimal("0.00"),
-        reserved_balance=Decimal("0.00")
+        balance=0,
+        reserved_balance=0
     )
     await assign_account_credentials(db, new_sub)
     db.add(new_sub)
@@ -104,7 +102,7 @@ async def create_sub_account(
     await db.commit()
     await db.refresh(new_sub)
     
-    return {"id": new_sub.id, "name": new_sub.name, "balance": float(new_sub.balance)}
+    return {"id": new_sub.id, "name": new_sub.name, "balance": float(new_sub.balance / 100)}
 
 @router.patch("/{account_id}")
 async def rename_account(
@@ -225,11 +223,11 @@ async def internal_transfer(
             current_user.id, 
             "sub_account", 
             "transfer", 
-            f"Transferred ${float(request.amount):.2f} from {sender.name} to {receiver.name}", 
+            f"Transferred {request.amount / 100:.2f} from {sender.name} to {receiver.name}", 
             {
                 "from_account": sender.name,
                 "to_account": receiver.name,
-                "amount": float(request.amount),
+                "amount": request.amount,
                 "transaction_id": tx_id_parent,
             },
             ip=current_request.client.host,
@@ -241,8 +239,8 @@ async def internal_transfer(
         return {
             "status": "success", 
             "message": "Internal transfer completed",
-            "sender_balance": float(sender.balance),
-            "receiver_balance": float(receiver.balance)
+            "sender_balance": float(sender.balance / 100),
+            "receiver_balance": float(receiver.balance / 100)
         }
     except HTTPException:
         await db.rollback()

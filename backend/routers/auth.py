@@ -56,7 +56,7 @@ async def register(request: Request, user: UserCreate, db: AsyncSession = Depend
     await db.refresh(new_user)
 
     # Auto-create an account for the new user
-    new_account = Account(user_id=new_user.id, balance=0.00, name="Main Account", is_main=True)
+    new_account = Account(user_id=new_user.id, balance=0, name="Main Account", is_main=True)
     await assign_account_credentials(db, new_account)
     db.add(new_account)
     await db.commit()
@@ -281,7 +281,7 @@ async def get_notifications(
                 "type": "transaction",
                 "title": title,
                 "message": msg,
-                "amount": float(tx.amount) if tx.amount else None,
+                "amount": float(tx.amount / 100) if tx.amount else None,
                 "created_at": tx.created_at,
                 "link": "/client/transactions"
             })
@@ -301,17 +301,17 @@ async def get_notifications(
         is_requester = req.requester_id == current_user.id
         if is_requester:
             title = "Request Sent"
-            msg = f"You requested ${req.amount} from {req.target_email}"
+            msg = f"You requested {req.amount / 100:.2f} from {req.target_email}"
         else:
             title = "Request Received"
-            msg = f"Someone requested ${req.amount} from you"
+            msg = f"Someone requested {req.amount / 100:.2f} from you"
             
         notifications.append({
             "id": f"pr_{req.id}",
             "type": "payment_request",
             "title": title,
             "message": msg,
-            "amount": float(req.amount) if req.amount else None,
+            "amount": float(req.amount / 100) if req.amount else None,
             "created_at": req.created_at,
             "link": "/client/send?tab=request"
         })
