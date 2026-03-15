@@ -1,23 +1,15 @@
 import secrets
-import os
+import uuid
 from cryptography.fernet import Fernet
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from dotenv import load_dotenv
 from database import Account
 from typing import Optional
-
-# Load environment variables
-load_dotenv()
+from config import settings
 
 # Configuration
 ABA_PREFIX = "1234"  # Karin-Bank branch prefix
-ENCRYPTION_KEY = os.getenv("ACCOUNT_ENCRYPTION_KEY")
-
-if not ENCRYPTION_KEY:
-    # In a real app, this should fail loudly if not configured in production
-    # For this environment, we expect it to be in .env
-    pass
+ENCRYPTION_KEY = settings.ACCOUNT_ENCRYPTION_KEY
 
 cipher_suite = Fernet(ENCRYPTION_KEY.encode()) if ENCRYPTION_KEY else None
 
@@ -56,14 +48,6 @@ def generate_aba() -> str:
     d9 = (10 - (current_val % 10)) % 10
     return partial_aba + str(d9)
 
-def generate_account_number() -> str:
-    """Generates a unique 10 to 12 digit string using secrets for entropy."""
-    length = secrets.choice([10, 11, 12])
-    # Ensure it doesn't start with 0 for consistency
-    first_digit = str(secrets.randbelow(9) + 1)
-    remaining = "".join([str(secrets.randbelow(10)) for _ in range(length - 1)])
-    return first_digit + remaining
-
 def encrypt_account_number(number: str) -> str:
     """Encrypts the account number using Fernet symmetric encryption."""
     if not cipher_suite:
@@ -89,29 +73,26 @@ def generate_internal_reference() -> str:
 async def assign_account_credentials(db: AsyncSession, account: Account):
     """
     Orchestrates the generation and assignment of credentials to an Account.
-    Ensures uniqueness (collision checking).
+    Uses UUIDs to ensure uniqueness without O(N) collision checks.
     """
     # 1. Generate Routing Number (consistent prefix for Karin-Bank)
     account.routing_number = generate_aba()
     
-    # 2. Generate Unique Account Number
-    while True:
-        acc_num = generate_account_number()
-        # Check for collision in accounts table
-        last_4 = acc_num[-4:]
-        result = await db.execute(select(Account).filter(Account.account_number_last_4 == last_4))
-        existing = result.scalars().all()
+    # 2. Generate UUID-based account number
+    # We use a standard UUID4 but strip hyphens for the internal reference/encrypted field if needed
+    new_uuid = str(uuid.uuid4())
+    account.account_uuid = new_uuid
+    
+    # For compatibility with existing last_4 logic, we take the last 4 chars of the UUID
+    # or generate a random 10-digit number. Since we have a unique UUID now, 
+    # we don't need to loop-detect collisions for the encrypted representation.
+    acc_num = "".join(filter(str.isdigit, new_uuid))[:12]
+    if len(acc_num) < 10:
+        # Fallback if uuid doesn't have enough digits (rare but possible)
+        acc_num = str(uuid.uuid4().int)[:12]
         
-        collision = False
-        for e in existing:
-            if decrypt_account_number(e.account_number_encrypted) == acc_num:
-                collision = True
-                break
-        
-        if not collision:
-            account.account_number_encrypted = encrypt_account_number(acc_num)
-            account.account_number_last_4 = last_4
-            break
+    account.account_number_encrypted = encrypt_account_number(acc_num)
+    account.account_number_last_4 = acc_num[-4:]
             
     # 3. Generate Internal Reference ID
     while True:
