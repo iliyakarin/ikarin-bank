@@ -4,7 +4,6 @@ Called before P2P transfers to protect against suspicious activity.
 """
 import datetime
 from datetime import timezone, timedelta
-from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from database import Transaction, Account
@@ -64,7 +63,7 @@ async def check_velocity(db: AsyncSession, user_id: int) -> bool:
 
     return True
 
-async def check_anomaly(db: AsyncSession, user_id: int, amount: Decimal) -> bool:
+async def check_anomaly(db: AsyncSession, user_id: int, amount: int) -> bool:
     """
     Check if a transaction amount is anomalously large compared to user's history.
     Queries ClickHouse for 90-day average. Returns True if flagged as anomaly.
@@ -105,17 +104,17 @@ async def check_anomaly(db: AsyncSession, user_id: int, amount: Decimal) -> bool
             return False
 
         # Flag if amount is 5× or more the average
-        if float(amount) >= avg_amount * ANOMALY_MULTIPLIER:
+        if amount >= avg_amount * ANOMALY_MULTIPLIER:
             emit_activity(
                 db,
                 user_id,
                 "security",
                 "anomaly_alert",
-                f"🔍 Unusual amount: ${float(amount):.2f} (avg: ${avg_amount:.2f})",
+                f"🔍 Unusual amount: {amount / 100:.2f} (avg: {avg_amount / 100:.2f})",
                 {
-                    "amount": float(amount),
+                    "amount": amount,
                     "average": round(avg_amount, 2),
-                    "multiplier": round(float(amount) / avg_amount, 1),
+                    "multiplier": round(amount / avg_amount, 1) if avg_amount > 0 else 0,
                     "history_count": tx_count,
                 },
             )
