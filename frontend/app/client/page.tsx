@@ -23,6 +23,7 @@ export default function DashboardPage() {
   const { user, token, settings } = useAuth();
   const [userName, setUserName] = useState<string>("User");
   const [dayFilter, setDayFilter] = useState(1); // Default to 24h
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const {
     transactions,
@@ -92,8 +93,46 @@ export default function DashboardPage() {
     }
   };
 
+  // Check for success parameter in URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('success') === 'true') {
+      setShowSuccess(true);
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   return (
     <div className="space-y-12 pb-12">
+      {/* Success Message */}
+      {showSuccess && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 p-6 rounded-2xl"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
+              <ShieldCheck size={20} />
+            </div>
+            <div className="flex-1">
+              <p className="font-bold">Payment Successful!</p>
+              <p className="text-sm">Your balance will update shortly. Please refresh the page to see your updated balance.</p>
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleRefresh}
+              className="px-4 py-2 bg-emerald-500 text-emerald-950 rounded-xl font-semibold text-sm hover:bg-emerald-400 transition-all"
+              disabled={isRefreshing}
+            >
+              {isRefreshing ? "Updating..." : "Refresh Now"}
+            </motion.button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <motion.div
@@ -149,6 +188,18 @@ export default function DashboardPage() {
           </motion.div>
         </div>
       </div>
+
+      {/* Success Message */}
+      {showSuccess && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 p-4 rounded-2xl"
+        >
+          <p className="font-bold mb-1">Payment Successful!</p>
+          <p className="text-sm">Your balance will update shortly. Please refresh the page to see your new balance.</p>
+        </motion.div>
+      )}
 
       {/* Error Display */}
       {transactionsError && (

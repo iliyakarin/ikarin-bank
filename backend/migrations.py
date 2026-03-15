@@ -28,6 +28,7 @@ async def run_postgres_migrations():
         # 1. users table
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS time_format VARCHAR(10) DEFAULT '12h' NOT NULL"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS date_format VARCHAR(10) DEFAULT 'US' NOT NULL"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_black BOOLEAN DEFAULT FALSE NOT NULL"))
         
         # 2. contacts table
         await conn.execute(text("ALTER TABLE contacts ADD COLUMN IF NOT EXISTS contact_type VARCHAR(20) DEFAULT 'karin' NOT NULL"))

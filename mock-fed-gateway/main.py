@@ -12,6 +12,13 @@ from schemas import (
 
 # Configuration
 DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    user = os.getenv("FED_GATEWAY_DB_USER")
+    password = os.getenv("FED_GATEWAY_DB_PASSWORD")
+    host = os.getenv("FED_GATEWAY_DB_HOST")
+    db_name = os.getenv("FED_GATEWAY_DB_NAME")
+    DATABASE_URL = f"postgresql+asyncpg://{user}:{password}@{host}:5432/{db_name}"
+
 GATEWAY_API_KEY = os.getenv("GATEWAY_API_KEY")
 
 # Engine & Session

@@ -1,37 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CreditCard, Zap, CheckCircle2, X } from "lucide-react";
+import { CreditCard, Zap, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
-
-interface CardDetails {
-    card_number: string;
-    exp_month: string;
-    exp_year: string;
-    cvc: string;
-    name: string;
-}
-
-interface StripeCardResponse {
-    last4: string;
-    brand: string;
-}
-
-interface PaymentMethodResponse {
-    id: string;
-    object: string;
-    type: string;
-    card: StripeCardResponse;
-}
-
-interface PaymentIntentResponse {
-    id: string;
-    object: string;
-    amount: number;
-    currency: string;
-    status: string;
-    client_secret: string;
-}
 
 interface Transaction {
     id: string;
@@ -55,18 +26,8 @@ export default function StripePage() {
     const { token } = useAuth();
 
     const [loading, setLoading] = useState<string | null>(null);
-    const [intentId, setIntentId] = useState<string | null>(null);
-    const [showModal, setShowModal] = useState(false);
     const [amountCents, setAmountCents] = useState(0);
     const [customAmount, setCustomAmount] = useState("");
-
-    const [cardDetails, setCardDetails] = useState<CardDetails>({
-        card_number: "",
-        exp_month: "",
-        exp_year: "",
-        cvc: "",
-        name: ""
-    });
 
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [txLoading, setTxLoading] = useState(true);
@@ -129,89 +90,59 @@ export default function StripePage() {
         setLoading(type);
         setAmountCents(amount);
         try {
-            const response = await fetch("/api/v1/stripe/payment_intents", {
+            const response = await fetch("/api/v1/stripe/create-checkout-session", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${token}`
                 },
-                body: JSON.stringify({ amount, currency: "usd" })
+                body: JSON.stringify({
+                    amount,
+                    currency: "usd",
+                    mode: type === "subscribe" ? "subscription" : "payment",
+                    success_url: `${window.location.origin}/client`,
+                    cancel_url: window.location.href
+                })
             });
 
-            if (!response.ok) throw new Error("Failed to create intent");
-            const data = await response.json() as PaymentIntentResponse;
-            setIntentId(data.id);
-            setShowModal(true);
+            if (!response.ok) throw new Error("Failed to create session");
+            const data = await response.json() as { id: string, url: string };
+            
+            // Redirect to Stripe Checkout
+            window.location.href = data.url;
         } catch (e) {
             console.error(e);
-            alert("Failed to initialize remote checkout");
+            alert("Failed to initialize checkout session");
         } finally {
             setLoading(null);
         }
     };
 
-    const handleMockPayment = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading("confirming");
+    const handleManageSubscription = async () => {
+        setLoading("portal");
         try {
-            // 1. Create Payment Method
-            const pmRes = await fetch("/api/v1/stripe/payment_methods", {
+            const response = await fetch("/api/v1/stripe/create-portal-session", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${token}`
                 },
-                body: JSON.stringify(cardDetails)
-            });
-            if (!pmRes.ok) throw new Error("Failed to create payment method");
-            const pmData = await pmRes.json() as PaymentMethodResponse;
-
-            // 2. Confirm Intent
-            const confirmRes = await fetch(`/api/v1/stripe/payment_intents/${intentId}/confirm`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`,
-                    "Idempotency-Key": (crypto.randomUUID && crypto.randomUUID()) || `${Date.now()}-${Math.random()}`
-                },
-                body: JSON.stringify({ payment_method: pmData.id })
+                body: JSON.stringify({
+                    return_url: window.location.href
+                })
             });
 
-            if (!confirmRes.ok) throw new Error("Failed to confirm intent");
-
-            alert("Payment successful!");
-            setShowModal(false);
-            // Refresh to see new balance or redirect
-            router.push("/client");
-
-        } catch (error) {
-            console.error(error);
-            alert("Payment failed");
-        } finally {
-            setLoading(null);
-        }
-    };
-
-    const handleCancelSubscription = async () => {
-        if (!confirm("Are you sure you want to cancel your Karin Black subscription?")) return;
-        setLoading("cancelling");
-        try {
-            const res = await fetch("/api/v1/stripe/subscriptions/cancel", {
-                method: "POST",
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.ok) {
-                alert("Subscription cancelled successfully");
-                // Refresh data
-                router.refresh();
-                window.location.reload();
-            } else {
-                const data = await res.json();
-                alert(data.detail || "Failed to cancel subscription");
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || "Failed to create portal session");
             }
-        } catch (error) {
-            console.error(error);
-            alert("Error cancelling subscription");
+            const data = await response.json() as { url: string };
+            
+            // Redirect to Stripe Customer Portal
+            window.location.href = data.url;
+        } catch (e) {
+            console.error(e);
+            alert(e instanceof Error ? e.message : "Failed to open billing portal");
         } finally {
             setLoading(null);
         }
@@ -309,11 +240,11 @@ export default function StripePage() {
                             <div className="pt-4">
                                 {subscription?.active ? (
                                     <button
-                                        onClick={handleCancelSubscription}
+                                        onClick={handleManageSubscription}
                                         disabled={loading !== null}
-                                        className="w-full bg-red-500/10 text-red-500 border border-red-500/20 px-6 py-3 rounded-xl text-sm font-medium transition-all active:scale-95 disabled:opacity-50 hover:bg-red-500/20"
+                                        className="w-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-6 py-3 rounded-xl text-sm font-medium transition-all active:scale-95 disabled:opacity-50 hover:bg-emerald-500/20"
                                     >
-                                        {loading === "cancelling" ? "Updating..." : "Cancel Subscription"}
+                                        {loading === "portal" ? "Connecting..." : "Manage Subscription"}
                                     </button>
                                 ) : (
                                     <button
@@ -329,104 +260,6 @@ export default function StripePage() {
                     </div>
                 </div>
 
-                {showModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-                        <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                            <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-                                <h3 className="text-lg font-medium text-white flex items-center gap-2">
-                                    <CreditCard className="w-5 h-5 text-indigo-500" />
-                                    Complete Payment ({amountCents / 100} USD)
-                                </h3>
-                                <button onClick={() => setShowModal(false)} className="text-zinc-500 hover:text-white transition-colors">
-                                    <X className="w-5 h-5" />
-                                </button>
-                            </div>
-
-                            <form onSubmit={handleMockPayment} className="p-6 space-y-6">
-                                <div className="space-y-4">
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-medium text-zinc-400">Cardholder Name</label>
-                                        <input
-                                            required
-                                            type="text"
-                                            placeholder="Jane Doe"
-                                            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2.5 text-white placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
-                                            value={cardDetails.name}
-                                            onChange={e => setCardDetails({ ...cardDetails, name: e.target.value })}
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-medium text-zinc-400">Card Number</label>
-                                        <input
-                                            required
-                                            type="text"
-                                            pattern="[0-9]{16}"
-                                            maxLength={16}
-                                            placeholder="4242 4242 4242 4242"
-                                            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2.5 text-white placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono tracking-widest"
-                                            value={cardDetails.card_number}
-                                            onChange={e => setCardDetails({ ...cardDetails, card_number: e.target.value.replace(/\D/g, '') })}
-                                        />
-                                    </div>
-
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-zinc-400">Month</label>
-                                            <input
-                                                required
-                                                type="text"
-                                                maxLength={2}
-                                                placeholder="MM"
-                                                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2.5 text-white placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
-                                                value={cardDetails.exp_month}
-                                                onChange={e => setCardDetails({ ...cardDetails, exp_month: e.target.value.replace(/\D/g, '') })}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-zinc-400">Year</label>
-                                            <input
-                                                required
-                                                type="text"
-                                                maxLength={4}
-                                                placeholder="YYYY"
-                                                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2.5 text-white placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
-                                                value={cardDetails.exp_year}
-                                                onChange={e => setCardDetails({ ...cardDetails, exp_year: e.target.value.replace(/\D/g, '') })}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-zinc-400">CVC</label>
-                                            <input
-                                                required
-                                                type="text"
-                                                maxLength={4}
-                                                placeholder="123"
-                                                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2.5 text-white placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
-                                                value={cardDetails.cvc}
-                                                onChange={e => setCardDetails({ ...cardDetails, cvc: e.target.value.replace(/\D/g, '') })}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="pt-2">
-                                    <button
-                                        type="submit"
-                                        disabled={loading === "confirming"}
-                                        className="w-full bg-indigo-500 text-white px-6 py-3 rounded-xl text-sm font-medium transition-all active:scale-95 disabled:opacity-50 hover:bg-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.2)] flex items-center justify-center gap-2"
-                                    >
-                                        {loading === "confirming" ? (
-                                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                        ) : (
-                                            `Deposit $${amountCents / 100} to Main Account`
-                                        )}
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                )}
 
                 {/* Historical Transactions Table */}
                 <div className="group relative overflow-hidden rounded-2xl bg-zinc-950 border border-zinc-900 p-8 transition-all hover:bg-zinc-900/50 hover:border-zinc-800 mt-8">
@@ -477,11 +310,11 @@ export default function StripePage() {
                                                 <td className="px-6 py-4 text-center">
                                                     {(tx.category === "Subscription" || tx.merchant === "Karin Black") && subscription?.active ? (
                                                         <button
-                                                            onClick={handleCancelSubscription}
+                                                            onClick={handleManageSubscription}
                                                             disabled={loading !== null}
-                                                            className="text-xs text-red-500 hover:text-red-400 font-medium transition-colors"
+                                                            className="text-xs text-indigo-500 hover:text-indigo-400 font-medium transition-colors"
                                                         >
-                                                            Cancel
+                                                            Manage
                                                         </button>
                                                     ) : (
                                                         <span className="text-xs text-zinc-600">—</span>
