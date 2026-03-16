@@ -23,7 +23,7 @@ const navItems = [
     { name: 'My Cards', href: '/client/cards', icon: CreditCard },
     { name: 'Activity', href: '/client/activity', icon: Activity },
     { name: 'Transactions', href: '/client/transactions', icon: History },
-    { name: 'Pay with Stripe', href: '/client/stripe', icon: Wallet },
+    { name: 'Deposit Funds', href: '/client/deposit', icon: Wallet },
 ];
 
 export default function Sidebar() {

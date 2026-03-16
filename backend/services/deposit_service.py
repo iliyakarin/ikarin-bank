@@ -8,15 +8,16 @@ from fastapi import HTTPException
 
 from database import Account, Transaction, Outbox, User, IdempotencyKey, Subscription
 from activity import emit_activity
+from money_utils import from_cents
 
 logger = logging.getLogger(__name__)
 
 async def _atomic_topup_balance(
     db: AsyncSession,
     user_id: int,
-    amount: Decimal,
+    amount_cents: int,
     idempotency_key: str,
-    stripe_session_id: str
+    gateway_session_id: str
 ):
     # 1. Get User & Primary Account
     result = await db.execute(select(User).filter(User.id == user_id))
@@ -45,7 +46,7 @@ async def _atomic_topup_balance(
         return
 
     # 3. Update Balance
-    account.balance += amount
+    account.balance += amount_cents
 
     # 4. Create Transaction
     tx_id = str(uuid.uuid4())
@@ -53,18 +54,18 @@ async def _atomic_topup_balance(
         id=tx_id,
         parent_id=tx_id,
         account_id=account.id,
-        amount=amount,
-        category="Deposit",
-        merchant="Stripe Top-Up",
+        amount=amount_cents,
+        category="Top-up",
+        merchant="Simulated Gateway",
         status="cleared",
         transaction_type="deposit",
         transaction_side="CREDIT",
         idempotency_key=idempotency_key,
-        ip_address="stripe_webhook",
-        user_agent="stripe",
-        sender_email="stripe@karinbank.com",
+        ip_address="gateway_webhook",
+        user_agent="gateway",
+        sender_email="gateway@karinbank.com",
         recipient_email=user.email,
-        commentary=f"Stripe Session: {stripe_session_id}",
+        commentary=f"Gateway Session: {gateway_session_id}",
         internal_account_last_4=account.account_number_last_4
     )
     db.add(tx)
@@ -75,18 +76,18 @@ async def _atomic_topup_balance(
         "parent_id": tx_id,
         "account_id": account.id,
         "internal_account_last_4": account.account_number_last_4,
-        "sender_email": "stripe@karinbank.com",
+        "sender_email": "gateway@karinbank.com",
         "recipient_email": user.email,
-        "amount": int(amount),
-        "category": "Deposit",
-        "merchant": "Stripe Top-Up",
+        "amount": amount_cents,
+        "category": "Top-up",
+        "merchant": "Simulated Gateway",
         "transaction_type": "deposit",
         "transaction_side": "CREDIT",
         "status": "cleared",
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "commentary": f"Stripe Session: {stripe_session_id}"
+        "commentary": f"Gateway Session: {gateway_session_id}"
     }
-    db.add(Outbox(event_type="stripe.deposit", payload=outbox_payload))
+    db.add(Outbox(event_type="deposit.success", payload=outbox_payload))
     
     # 6. Emit Activity
     emit_activity(
@@ -94,8 +95,8 @@ async def _atomic_topup_balance(
         user_id=user.id,
         category="p2p",
         action="deposit_success",
-        title=f"Deposited ${from_cents(int(amount))} via Stripe",
-        details={"transaction_id": tx_id, "amount": int(amount)}
+        title=f"Deposited ${from_cents(amount_cents)} via Gateway",
+        details={"transaction_id": tx_id, "amount": amount_cents}
     )
 
     await db.commit()
@@ -125,22 +126,18 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
     amount_total = session.get("amount_total") or session.get("amount")
     
     if mode == "payment":
-        if not amount_total:
-             logger.error("No amount found in session/intent")
-             return
-
-        amount_dollars = Decimal(str(amount_total)) / Decimal("100")
+        amount_cents = int(amount_total)
         idempotency_key = f"stripe_deposit_{session_id}"
-
+ 
         try:
             await _atomic_topup_balance(
                 db=db,
                 user_id=user_id,
-                amount=amount_dollars,
+                amount_cents=amount_cents,
                 idempotency_key=idempotency_key,
-                stripe_session_id=session_id
+                gateway_session_id=session_id
             )
-            logger.info(f"Deposit successful for user {user_id}: {amount_dollars}")
+            logger.info(f"Deposit successful for user {user_id}: {amount_cents}")
         except Exception as e:
             await db.rollback()
             logger.error(f"Deposit failed for user {user_id}: {e}")
@@ -168,7 +165,7 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
             new_sub = Subscription(
                 user_id=user_id,
                 plan_name="Karin Black",
-                amount=Decimal("49.00"),
+                amount=4900,
                 status="active",
                 current_period_end=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)
             )

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 // Use same basic auth setup as other tests
-test.describe('Stripe E2E Flow', () => {
+test.describe('Deposit E2E Flow', () => {
   // Wait to setup before proceeding
   test.beforeEach(async ({ page }) => {
     // Navigate to local app
@@ -15,19 +15,23 @@ test.describe('Stripe E2E Flow', () => {
     // Ensure we reached the dashboard
     await expect(page).toHaveURL(/.*\/client/);
 
-    // Navigate to Stripe
-    // Navigate to Stripe
-    await page.click('text="Pay with Stripe"');
-    await expect(page).toHaveURL(/.*\/stripe/);
-    await expect(page.locator('h1')).toContainText('Pay with Stripe');
+    // Navigate to Deposit
+    await page.click('text="Deposit Funds"');
+    await expect(page).toHaveURL(/.*\/deposit/);
+    await expect(page.locator('h1')).toContainText('Deposit Funds');
   });
 
   test('Validates Top-Up Flow', async ({ page }) => {
+    // Log console errors
+    page.on('console', msg => {
+      console.log(`BROWSER ${msg.type().toUpperCase()}: ${msg.text()}`);
+    });
+
     await page.waitForTimeout(1000); // stable wait
 
     // Listen for intent creation
     const intentPromise = page.waitForResponse(response =>
-      response.url().includes('/stripe/payment_intents')
+      response.url().includes('/deposits/payment_intents')
     );
 
     // Click the "Starter" button ($10.00)
@@ -37,7 +41,7 @@ test.describe('Stripe E2E Flow', () => {
     expect(intentResponse.status()).toBe(200);
 
     // Verify Modal Appears
-    await expect(page.locator('text="Complete Deposit (10 USD)"')).toBeVisible();
+    await expect(page.locator('text="Deposit $10 to Main Account"')).toBeVisible();
 
     // Fill form
     await page.fill('input[placeholder="Jane Doe"]', 'Jane Doe');
@@ -47,28 +51,22 @@ test.describe('Stripe E2E Flow', () => {
     await page.fill('input[placeholder="123"]', '123');
 
     // Wait for the final confirmation requests
-    const pmPromise = page.waitForResponse(response =>
-      response.url().includes('/stripe/payment_methods')
+    const fulfillPromise = page.waitForResponse(response =>
+      response.url().includes('/deposits/fulfill-payment')
     );
 
-    const confirmPromise = page.waitForResponse(response =>
-      response.url().includes('/confirm')
-    );
-
+    // In mock mode, we don't expect a real confirm request as the mock form handles it
     // Provide handler for alert
     page.on('dialog', dialog => dialog.accept());
     await page.click('button:has-text("Deposit $10 to Main Account")');
 
-    const pmResponse = await pmPromise;
-    console.log(`pm response status: ${pmResponse.status()}`);
-    expect(pmResponse.status()).toBe(200);
+    const fulfillResponse = await fulfillPromise;
+    console.log(`fulfill response status: ${fulfillResponse.status()}`);
+    expect(fulfillResponse.status()).toBe(200);
+    // expect(confirmResponse.status()).toBe(200); 
 
-    const confirmResponse = await confirmPromise;
-    console.log(`confirm response status: ${confirmResponse.status()}`);
-    expect(confirmResponse.status()).toBe(200);
-
-    // Ensure we are redirected away from the stripe page (usually back to dashboard)
-    await expect(page).not.toHaveURL(/.*\/stripe/);
+    // In mock mode we just close the modal, so check it's gone
+    await expect(page.locator('text="Deposit $10 to Main Account"')).not.toBeVisible();
   });
 });
 

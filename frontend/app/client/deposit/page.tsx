@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Wallet, Shield, ArrowRight, CreditCard, ChevronRight, Zap, CheckCircle2 } from 'lucide-react';
+import { Wallet, Shield, ArrowRight, CreditCard, ChevronRight, Zap, CheckCircle2, AlertCircle, X as XIcon } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toCents, formatCurrency } from '@/lib/transactionUtils';
 import { useAuth } from "@/lib/AuthContext";
-import StripePaymentModal from "@/components/StripePaymentModal";
+import DepositModal from "@/components/DepositModal";
 
 interface Transaction {
     id: string;
@@ -23,7 +24,7 @@ interface UserSubscription {
     status?: string;
 }
 
-export default function StripePage() {
+export default function DepositPage() {
     const router = useRouter();
     const { token } = useAuth();
 
@@ -36,13 +37,17 @@ export default function StripePage() {
     const [customAmount, setCustomAmount] = useState("");
     const [renderCount, setRenderCount] = useState(0);
     const [txLoading, setTxLoading] = useState(true);
+    const [toast, setToast] = useState<{ show: boolean, message: string, type: 'success' | 'error' }>({
+        show: false,
+        message: "",
+        type: 'success'
+    });
 
     useEffect(() => {
         setRenderCount(prev => prev + 1);
-    }, [loading, amountCents, customAmount, transactions, subscription, isPaymentModalOpen, selectedAmount]);
+    }, [loading, amountCents, customAmount, transactions, subscription, isPaymentModalOpen, selectedAmount, toast]);
 
-    console.log("StripePage Render:", renderCount, { isPaymentModalOpen, selectedAmount });
-    console.log("StripePage State Check:", { isPaymentModalOpen, selectedAmount, loading });
+    console.log("DEBUG: DepositPage Render", { toast, isPaymentModalOpen, selectedAmount });
 
     useEffect(() => {
         console.log("StripePage State Update:", {
@@ -65,7 +70,7 @@ export default function StripePage() {
                 params.set("tx_type", "incoming");
 
                 const res = await fetch(
-                    `/api/v1/dashboard/transactions?${params.toString()}`,
+                    `/api/v1/transactions?${params.toString()}`,
                     {
                         headers: { Authorization: `Bearer ${token}` },
                     },
@@ -74,13 +79,13 @@ export default function StripePage() {
                 if (res.ok) {
                     const data = await res.json();
                     const txs = data.transactions || [];
-                    const stripeTxs = txs.filter((t: Transaction) =>
+                    const depositTxs = txs.filter((t: Transaction) =>
                         t.category === "Top-up" ||
                         t.category === "Subscription" ||
                         (t.merchant && t.merchant.includes("Karin Black")) ||
-                        (t.merchant && t.merchant.includes("Stripe"))
+                        (t.merchant && t.merchant.includes("Gateway"))
                     );
-                    setTransactions(stripeTxs);
+                    setTransactions(depositTxs);
                 } else {
                     console.log("Transactions fetch failed with status:", res.status);
                 }
@@ -94,7 +99,7 @@ export default function StripePage() {
         const fetchSubscription = async () => {
             if (!token) return;
             try {
-                const res = await fetch("/api/v1/stripe/subscriptions/me", {
+                const res = await fetch("/api/v1/deposits/subscriptions/me", {
                     headers: { Authorization: `Bearer ${token}` },
                 });
                 if (res.ok) {
@@ -109,6 +114,54 @@ export default function StripePage() {
         fetchTransactions();
         fetchSubscription();
     }, [token]);
+ 
+    const refreshData = () => {
+        const fetchTransactions = async () => {
+            if (!token) return;
+            setTxLoading(true);
+            try {
+                const params = new URLSearchParams();
+                params.set("days", "30");
+                params.set("tx_type", "incoming");
+                const res = await fetch(`/api/v1/transactions?${params.toString()}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const txs = data.transactions || [];
+                    const depositTxs = txs.filter((t: any) =>
+                        t.category === "Top-up" ||
+                        t.category === "Subscription" ||
+                        (t.merchant && t.merchant.includes("Karin Black")) ||
+                        (t.merchant && t.merchant.includes("Gateway"))
+                    );
+                    setTransactions(depositTxs);
+                }
+            } catch (error) {
+                console.error("Failed to load transactions", error);
+            } finally {
+                setTxLoading(false);
+            }
+        };
+ 
+        const fetchSubscription = async () => {
+            if (!token) return;
+            try {
+                const res = await fetch("/api/v1/deposits/subscriptions/me", {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setSubscription(data);
+                }
+            } catch (error) {
+                console.error("Failed to load subscription", error);
+            }
+        };
+ 
+        fetchTransactions();
+        fetchSubscription();
+    };
 
     const startCheckout = async (type: string, amount: number) => {
         try {
@@ -123,7 +176,7 @@ export default function StripePage() {
 
             setLoading(type);
             setAmountCents(amount);
-            const response = await fetch("/api/v1/stripe/create-checkout-session", {
+            const response = await fetch("/api/v1/deposits/create-checkout-session", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -152,16 +205,31 @@ export default function StripePage() {
     };
 
     const handlePaymentSuccess = () => {
+        console.log("DEBUG: handlePaymentSuccess ENTRY");
         setIsPaymentModalOpen(false);
-        // Refresh transactions after success
-        // fetchTransactions() could be pulled out if needed, but for now we'll just reload or wait for webhook
-        window.location.reload();
+        showToast("Deposit successful! Your funds are now available.", "success");
+        refreshData();
+        // Also fire a custom event to update balance in other components if needed
+        window.dispatchEvent(new Event('balanceUpdate'));
+    };
+ 
+    const handlePaymentError = (msg: string) => {
+        showToast(msg, "error");
+    };
+ 
+    const showToast = (message: string, type: 'success' | 'error') => {
+        console.log("DEBUG: showToast EXECUTING", { message, type });
+        setToast({ show: true, message, type });
+        setTimeout(() => {
+            console.log("DEBUG: Auto-hiding toast");
+            setToast(prev => ({ ...prev, show: false }));
+        }, 5000);
     };
 
     const handleManageSubscription = async () => {
         setLoading("portal");
         try {
-            const response = await fetch("/api/v1/stripe/create-portal-session", {
+            const response = await fetch("/api/v1/deposits/create-portal-session", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -189,11 +257,30 @@ export default function StripePage() {
     };
 
     return (
-        <div className="min-h-screen bg-black text-white p-8 font-sans selection:bg-zinc-800">
+        <div className="min-h-screen bg-black text-white p-8 font-sans selection:bg-zinc-800 relative">
+            {/* Simplified Toast for debugging */}
+            {toast.show && (
+                <div
+                    className={`fixed top-4 left-1/2 -translate-x-1/2 z-[99999] flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl border-2 ${
+                        toast.type === 'success' ? 'bg-emerald-900 border-emerald-500 text-emerald-100' : 'bg-rose-900 border-rose-500 text-rose-100'
+                    }`}
+                >
+                    <div className="flex-1 font-bold text-center">
+                        {toast.message}
+                    </div>
+                    <button 
+                        onClick={() => setToast(prev => ({ ...prev, show: false }))}
+                        className="p-1 hover:bg-white/10 rounded"
+                    >
+                        <XIcon size={20} />
+                    </button>
+                </div>
+            )}
+
             <div className="max-w-4xl mx-auto space-y-12">
                 <header className="space-y-4">
                     <h1 className="text-4xl md:text-5xl font-light tracking-tight text-zinc-100">
-                        Pay with <span className="font-semibold text-white">Stripe</span>
+                        Deposit <span className="font-semibold text-white">Funds</span>
                     </h1>
                     <p className="text-zinc-500 text-lg max-w-xl font-light">
                         Secure, encrypted, and instantaneous. Elevate your Karin Bank experience with seamless funding and premium features.
@@ -370,7 +457,7 @@ export default function StripePage() {
                                     <tbody>
                                         {transactions.map((tx) => (
                                             <tr key={tx.id} className="border-b border-zinc-800/50 hover:bg-zinc-900/30 transition-colors">
-                                                <td className="px-6 py-4 font-medium text-zinc-300">{tx.merchant || "Stripe"}</td>
+                                                <td className="px-6 py-4 font-medium text-zinc-300">{tx.merchant || "Gateway"}</td>
                                                 <td className="px-6 py-4">
                                                     {new Date((tx.timestamp.includes("Z") ? tx.timestamp : tx.timestamp + "Z")).toLocaleDateString("en-US", {
                                                         year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
@@ -409,11 +496,12 @@ export default function StripePage() {
                 </div>
             </div>
 
-            <StripePaymentModal
+            <DepositModal
                 isOpen={isPaymentModalOpen}
                 onClose={() => setIsPaymentModalOpen(false)}
                 amount={selectedAmount}
                 onSuccess={handlePaymentSuccess}
+                onError={handlePaymentError}
             />
         </div>
     );

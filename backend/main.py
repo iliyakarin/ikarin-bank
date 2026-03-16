@@ -66,7 +66,7 @@ from schemas.contacts import ContactCreate, ContactResponse, ContactUpdate
 from schemas.admin import SimulationRequest, QueryRequest
 
 # Router Inclusions
-from routers import admin, transfers, dashboard, contacts, vendors, auth, stripe, accounts
+from routers import admin, transfers, dashboard, contacts, vendors, auth, deposit, accounts
 
 app.include_router(accounts.router, prefix="/v1")
 app.include_router(auth.router, prefix="/v1")
@@ -75,7 +75,7 @@ app.include_router(transfers.router, prefix="/v1")
 app.include_router(dashboard.router, prefix="/v1")
 app.include_router(contacts.router, prefix="/v1")
 app.include_router(vendors.router, prefix="/v1")
-app.include_router(stripe.router, prefix="/v1")
+app.include_router(deposit.router, prefix="/v1")
 
 
 
