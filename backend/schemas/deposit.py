@@ -26,3 +26,6 @@ class PaymentIntentCreate(BaseModel):
 class PaymentIntentResponse(BaseModel):
     client_secret: str
     id: str
+
+class PaymentIntentFulfill(BaseModel):
+    id: str

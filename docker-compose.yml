@@ -281,9 +281,9 @@ services:
       fed-gateway-db:
         condition: service_healthy
 
-  stripe-mock:
-    build: ./stripe-mock
-    container_name: stripe-mock
+  deposit-funds-mock:
+    build: ./deposit-funds-mock
+    container_name: deposit-funds-mock
     security_opt:
       - no-new-privileges:true
     cap_drop:

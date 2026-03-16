@@ -1,6 +1,6 @@
 """
-Comprehensive tests for Stripe subscription implementation.
-Tests all Stripe endpoints with proper validation for required environment variables.
+Comprehensive tests for Deposit functionality.
+Tests all Deposit endpoints with proper validation for required environment variables.
 """
 import pytest
 import os
@@ -119,11 +119,11 @@ def mock_request():
 # ============================================================================
 
 class TestEnvironmentVariables:
-    """Test that required Stripe environment variables are properly validated."""
+    """Test that required Gateway environment variables are properly validated."""
 
     @pytest.mark.asyncio
     async def test_stripe_api_key_required(self):
-        """Test that Stripe API key is required."""
+        """Test that Stripe API key is required (Underlying Gateway)."""
         with patch.dict(os.environ, {"STRIPE_API_KEY": ""}, clear=False):
             with pytest.raises(ValueError) as exc:
                 stripe.api_key = os.getenv("STRIPE_API_KEY")
@@ -131,14 +131,14 @@ class TestEnvironmentVariables:
 
     @pytest.mark.asyncio
     async def test_stripe_mock_url_optional(self):
-        """Test that Stripe mock URL is optional."""
+        """Test that Gateway mock URL is optional."""
         with patch.dict(os.environ, {"STRIPE_MOCK_URL": ""}, clear=False):
             # Should not raise error, use default
             stripe.api_base = os.getenv("STRIPE_MOCK_URL", stripe.api_base)
 
     @pytest.mark.asyncio
     async def test_stripe_webhook_secret_required(self):
-        """Test that Stripe webhook secret is required."""
+        """Test that Gateway webhook secret is required."""
         with patch.dict(os.environ, {"STRIPE_WEBHOOK_SECRET": ""}, clear=False):
             with pytest.raises(ValueError) as exc:
                 WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
@@ -160,9 +160,9 @@ class TestPaymentIntent:
 
     @pytest.mark.asyncio
     async def test_create_payment_intent_success(self):
-        """Test successful payment intent creation."""
-        import routers.stripe as stripe_router
-        from schemas.stripe_mock import PaymentIntentCreate
+        """Test successful deposit intent creation."""
+        import routers.deposit as deposit_router
+        from schemas.deposit import PaymentIntentCreate
 
         mock_db = MagicMock()
         mock_db.execute = AsyncMock()
@@ -182,8 +182,8 @@ class TestPaymentIntent:
     @pytest.mark.asyncio
     async def test_create_subscription_intent_prevents_double_sub(self, mock_db_session, mock_user, mock_subscription_active):
         """Test that creating subscription fails if user already has active subscription."""
-        import routers.stripe as stripe_router
-        from schemas.stripe_mock import PaymentIntentCreate
+        import routers.deposit as deposit_router
+        from schemas.deposit import PaymentIntentCreate
         from fastapi import HTTPException
 
         mock_db = mock_db_session
@@ -207,9 +207,9 @@ class TestPaymentIntent:
 
     @pytest.mark.asyncio
     async def test_create_payment_intent_with_subscription(self, mock_db_session, mock_user, mock_subscription_none):
-        """Test successful subscription payment intent creation."""
-        import routers.stripe as stripe_router
-        from schemas.stripe_mock import PaymentIntentCreate
+        """Test successful subscription deposit intent creation."""
+        import routers.deposit as deposit_router
+        from schemas.deposit import PaymentIntentCreate
 
         mock_db = mock_db_session
         mock_user = mock_user
@@ -240,8 +240,8 @@ class TestPaymentMethod:
     @pytest.mark.asyncio
     async def test_create_payment_method_success(self, mock_db_session, mock_user, mock_main_account):
         """Test successful payment method creation."""
-        import routers.stripe as stripe_router
-        from schemas.stripe_mock import PaymentMethodCreate
+        import routers.deposit as deposit_router
+        from schemas.deposit import PaymentMethodCreate
 
         mock_db = mock_db_session
         mock_user = mock_user
@@ -271,8 +271,8 @@ class TestPaymentMethod:
     @pytest.mark.asyncio
     async def test_create_payment_method_no_main_account(self, mock_db_session, mock_user):
         """Test payment method creation fails when user has no main account."""
-        import routers.stripe as stripe_router
-        from schemas.stripe_mock import PaymentMethodCreate
+        import routers.deposit as deposit_router
+        from schemas.deposit import PaymentMethodCreate
         from fastapi import HTTPException
 
         mock_db = mock_db_session
@@ -309,9 +309,9 @@ class TestPaymentIntentConfirmation:
 
     @pytest.mark.asyncio
     async def test_confirm_payment_intent_success(self, mock_db_session, mock_user, mock_main_account, mock_request):
-        """Test successful payment intent confirmation."""
-        import routers.stripe as stripe_router
-        from schemas.stripe_mock import PaymentIntentConfirm
+        """Test successful deposit intent confirmation."""
+        import routers.deposit as deposit_router
+        from schemas.deposit import PaymentIntentConfirm
 
         mock_db = mock_db_session
         mock_user = mock_user
@@ -353,8 +353,8 @@ class TestPaymentIntentConfirmation:
     @pytest.mark.asyncio
     async def test_confirm_payment_intent_idempotency(self, mock_db_session, mock_user, mock_main_account, mock_request):
         """Test that idempotency key prevents duplicate processing."""
-        import routers.stripe as stripe_router
-        from schemas.stripe_mock import PaymentIntentConfirm
+        import routers.deposit as deposit_router
+        from schemas.deposit import PaymentIntentConfirm
 
         mock_db = mock_db_session
         mock_user = mock_user
@@ -387,8 +387,8 @@ class TestPaymentIntentConfirmation:
     @pytest.mark.asyncio
     async def test_confirm_subscription_deducts_balance(self, mock_db_session, mock_user, mock_main_account, mock_request):
         """Test that subscription confirmation deducts balance and updates user status."""
-        import routers.stripe as stripe_router
-        from schemas.stripe_mock import PaymentIntentConfirm
+        import routers.deposit as deposit_router
+        from schemas.deposit import PaymentIntentConfirm
 
         mock_db = mock_db_session
         mock_user = mock_user
@@ -437,7 +437,7 @@ class TestSubscription:
     @pytest.mark.asyncio
     async def test_get_my_subscription_active(self, mock_db_session, mock_user, mock_subscription_active):
         """Test getting active subscription."""
-        import routers.stripe as stripe_router
+        import routers.deposit as deposit_router
 
         mock_db = mock_db_session
         mock_user = mock_user
@@ -459,7 +459,7 @@ class TestSubscription:
     @pytest.mark.asyncio
     async def test_get_my_subscription_none(self, mock_db_session, mock_user):
         """Test getting subscription when user has none."""
-        import routers.stripe as stripe_router
+        import routers.deposit as deposit_router
 
         mock_db = mock_db_session
         mock_user = mock_user
@@ -478,7 +478,7 @@ class TestSubscription:
     @pytest.mark.asyncio
     async def test_cancel_subscription_success(self, mock_db_session, mock_user, mock_subscription_active):
         """Test successful subscription cancellation."""
-        import routers.stripe as stripe_router
+        import routers.deposit as deposit_router
         from fastapi import HTTPException
 
         mock_db = mock_db_session
@@ -499,7 +499,7 @@ class TestSubscription:
     @pytest.mark.asyncio
     async def test_cancel_subscription_not_found(self, mock_db_session, mock_user):
         """Test cancellation fails when no active subscription exists."""
-        import routers.stripe as stripe_router
+        import routers.deposit as deposit_router
         from fastapi import HTTPException
 
         mock_db = mock_db_session
@@ -527,8 +527,8 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_invalid_card_number(self, mock_db_session, mock_user, mock_main_account):
         """Test payment method creation with invalid card number."""
-        import routers.stripe as stripe_router
-        from schemas.stripe_mock import PaymentMethodCreate
+        import routers.deposit as deposit_router
+        from schemas.deposit import PaymentMethodCreate
         from fastapi import HTTPException
 
         mock_db = mock_db_session
@@ -559,8 +559,8 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_expired_card(self, mock_db_session, mock_user, mock_main_account):
         """Test payment method creation with expired card."""
-        import routers.stripe as stripe_router
-        from schemas.stripe_mock import PaymentMethodCreate
+        import routers.deposit as deposit_router
+        from schemas.deposit import PaymentMethodCreate
 
         mock_db = mock_db_session
         mock_user = mock_user
@@ -589,8 +589,8 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_insufficient_balance_for_subscription(self, mock_db_session, mock_user, mock_main_account, mock_request):
         """Test subscription confirmation fails with insufficient balance."""
-        import routers.stripe as stripe_router
-        from schemas.stripe_mock import PaymentIntentConfirm
+        import routers.deposit as deposit_router
+        from schemas.deposit import PaymentIntentConfirm
 
         mock_db = mock_db_session
         mock_user = mock_user
@@ -632,8 +632,8 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_duplicate_idempotency_key(self, mock_db_session, mock_user, mock_main_account, mock_request):
         """Test that duplicate idempotency key returns cached response."""
-        import routers.stripe as stripe_router
-        from schemas.stripe_mock import PaymentIntentConfirm
+        import routers.deposit as deposit_router
+        from schemas.deposit import PaymentIntentConfirm
 
         mock_db = mock_db_session
         mock_user = mock_user
@@ -669,14 +669,14 @@ class TestEdgeCases:
 # Integration Tests
 # ============================================================================
 
-class TestStripeIntegration:
-    """Integration tests for complete Stripe flow."""
+class TestDepositIntegration:
+    """Integration tests for complete Gateway flow."""
 
     @pytest.mark.asyncio
     async def test_complete_subscription_flow(self, mock_db_session, mock_user, mock_main_account, mock_request):
         """Test complete subscription flow: create intent -> confirm -> verify."""
-        import routers.stripe as stripe_router
-        from schemas.stripe_mock import PaymentIntentCreate, PaymentIntentConfirm
+        import routers.deposit as deposit_router
+        from schemas.deposit import PaymentIntentCreate, PaymentIntentConfirm
 
         mock_db = mock_db_session
         mock_user = mock_user
@@ -746,8 +746,8 @@ class TestStripeIntegration:
     @pytest.mark.asyncio
     async def test_complete_topup_flow(self, mock_db_session, mock_user, mock_main_account, mock_request):
         """Test complete top-up flow: create intent -> confirm -> verify."""
-        import routers.stripe as stripe_router
-        from schemas.stripe_mock import PaymentIntentCreate, PaymentIntentConfirm
+        import routers.deposit as deposit_router
+        from schemas.deposit import PaymentIntentCreate, PaymentIntentConfirm
 
         mock_db = mock_db_session
         mock_user = mock_user

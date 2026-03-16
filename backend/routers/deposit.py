@@ -6,25 +6,25 @@ import stripe
 import logging
 import json
 
+from config import settings
 from auth_utils import get_db, get_current_user
 from database import User, Subscription
-from schemas.stripe import (
+from schemas.deposit import (
     CheckoutSessionCreate, CheckoutSessionResponse,
     PortalSessionCreate, PortalSessionResponse,
-    PaymentIntentCreate, PaymentIntentResponse
+    PaymentIntentCreate, PaymentIntentResponse,
+    PaymentIntentFulfill
 )
-from services.stripe_service import handle_checkout_completed, handle_subscription_deleted
+from services.deposit_service import handle_checkout_completed, handle_subscription_deleted
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/stripe", tags=["Stripe"])
-
-from config import settings
+router = APIRouter(prefix="/deposits", tags=["Deposits"])
 
 # Initialize Stripe
 stripe.api_key = settings.STRIPE_API_KEY
 WEBHOOK_SECRET = settings.STRIPE_WEBHOOK_SECRET
-# Optional: Use stripe-mock if STRIPE_MOCK_URL is provided for tests
+# Optional: Use deposit-funds-mock if STRIPE_MOCK_URL is provided for tests
 if settings.STRIPE_MOCK_URL:
     stripe.api_base = settings.STRIPE_MOCK_URL
 
@@ -34,7 +34,7 @@ async def create_checkout_session(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Creates a Stripe Checkout Session for one-time payments or subscriptions.
+    Creates a Deposit Checkout Session for one-time payments or subscriptions.
     """
     try:
         # Standardize metadata
@@ -110,6 +110,34 @@ async def create_payment_intent(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+@router.post("/fulfill-payment")
+async def fulfill_payment_intent(
+    payload: PaymentIntentFulfill,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Manually triggers fulfillment for a mock PaymentIntent.
+    """
+    try:
+        # Fetch the intent from either mock or real Stripe
+        intent = stripe.PaymentIntent.retrieve(payload.id)
+        
+        # Verify user_id in metadata matches current_user
+        if str(intent.metadata.get("user_id")) != str(current_user.id):
+             raise HTTPException(status_code=403, detail="Unauthorized fulfillment attempt")
+
+        # Call the existing service handler
+        await handle_checkout_completed(intent, db)
+        
+        return {"status": "fulfilled", "intent_id": payload.id}
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe retrieval error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Fulfillment error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/create-portal-session", response_model=PortalSessionResponse)
 async def create_portal_session(
@@ -199,7 +227,8 @@ async def get_my_subscription(
     return {
         "active": True,
         "plan_name": sub.plan_name,
-        "amount": float(sub.amount / 100),
+        "amount_cents": int(sub.amount),
+        "amount_formatted": from_cents(int(sub.amount)),
         "current_period_end": sub.current_period_end.isoformat(),
         "status": sub.status
     }

@@ -280,7 +280,6 @@ async def decline_payment_request(
     txs = res.scalars().all()
     for tx in txs:
         # Emit a status update for each related transaction record
-        from activity import emit_transaction_status_update
         emit_transaction_status_update(
             db,
             transaction_id=str(tx.id),

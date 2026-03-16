@@ -61,7 +61,7 @@ class Account(Base):
 class PaymentMethod(Base):
     __tablename__ = "payment_methods"
     id = Column(Integer, primary_key=True, index=True)
-    stripe_pm_id = Column(String(100), unique=True, index=True, nullable=True)
+    gateway_pm_id = Column(String(100), unique=True, index=True, nullable=True)
     account_id = Column(Integer, ForeignKey("accounts.id"), index=True, nullable=False)
     
     # Encrypted sensitive data
