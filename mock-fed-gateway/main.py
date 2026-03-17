@@ -86,7 +86,7 @@ async def startup_event():
         result = await session.execute(select(Bank))
         if not result.scalars().first():
             session.add_all([
-                Bank(name="Chase", routing_number="123456789"),
+                Bank(name="Chase", routing_number="021000021"),
                 Bank(name="Wells Fargo", routing_number="987654321"),
                 Bank(name="Bank of America", routing_number="111222333"),
             ])

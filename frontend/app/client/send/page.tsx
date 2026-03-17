@@ -110,10 +110,23 @@ export default function SendMoneyPage() {
   }, [recipient, vendors]);
 
   useEffect(() => {
-    // Check if recipient is a vendor for scheduled
+    // Check if recipient is a validator for scheduled
     const vendorMatch = vendors.find(v => v.email === schedRecipient);
     setIsSchedVendor(!!vendorMatch);
   }, [schedRecipient, vendors]);
+
+  useEffect(() => {
+    // Auto-fill subscriber ID if the recipient matches a known merchant contact
+    if (recipient && !subscriberId) {
+      const contact = contacts.find(c => 
+        c.contact_type === "merchant" && 
+        (c.email === recipient || (c.merchant_id && vendors.find(v => v.id === c.merchant_id)?.email === recipient))
+      );
+      if (contact?.subscriber_id) {
+        setSubscriberId(contact.subscriber_id);
+      }
+    }
+  }, [recipient, contacts, vendors, subscriberId]);
 
   useEffect(() => {
     // Fetch mock vendors from our new simulator service proxy
@@ -655,6 +668,7 @@ export default function SendMoneyPage() {
               initial={{ opacity: 0, x: 50 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 50, transition: { duration: 0.2 } }}
+              data-testid="success-toast"
               className="bg-[#1a2f26] border border-emerald-500/50 rounded-xl p-4 flex items-start gap-4 shadow-2xl shadow-emerald-500/10 text-emerald-100 font-medium"
             >
               <CheckCircle
@@ -1416,14 +1430,21 @@ export default function SendMoneyPage() {
                           className="border-b border-white/5 hover:bg-white/5 transition-colors"
                         >
                           <td className="py-4 text-white/70 text-sm">
-                            {new Date(tx.timestamp + (tx.timestamp.endsWith('Z') ? '' : 'Z')).toLocaleString(settings.useEUDates ? 'en-GB' : 'en-US', {
-                              year: 'numeric',
-                              month: '2-digit',
-                              day: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              hour12: !settings.use24Hour
-                            })}
+                            {(() => {
+                              const dateStr = (tx.timestamp || tx.created_at || "").toString();
+                              if (!dateStr) return "N/A";
+                              // Try parsing directly, then with T separator, then with Z suffix
+                              let d = new Date(dateStr);
+                              if (isNaN(d.getTime())) d = new Date(dateStr.replace(" ", "T"));
+                              if (isNaN(d.getTime())) d = new Date(dateStr + "Z");
+                              
+                              return isNaN(d.getTime()) ? "N/A" : d.toLocaleString(settings.useEUDates ? 'en-GB' : 'en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              });
+                            })()}
                           </td>
                           <td className="py-4">
                             <div className="text-white font-medium">
@@ -1940,11 +1961,14 @@ export default function SendMoneyPage() {
                               ` (${pmt.frequency_interval})`}
                           </td>
                           <td className="p-4 text-white/70">
-                            {pmt.next_run_at
-                              ? new Date(
-                                pmt.next_run_at + "Z",
-                              ).toLocaleDateString(settings.useEUDates ? 'en-GB' : 'en-US')
-                              : "N/A"}
+                            {(() => {
+                              const dateStr = (pmt.next_run_at || "").toString();
+                              if (!dateStr) return "N/A";
+                              let d = new Date(dateStr);
+                              if (isNaN(d.getTime())) d = new Date(dateStr.replace(" ", "T"));
+                              if (isNaN(d.getTime())) d = new Date(dateStr + "Z");
+                              return isNaN(d.getTime()) ? "N/A" : d.toLocaleDateString(settings.useEUDates ? 'en-GB' : 'en-US');
+                            })()}
                           </td>
                           <td className="p-4">
                             <span
@@ -2184,7 +2208,14 @@ export default function SendMoneyPage() {
                       className="border-b border-white/5 hover:bg-white/5 transition-colors"
                     >
                       <td className="py-4 text-white/70 text-sm">
-                        {new Date(req.created_at + "Z").toLocaleDateString(settings.useEUDates ? 'en-GB' : 'en-US')}
+                        {(() => {
+                          const dateStr = (req.created_at || "").toString();
+                          if (!dateStr) return "N/A";
+                          let d = new Date(dateStr);
+                          if (isNaN(d.getTime())) d = new Date(dateStr.replace(" ", "T"));
+                          if (isNaN(d.getTime())) d = new Date(dateStr + "Z");
+                          return isNaN(d.getTime()) ? "N/A" : d.toLocaleDateString(settings.useEUDates ? 'en-GB' : 'en-US');
+                        })()}
                       </td>
                       <td className="py-4">
                         <div className="text-white font-medium">

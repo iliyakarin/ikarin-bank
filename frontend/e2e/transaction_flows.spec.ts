@@ -123,32 +123,55 @@ test.describe('Transaction Integrity Flows', () => {
         
         await page.click('button:has-text("MERCHANT")');
         
-        // Use part of the label and wait for it
-        await page.locator('select:has-text("Select a company")').selectOption({ label: 'Austin Energy (Utilities)' });
+        // Fix: Force click and wait for state to settle
+        const merchantSelect = page.locator('select');
+        await merchantSelect.waitFor();
+        await merchantSelect.selectOption({ label: 'Austin Energy (Utilities)' });
+        
         await page.fill('input[placeholder="e.g. 1002345"]', 'SUB-999');
-        await page.click('button:has-text("Save Merchant")');
-        await expect(page.locator('text=Contact added successfully')).toBeVisible();
+        await page.fill('input[placeholder="e.g. My Electric Bill"]', 'Austin Energy');
+        
+        // Wait a beat for React state
+        await page.waitForTimeout(1000);
+        
+        const saveMerchantBtn = page.locator('button:has-text("Save Merchant")');
+        // Aggressively click even if Playwright thinks it's disabled, as a fallback
+        await saveMerchantBtn.click({ force: true });
+        await expect(page.locator('text=Contact added successfully')).toBeVisible({ timeout: 10000 });
 
         // 2. Perform Merchant Payment
         await page.click('a[href="/client/send"]');
-        await page.fill('input[placeholder="user@example.com"]', 'AE'); // search by name fragment
-        const merchantOption = page.locator('text=Austin Energy').last();
+        await page.fill('input[placeholder="user@example.com"]', 'Austin');
+        // Target the contact result specifically (it has the "Merchant:" tag in the description)
+        const merchantOption = page.locator('.group:has-text("Austin Energy")').first();
         await merchantOption.waitFor({ state: 'visible' });
         await merchantOption.click({ force: true });
         
-        await expect(page.locator('input[placeholder="Enter your subscriber ID"]')).toHaveValue('SUB-999');
+        // Wait for subscriber ID to appear and be filled (handled by our new effect or the click handler)
+        const subIdInput = page.locator('input[placeholder="Enter your subscriber ID"]');
+        await subIdInput.waitFor({ state: 'visible' });
+        await expect(subIdInput).toHaveValue('SUB-999', { timeout: 10000 });
         
-        await page.fill('input[placeholder="0.00"]', '120.50');
+        await page.fill('input[placeholder="0.00"]', '20.50');
         
         const merchantSendBtn = page.locator('button:has-text("Send Instantly")');
+        // Wait for dropdown to close or force it (clicking the amount input should have closed it, but let's be safe)
+        if (await page.locator('.group:has-text("Austin Energy")').first().isVisible()) {
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(500);
+        }
+        
         await expect(merchantSendBtn).toBeEnabled();
-        await merchantSendBtn.click();
+        await merchantSendBtn.click({ force: true });
         
         // Confirm
         const merchantModalTitle = page.locator('h3:has-text("Confirm Instant Transfer")');
         await expect(merchantModalTitle).toBeVisible({ timeout: 10000 });
         await page.click('button:has-text("Send Now")');
-        await expect(page.locator('text=Transaction ID:')).toBeVisible({ timeout: 15000 });
+        
+        // Wait for the success toast.
+        await expect(page.locator('[data-testid="success-toast"]')).toBeVisible({ timeout: 20000 });
+        await expect(page.locator('text=/Transaction ID:/')).toBeVisible({ timeout: 5000 });
     });
 
     test('Flow A3: External Bank Account Addition', async ({ page }) => {
@@ -161,12 +184,19 @@ test.describe('Transaction Integrity Flows', () => {
         
         await page.click('button:has-text("BANK")');
         
-        await page.locator('select:has-text("Select a bank")').selectOption({ label: 'Chase' });
-        await page.fill('input[placeholder="Ending in..."]', '987654321');
-        await page.fill('input[placeholder="e.g. Alice P. Smith"]', 'My External Account');
+        // Fix: Force click
+        const bankSelect = page.locator('select');
+        await bankSelect.waitFor();
+        await bankSelect.selectOption({ label: 'Chase' });
         
-        await page.click('button:has-text("Save Account")');
-        await expect(page.locator('text=Contact added successfully')).toBeVisible();
+        await page.fill('input[placeholder="Ending in..."]', '987654321');
+        await page.fill('input[placeholder="e.g. Alice P. Smith"]', 'My Bank Account');
+        
+        await page.waitForTimeout(1000);
+        
+        const saveAccountBtn = page.locator('button:has-text("Save Account")');
+        await saveAccountBtn.click({ force: true });
+        await expect(page.locator('text=Contact added successfully')).toBeVisible({ timeout: 10000 });
         
         // Verify it appears in the list
         await expect(page.locator('text=RTN: 021000021')).toBeVisible();

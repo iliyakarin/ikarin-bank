@@ -56,8 +56,8 @@ A full-stack banking application built with Next.js 15, FastAPI, PostgreSQL, Cli
 
 2. **Setup environment**
    ```bash
-   cp .env.dev .env
-   # The application will automatically use .env based on the ENV variable
+   cp .env.example .env
+   # Edit .env with your local credentials. Do NOT commit .env.
    ```
 
 3. **Start all services**
@@ -134,35 +134,10 @@ A full-stack banking application built with Next.js 15, FastAPI, PostgreSQL, Cli
 
 ### Environment Variables (.env)
 
-The application uses `backend/config.py` as the source of truth.
+The application uses `backend/config.py` as the source of truth. Reference `.env.example` for all required variables and their descriptions.
 
-```env
-# System
-ENV=development # or production
-JWT_SECRET_KEY=...
-
-# Postgres (Integer cents, UUID accounts)
-POSTGRES_USER=...
-POSTGRES_PASSWORD=...
-POSTGRES_DB=banking_db
-POSTGRES_HOST=db
-
-# ClickHouse
-CLICKHOUSE_HOST=clickhouse
-CLICKHOUSE_PORT=8123
-CLICKHOUSE_USER=default
-CLICKHOUSE_PASSWORD=...
-
-# Kafka (SASL Auth)
-KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-KAFKA_USER=user
-KAFKA_PASSWORD=...
-
-# External Integrations
-STRIPE_API_KEY=...
-STRIPE_WEBHOOK_SECRET=...
-SIMULATOR_URL=http://vendor-simulator:8001
-```
+> [!IMPORTANT]
+> Never commit `.env` files or hardcoded secrets. Use the provided `.env.example` as a template.
 
 ## Project Structure
 
@@ -187,7 +162,7 @@ karin-bank/
 ├── mock-fed-gateway/   # Federal payment gateway mock
 ├── nginx.conf         # Nginx configuration
 ├── docker-compose.yml # Service orchestration
-├── .env.dev           # Development environment
+├── .env.example       # Example environment configuration
 └── README.md          # This file
 ```
 

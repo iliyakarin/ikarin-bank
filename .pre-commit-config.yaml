@@ -1,0 +1,47 @@
+# .pre-commit-config.yaml
+# Purpose: Automatically intercept and block hardcoded secrets, PII, and 
+# un-parameterized configs before they leave your laptop (KarinBank project).
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+      - id: detect-private-key
+        description: "Blocks files starting with -----BEGIN RSA PRIVATE KEY-----"
+      - id: check-merge-conflict
+      - id: debug-statements
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.16.1
+    hooks:
+      - id: gitleaks
+        description: "Scans for high-entropy strings, API keys, and banking credentials"
+
+  - repo: local
+    hooks:
+      - id: block-env-files
+        name: Block .env files
+        entry: 'Found a .env file. Do not commit secrets! Use .env.example instead.'
+        language: fail
+        files: '^\.env(\..+)?$'
+
+      - id: check-pii-keywords
+        name: Check for Mock PII
+        description: "Scans for keywords likely associated with leftover PII mocks"
+        entry: 'Found potential PII (SSN, Credit Card, or Real Names). Please mask or move to gitignored mock folder.'
+        language: pygrep
+        types: [text]
+        args: ['-i', 'ssn|credit_card|card_number|routing_number|account_number']
+        exclude: '^\.env\.example$'
+
+      - id: verify-nginx-templating
+        name: Verify Nginx Parameterization
+        description: "Ensures nginx.conf doesn't contain hardcoded IPs or domains"
+        entry: 'Hardcoded IP/Domain detected in Nginx config. Use ${DOMAIN} variables for envsubst.'
+        language: pygrep
+        files: 'nginx\.conf$'
+        args: ['-E', '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|localhost']
