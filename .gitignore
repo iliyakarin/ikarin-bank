@@ -67,6 +67,16 @@ htmlcov/
 .nyc_output/
 .tox/
 performance_tests/
+# Playwright
+frontend/test-results/
+frontend/test-results-*/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/playwright/.cache/
+frontend/e2e_error.log
+# TypeScript
+*.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
 
 # AI & Internal Tooling
 .Jules/
