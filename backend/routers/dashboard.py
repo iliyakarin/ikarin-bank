@@ -163,7 +163,7 @@ async def get_balance_history(
         return {"balance_history": [], "current_balance": int(account.balance)}
 
 
-@router.get("/dashboard/recent-transactions")
+@router.get("/recent-transactions")
 async def get_recent_transactions(
     hours: int = 24,
     account_id: int = None,
@@ -328,8 +328,10 @@ async def get_all_transactions(
     db: Session = Depends(get_db),
 ):
     """Get all transactions with filtering by sender/recipient email, amount, date range, and sort direction."""
+    logger.info(f"[get_all_transactions] current_user.id: {current_user.id}")
     result = await db.execute(select(Account).filter(Account.user_id == current_user.id))
     accounts = result.scalars().all()
+    logger.info(f"[get_all_transactions] accounts found: {[acc.id for acc in accounts]}")
     if not accounts:
         raise HTTPException(status_code=404, detail="Account not found")
 
@@ -401,7 +403,7 @@ async def get_all_transactions(
 
         result = ch_client.query(query).named_results()
 
-        transactions = []
+        ch_transactions = []
         for row in result:
             tx = {
                 "id": row["transaction_id"],
@@ -418,15 +420,13 @@ async def get_all_transactions(
                 "failure_reason": row.get("failure_reason"),
                 "status": row.get("status", "cleared")
             }
-            # IDOR check: even though we filter by account_ids belonging to user,
-            # this is a defense-in-depth to ensure no leakage if query logic fails.
-            transactions.append(tx)
-
-        return {"transactions": transactions, "total": len(transactions)}
+            ch_transactions.append(tx)
     except Exception as e:
-        logger.error(f"ClickHouse query failed or empty, falling back to Postgres: {e}")
+        logger.info(f"ClickHouse fetch failed, proceeding with Postgres only: {e}")
+        ch_transactions = []
 
-        # --- Postgres Fallback ---
+    # --- Postgres Fetch ---
+    try:
         query = select(Transaction).filter(
             Transaction.account_id.in_(target_account_ids),
             Transaction.created_at >= cutoff_time,
@@ -446,10 +446,12 @@ async def get_all_transactions(
         sort_fn = Transaction.created_at.asc() if sort and sort.lower() == "asc" else Transaction.created_at.desc()
         query = query.order_by(sort_fn).limit(100)
 
+        from sqlalchemy import literal_column
+        logging.info(f"[get_all_transactions] Postgres query: {query}")
         result = await db.execute(query)
-        results = result.scalars().all()
-        transactions = []
-        for row in results:
+        pg_results = result.scalars().all()
+        pg_transactions = []
+        for row in pg_results:
             tx = {
                 "id": str(row.id),
                 "merchant": row.merchant or "",
@@ -465,9 +467,30 @@ async def get_all_transactions(
                 "subscriber_id": row.subscriber_id,
                 "failure_reason": row.failure_reason,
             }
-            transactions.append(tx)
+            pg_transactions.append(tx)
+    except Exception as e:
+        logger.error(f"Postgres fetch failed: {e}")
+        pg_transactions = []
 
-        return {"transactions": transactions, "total": len(transactions)}
+    # --- Merge and De-duplicate ---
+    all_tx_dict = {tx["id"]: tx for tx in ch_transactions}
+    for tx in pg_transactions:
+        # Prefer Postgres data if it's more recent or if ClickHouse is missing it
+        # Actually, if both exist, ClickHouse is usually 'cleared' and Postgres might be 'sent_to_kafka'
+        # But for E2E, we want to see the latest status.
+        if tx["id"] not in all_tx_dict:
+            all_tx_dict[tx["id"]] = tx
+
+    final_transactions = list(all_tx_dict.values())
+    
+    # Re-sort because original queries were sorted independently
+    rev = not (sort and sort.lower() == "asc")
+    final_transactions.sort(key=lambda x: x["timestamp"], reverse=rev)
+
+    logger.info(f"[get_all_transactions] Found {len(final_transactions)} total for accounts {target_account_ids}")
+    resp_data = {"transactions": final_transactions[:100], "total": len(final_transactions)}
+    logger.debug(f"[get_all_transactions] Returning keys: {list(resp_data.keys())}, sample first tx: {final_transactions[0] if final_transactions else 'None'}")
+    return resp_data
 
 
 # --- Contacts Endpoints ---

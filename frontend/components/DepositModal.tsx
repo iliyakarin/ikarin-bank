@@ -181,6 +181,7 @@ export default function DepositModal({
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
 
   console.log("DepositModal rendered:", { isOpen, amount, hasToken: !!token, hasClientSecret: !!clientSecret, isClient: typeof window !== "undefined" });
 
@@ -189,6 +190,7 @@ export default function DepositModal({
     if (isOpen && amount > 0) {
       setLoading(true);
       setInitError(null);
+      setStatus("idle");
       console.log("Fetching PaymentIntent for amount:", amount);
       fetch("/api/v1/deposits/payment_intents", {
         method: "POST",
@@ -222,6 +224,7 @@ export default function DepositModal({
     } else {
       setClientSecret(null);
       setInitError(null);
+      setStatus("idle");
     }
   }, [isOpen, amount, token, onError]);
 
@@ -335,13 +338,15 @@ export default function DepositModal({
                   disabled={loading}
                   onClick={async () => {
                     setLoading(true);
+                    setStatus("idle");
                     console.log("DEBUG: Modal Deposit Button Clicked", { amount, type: typeof amount });
                     if (amount === 99900) {
                       setTimeout(() => {
-                        setLoading(false);
+                        setStatus("error");
                         setInitError("Your card was declined. (Simulation for $999)");
                         console.log("DEBUG: Modal calling onError for decline");
                         onError("Your card was declined. (Simulation for $999)");
+                        setLoading(false);
                       }, 1500);
                       return;
                     }
@@ -358,9 +363,13 @@ export default function DepositModal({
                       
                       if (!res.ok) throw new Error("Fulfillment failed");
                       
+                      setStatus("success");
                       console.log("DEBUG: Modal calling onSuccess");
-                      onSuccess();
+                      setTimeout(() => {
+                        onSuccess();
+                      }, 2000);
                     } catch (err: any) {
+                      setStatus("error");
                       console.log("DEBUG: Modal calling onError for catch", err);
                       setInitError("Failed to process mock deposit.");
                       onError(err.message || "Failed to process mock deposit.");
@@ -375,10 +384,43 @@ export default function DepositModal({
                   ) : (
                     <>
                       <CreditCard size={20} />
-                      Deposit ${amount / 100} to Main Account
+                      Deposit {formatCurrency(amount)} to Main Account
                     </>
                   )}
                 </button>
+
+                {/* Success/Declined Information Chip */}
+                {status === "success" && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-3"
+                  >
+                    <div className="w-8 h-8 bg-emerald-500/20 rounded-full flex items-center justify-center">
+                      <CheckCircle2 size={16} className="text-emerald-400" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-emerald-400 font-medium text-sm">Deposit Successful</p>
+                      <p className="text-emerald-400/70 text-xs">Your funds are now available in your main account</p>
+                    </div>
+                  </motion.div>
+                )}
+
+                {status === "error" && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-4 p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center gap-3"
+                  >
+                    <div className="w-8 h-8 bg-rose-500/20 rounded-full flex items-center justify-center">
+                      <AlertCircle size={16} className="text-rose-400" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-rose-400 font-medium text-sm">Deposit Declined</p>
+                      <p className="text-rose-400/70 text-xs">{initError || "Your card was declined"}</p>
+                    </div>
+                  </motion.div>
+                )}
               </div>
             ) : (
               <Elements

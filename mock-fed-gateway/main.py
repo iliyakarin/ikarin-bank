@@ -80,3 +80,14 @@ async def get_banks(db: AsyncSession = Depends(get_db)):
 async def startup_event():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Seeding banks if empty
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Bank))
+        if not result.scalars().first():
+            session.add_all([
+                Bank(name="Chase", routing_number="123456789"),
+                Bank(name="Wells Fargo", routing_number="987654321"),
+                Bank(name="Bank of America", routing_number="111222333"),
+            ])
+            await session.commit()

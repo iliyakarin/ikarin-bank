@@ -46,7 +46,7 @@ export function useTransactions(hours: number = 24, autoRefresh: boolean = true)
             }
 
             const response = await fetch(
-                `/api/v1/dashboard/recent-transactions?hours=${hours}`,
+                `/api/v1/recent-transactions?hours=${hours}`,
                 {
                     headers: {
                         'Authorization': `Bearer ${authToken}`,

@@ -34,7 +34,57 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Simple Bank API")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Ensure database tables and schema exist
+    try:
+        # 1. Base Metadata creation (ensures tables exist)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        
+        # 2. Schema Migrations (ensures columns exist, etc.)
+        await run_all_migrations()
+        logger.info("Database tables verified/migrated successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+
+    global producer
+    max_retries = 30
+    retry_count = 0
+    retry_delay = 1  # seconds
+
+    while retry_count < max_retries:
+        try:
+            producer = AIOKafkaProducer(
+                bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+                enable_idempotence=True,
+                security_protocol="SASL_PLAINTEXT",
+                sasl_mechanism="PLAIN",
+                sasl_plain_username=settings.KAFKA_USER,
+                sasl_plain_password=settings.KAFKA_PASSWORD,
+            )
+            await producer.start()
+            logger.info("Kafka producer connected successfully")
+            break
+        except Exception as e:
+            retry_count += 1
+            if retry_count < max_retries:
+                logger.warning(f"Kafka connection attempt {retry_count}/{max_retries} failed: {e}. Retrying in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+            else:
+                logger.warning(f"Failed to connect to Kafka after {max_retries} attempts. Continuing without Kafka...")
+                producer = None
+                break
+    
+    yield
+    
+    if producer:
+        await producer.stop()
+        logger.info("Kafka producer stopped")
+
+app = FastAPI(title="KarinBank API", lifespan=lifespan)
 
 @app.get("/health")
 async def health_check():
@@ -42,6 +92,18 @@ async def health_check():
 
 
 from config import settings
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"Incoming request: {request.method} {request.url.path}")
+    response = await call_next(request)
+    logger.info(f"Response status: {response.status_code}")
+    
+    if request.url.path == "/v1/transactions" and response.status_code == 200:
+        # We can't easily read the body here without exhausting it, 
+        # but we can log that we are returning transactions.
+        pass
+    return response
 
 app.add_middleware(
     CORSMiddleware,
@@ -168,53 +230,7 @@ async def ws_activity(websocket: WebSocket, token: str):
 # --- WebSocket Endpoint ---
 
 
-@app.on_event("startup")
-async def startup_event():
-    # Ensure database tables and schema exist
-    try:
-        # 1. Base Metadata creation (ensures tables exist)
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        
-        # 2. Schema Migrations (ensures columns exist, etc.)
-        await run_all_migrations()
-        logger.info("Database tables verified/migrated successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-
-    global producer
-    max_retries = 30
-    retry_count = 0
-    retry_delay = 1  # seconds
-
-    while retry_count < max_retries:
-        try:
-            producer = AIOKafkaProducer(
-                bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-                enable_idempotence=True,
-                security_protocol="SASL_PLAINTEXT",
-                sasl_mechanism="PLAIN",
-                sasl_plain_username=settings.KAFKA_USER,
-                sasl_plain_password=settings.KAFKA_PASSWORD,
-            )
-            await producer.start()
-            logger.info("Kafka producer connected successfully")
-            return
-        except Exception as e:
-            retry_count += 1
-            if retry_count < max_retries:
-                logger.warning(f"Kafka connection attempt {retry_count}/{max_retries} failed: {e}. Retrying in {retry_delay}s...")
-                await asyncio.sleep(retry_delay)
-            else:
-                logger.warning(f"Failed to connect to Kafka after {max_retries} attempts. Continuing without Kafka...")
-                producer = None
-                return
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    if producer:
-        await producer.stop()
+# app already defined above
 
 
 
