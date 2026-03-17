@@ -141,6 +141,17 @@ async def get_transactions(db: AsyncSession = Depends(get_db)):
 async def startup_event():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Seeding vendors if empty
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Merchant))
+        if not result.scalars().first():
+            session.add_all([
+                Merchant(merchant_id="austin-energy-1", name="Austin Energy", category="Utilities"),
+                Merchant(merchant_id="t-mobile-1", name="T-Mobile", category="Telecommunications"),
+                Merchant(merchant_id="geico-1", name="GEICO", category="Insurance"),
+            ])
+            await session.commit()
 
 if __name__ == "__main__":
     import uvicorn

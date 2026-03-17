@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
-import { toCents } from "@/lib/transactionUtils";
+import { toCents, formatCurrency } from "@/lib/transactionUtils";
 import { useBalance } from "@/hooks/useDashboard";
 import {
   Send,
@@ -1014,9 +1014,15 @@ export default function SendMoneyPage() {
                       >
                         <span className="truncate">
                           {repeatSourceAccountId === "" ? (
-                            `Main Account - ${accounts.find(a => a.is_main)?.masked_account_number || ''} - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
+                            (() => {
+                              const mainAcc = accounts.find(a => a.is_main);
+                              return `Main Account - ${mainAcc?.masked_account_number || ''} - ${formatCurrency(mainAcc?.balance || 0)}`;
+                            })()
                           ) : (
-                            `${accounts.find(a => a.id === repeatSourceAccountId)?.name} - ${accounts.find(a => a.id === repeatSourceAccountId)?.masked_account_number || ''} - $${accounts.find(a => a.id === repeatSourceAccountId)?.balance.toFixed(2) || '0.00'}`
+                            (() => {
+                              const acc = accounts.find(a => a.id === repeatSourceAccountId);
+                              return `${acc?.name} - ${acc?.masked_account_number || ''} - ${formatCurrency(acc?.balance || 0)}`;
+                            })()
                           )}
                         </span>
                         <ChevronDown className={`text-white/40 transition-transform ${isRepeatSourceDropdownOpen ? 'rotate-180' : ''}`} size={20} />
@@ -1035,7 +1041,10 @@ export default function SendMoneyPage() {
                                 onClick={() => { setRepeatSourceAccountId(""); setIsRepeatSourceDropdownOpen(false); }}
                                 className={`px-4 py-2 hover:bg-white/10 rounded-lg cursor-pointer ${repeatSourceAccountId === "" ? "bg-purple-500/20 text-purple-300 font-bold" : "text-white"}`}
                               >
-                                Main Account - {accounts.find(a => a.is_main)?.masked_account_number || ''} - ${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}
+                                {(() => {
+                                  const mainAcc = accounts.find(a => a.is_main);
+                                  return `Main Account - ${mainAcc?.masked_account_number || ''} - ${formatCurrency(mainAcc?.balance || 0)}`;
+                                })()}
                               </div>
                               {accounts.filter(acc => !acc.is_main).map(acc => (
                                 <div
@@ -1043,7 +1052,7 @@ export default function SendMoneyPage() {
                                   onClick={() => { setRepeatSourceAccountId(acc.id); setIsRepeatSourceDropdownOpen(false); }}
                                   className={`px-4 py-2 hover:bg-white/10 rounded-lg cursor-pointer ${repeatSourceAccountId === acc.id ? "bg-purple-500/20 text-purple-300 font-bold" : "text-white"}`}
                                 >
-                                  {acc.name} - {acc.masked_account_number || ''} - ${acc.balance.toFixed(2)}
+                                  {acc.name} - {acc.masked_account_number || ''} - {formatCurrency(acc.balance)}
                                 </div>
                               ))}
                             </div>
@@ -1134,11 +1143,14 @@ export default function SendMoneyPage() {
                 >
                   <span className="truncate">
                     {sourceAccountId === "" ? (
-                      `Main Account - ${accounts.find(a => a.is_main)?.masked_account_number || ''} - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
+                      (() => {
+                        const mainAcc = accounts.find(a => a.is_main);
+                        return `Main Account - ${mainAcc?.masked_account_number || ''} - ${formatCurrency(mainAcc?.balance || 0)}`;
+                      })()
                     ) : (
                       (() => {
                         const acc = accounts.find(a => a.id === sourceAccountId);
-                        return `${acc?.name} - ${acc?.masked_account_number || ''} - $${acc?.balance.toFixed(2) || '0.00'}`;
+                        return `${acc?.name} - ${acc?.masked_account_number || ''} - ${formatCurrency(acc?.balance || 0)}`;
                       })()
                     )}
                   </span>
@@ -1166,7 +1178,7 @@ export default function SendMoneyPage() {
                           className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === "" ? 'bg-purple-500/20 text-purple-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                         >
                           <span className="block truncate">Main Account - {accounts.find(a => a.is_main)?.masked_account_number || ''}</span>
-                          <span className="text-xs opacity-70">${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}</span>
+                          <span className="text-xs opacity-70">{formatCurrency((accounts.find(a => a.is_main)?.balance || 0))}</span>
                         </div>
                         {accounts.filter(acc => !acc.is_main).map(acc => (
                           <div
@@ -1178,7 +1190,7 @@ export default function SendMoneyPage() {
                             className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === acc.id ? 'bg-purple-500/20 text-purple-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                           >
                             <span className="block truncate">{acc.name} - {acc.masked_account_number || ''}</span>
-                            <span className="text-xs opacity-70">${acc.balance.toFixed(2)}</span>
+                            <span className="text-xs opacity-70">{formatCurrency(acc.balance)}</span>
                           </div>
                         ))}
                       </div>
@@ -1427,8 +1439,7 @@ export default function SendMoneyPage() {
                           <td
                             className={`py-4 text-right font-bold ${isOutgoing ? "text-red-400" : "text-emerald-400"}`}
                           >
-                            {isOutgoing ? "-" : "+"}$
-                            {Math.abs(tx.amount).toFixed(2)}
+                            {tx.amount > 0 ? "+" : ""}{formatCurrency(tx.amount)}
                           </td>
                           <td className="py-4 px-4">
                             <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider ${tx.status === 'cleared' || tx.status === 'Completed' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
@@ -1506,11 +1517,14 @@ export default function SendMoneyPage() {
                 >
                   <span className="truncate">
                     {sourceAccountId === "" ? (
-                      `Main Account - ${accounts.find(a => a.is_main)?.masked_account_number || ''} - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
+                      (() => {
+                        const mainAcc = accounts.find(a => a.is_main);
+                        return `Main Account - ${mainAcc?.masked_account_number || ''} - ${formatCurrency(mainAcc?.balance || 0)}`;
+                      })()
                     ) : (
                       (() => {
                         const acc = accounts.find(a => a.id === sourceAccountId);
-                        return `${acc?.name} - ${acc?.masked_account_number || ''} - $${acc?.balance.toFixed(2) || '0.00'}`;
+                        return `${acc?.name} - ${acc?.masked_account_number || ''} - ${formatCurrency(acc?.balance || 0)}`;
                       })()
                     )}
                   </span>
@@ -1538,7 +1552,7 @@ export default function SendMoneyPage() {
                           className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === "" ? 'bg-indigo-500/20 text-indigo-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                         >
                           <span className="block truncate">Main Account - {accounts.find(a => a.is_main)?.masked_account_number || ''}</span>
-                          <span className="text-xs opacity-70">${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}</span>
+                          <span className="text-xs opacity-70">{formatCurrency((accounts.find(a => a.is_main)?.balance || 0))}</span>
                         </div>
                         {accounts.filter(acc => !acc.is_main).map(acc => (
                           <div
@@ -1549,8 +1563,8 @@ export default function SendMoneyPage() {
                             }}
                             className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === acc.id ? 'bg-indigo-500/20 text-indigo-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                           >
-                            <span className="block truncate">{acc.name} - {acc.masked_account_number || ''}</span>
-                            <span className="text-xs opacity-70">${acc.balance.toFixed(2)}</span>
+                             <span className="block truncate">{acc.name} - {acc.masked_account_number || ''}</span>
+                             <span className="text-xs opacity-70">{formatCurrency(acc.balance)}</span>
                           </div>
                         ))}
                       </div>
@@ -1910,13 +1924,15 @@ export default function SendMoneyPage() {
                               <span className="bg-white/10 px-1.5 py-0.5 rounded font-mono">
                                 *{(() => {
                                   const acc = accounts.find(a => a.id === pmt.funding_account_id);
-                                  return acc?.masked_account_number || accounts.find(a => a.is_main)?.masked_account_number || '????';
+                                  if (acc) return acc.masked_account_number;
+                                  const mainAcc = accounts.find(a => a.is_main);
+                                  return mainAcc?.masked_account_number || '????';
                                 })()}
                               </span>
                             </div>
                           </td>
                           <td className="p-4 text-white font-semibold">
-                            ${parseFloat(pmt.amount).toFixed(2)}
+                            {formatCurrency(pmt.amount)}
                           </td>
                           <td className="p-4 text-white/70">
                             {pmt.frequency}
@@ -2179,7 +2195,7 @@ export default function SendMoneyPage() {
                         </div>
                       </td>
                       <td className="py-4 font-bold text-emerald-400">
-                        ${req.amount.toFixed(2)}
+                        {formatCurrency(req.amount)}
                       </td>
                       <td className="py-4">
                         <span
@@ -2283,7 +2299,7 @@ export default function SendMoneyPage() {
               <div className="p-6 space-y-6">
                 <div className="flex flex-col items-center py-4 bg-white/5 rounded-2xl border border-white/5">
                   <span className={`text-3xl font-bold ${selectedTxDetails.amount < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                    {selectedTxDetails.amount < 0 ? '-' : '+'}${Math.abs(selectedTxDetails.amount).toFixed(2)}
+                    {selectedTxDetails.amount < 0 ? '' : '+'}{formatCurrency(selectedTxDetails.amount)}
                   </span>
                   <span className="text-white/50 text-sm mt-1 uppercase tracking-widest font-semibold">
                     {selectedTxDetails.transaction_side || (selectedTxDetails.amount < 0 ? 'Debit' : 'Credit')}

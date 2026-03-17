@@ -269,9 +269,19 @@ async def _execute_p2p_balances(
     # Order by ID to prevent deadlocks.
     first_id, second_id = sorted([sender_account_id, recipient_account_id])
 
-    result1 = await db.execute(select(Account).filter(Account.id == first_id).with_for_update())
+    result1 = await db.execute(
+        select(Account)
+        .filter(Account.id == first_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     acc1 = result1.scalars().first()
-    result2 = await db.execute(select(Account).filter(Account.id == second_id).with_for_update())
+    result2 = await db.execute(
+        select(Account)
+        .filter(Account.id == second_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     acc2 = result2.scalars().first()
 
     if first_id == sender_account_id:

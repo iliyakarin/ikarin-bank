@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { TrendingUp, Eye, EyeOff, Copy, Check } from "lucide-react";
 import { useState, useEffect } from "react";
+import { formatCurrency } from "@/lib/transactionUtils";
 
 interface BalanceCardProps {
     balance: number;
@@ -26,8 +27,8 @@ export default function BalanceCard({ balance, growth, accountNumber }: BalanceC
     }, []);
 
     const formattedBalance = mounted
-        ? balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-        : balance.toFixed(2);
+        ? formatCurrency(balance)
+        : formatCurrency(balance);
 
     return (
         <motion.div
