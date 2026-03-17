@@ -30,7 +30,7 @@ async def get_external_banks():
     async with httpx.AsyncClient() as client:
         try:
             # We'll add this route to the gateway in the next step
-            res = await client.get("http://mock-fed-gateway:8001/banks", timeout=5.0)
+            res = await client.get("http://mock-fed-gateway:8002/banks", timeout=5.0)
             if res.status_code == 200:
                 return res.json()
             return {"banks": []}

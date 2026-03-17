@@ -19,7 +19,29 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 SIMULATOR_URL = settings.SIMULATOR_URL
-SIMULATOR_API_KEY = settings.SIMULATOR_API_KEY
+SIMULATOR_API_KEY = getattr(settings, "SIMULATOR_API_KEY", "default-key")
+
+
+async def execute_vendor_payment_immediate(vendor_id: str, subscriber_id: str, amount: int):
+    """Calls the vendor simulator to process a payment."""
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.post(
+                f"{SIMULATOR_URL}/billpay/execute",
+                json={
+                    "merchant_id": vendor_id,
+                    "subscriber_id": subscriber_id,
+                    "amount": float(amount) / 100.0  # Simulator expects float USD
+                },
+                headers={"X-API-Key": SIMULATOR_API_KEY},
+                timeout=10.0
+            )
+            if res.status_code == 200:
+                return res.json()
+            return {"status": "FAILED", "failure_reason": f"Simulator returned {res.status_code}"}
+        except Exception as e:
+            logger.error(f"Error calling vendor simulator: {e}")
+            return {"status": "FAILED", "failure_reason": str(e)}
 
 
 async def process_p2p_transfer(
@@ -32,7 +54,8 @@ async def process_p2p_transfer(
     idempotency_key: Optional[str] = None,
     payment_request_id: Optional[int] = None,
     client_ip: Optional[str] = None,
-    user_agent: Optional[str] = None
+    user_agent: Optional[str] = None,
+    subscriber_id: Optional[str] = None
 ):
     """
     Orchestrates the entire P2P transfer process including validation, 
@@ -49,7 +72,7 @@ async def process_p2p_transfer(
         vendor = next((v for v in vendors_resp if v["email"] == recipient_email), None)
         if vendor:
             return await _handle_vendor_payment(
-                db, current_user, vendor, amount, source_account_id, commentary, idempotency_key, client_ip, user_agent
+                db, current_user, vendor, amount, source_account_id, commentary, idempotency_key, client_ip, user_agent, subscriber_id
             )
         raise HTTPException(status_code=404, detail="Recipient not found")
 
@@ -129,7 +152,8 @@ async def process_p2p_transfer(
 async def _handle_vendor_payment(
     db: AsyncSession, current_user: User, vendor: dict, amount: int, 
     source_account_id: Optional[int], commentary: Optional[str],
-    idempotency_key: Optional[str], client_ip: str, user_agent: str
+    idempotency_key: Optional[str], client_ip: str, user_agent: str,
+    subscriber_id: Optional[str]
 ):
     sender_account_query = select(Account).filter(Account.user_id == current_user.id)
     if source_account_id:
@@ -146,7 +170,10 @@ async def _handle_vendor_payment(
         raise HTTPException(status_code=400, detail="Insufficient funds")
 
     # Execute Vendor Payment
-    sim_resp = await execute_vendor_payment_immediate(vendor["id"], "EXTERNAL", amount)
+    if not subscriber_id:
+        raise HTTPException(status_code=400, detail="Subscriber ID is required for merchant payments")
+
+    sim_resp = await execute_vendor_payment_immediate(vendor["id"], subscriber_id, amount)
 
     # Update Balance
     sender_account.balance -= amount
@@ -168,6 +195,7 @@ async def _handle_vendor_payment(
         internal_account_last_4=sender_account.account_number_last_4,
         recipient_email=vendor["email"],
         sender_email=current_user.email,
+        subscriber_id=subscriber_id,
         idempotency_key=idempotency_key or str(uuid.uuid4()),
         ip_address=client_ip,
         user_agent=user_agent

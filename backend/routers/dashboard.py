@@ -427,6 +427,17 @@ async def get_all_transactions(
 
     # --- Postgres Fetch ---
     try:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        logging.info(f"[get_all_transactions] now: {now.isoformat()}, cutoff: {cutoff_time.isoformat()}, accounts: {target_account_ids}")
+        
+        # Test query without cutoff to diagnostic
+        diag_query = select(Transaction).filter(Transaction.account_id.in_(target_account_ids))
+        diag_res = await db.execute(diag_query)
+        diag_all = diag_res.scalars().all()
+        logging.info(f"[get_all_transactions] DIAG: Found {len(diag_all)} raw txs for these accounts in PG")
+        for dtx in diag_all[:2]:
+             logging.info(f"  - TX {dtx.id} created_at: {dtx.created_at.isoformat()} (timezone: {dtx.created_at.tzinfo})")
+
         query = select(Transaction).filter(
             Transaction.account_id.in_(target_account_ids),
             Transaction.created_at >= cutoff_time,

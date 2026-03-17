@@ -114,7 +114,8 @@ async def create_p2p_transfer(
             idempotency_key=transfer.idempotency_key,
             payment_request_id=transfer.payment_request_id,
             client_ip=client_ip,
-            user_agent=user_agent
+            user_agent=user_agent,
+            subscriber_id=transfer.subscriber_id
         )
 
         # 3. Finalize Idempotency (if not already handled by service or if we want router to manage it)

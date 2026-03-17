@@ -448,23 +448,35 @@ export default function ContactsPage() {
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={actionLoading || !newName.trim()}
-                className={`w-full bg-gradient-to-r ${activeTab === "karin" ? "from-purple-600 to-indigo-600 shadow-purple-500/20" :
-                    activeTab === "merchant" ? "from-indigo-600 to-blue-600 shadow-indigo-500/20" :
-                      "from-emerald-600 to-teal-600 shadow-emerald-500/20"
-                  } hover:brightness-110 text-white font-bold py-3.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl`}
-              >
-                {actionLoading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <Plus size={18} />
-                    Save {activeTab === "karin" ? "Contact" : activeTab === "merchant" ? "Merchant" : "Account"}
-                  </>
-                )}
-              </button>
+              {/* Validation helper */}
+              {(() => {
+                const isFormValid = () => {
+                  if (activeTab === "karin") return newName.trim() !== "" && newEmail.trim() !== "";
+                  if (activeTab === "merchant") return newMerchantId !== "" && newSubscriberId.trim() !== "";
+                  if (activeTab === "bank") return newBankName !== "" && newAccountNumber.trim() !== "" && newName.trim() !== "";
+                  return false;
+                };
+
+                return (
+                  <button
+                    type="submit"
+                    disabled={actionLoading || !isFormValid()}
+                    className={`w-full bg-gradient-to-r ${activeTab === "karin" ? "from-purple-600 to-indigo-600 shadow-purple-500/20" :
+                        activeTab === "merchant" ? "from-indigo-600 to-blue-600 shadow-indigo-500/20" :
+                          "from-emerald-600 to-teal-600 shadow-emerald-500/20"
+                      } hover:brightness-110 text-white font-bold py-3.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl`}
+                  >
+                    {actionLoading ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <>
+                        <Plus size={18} />
+                        Save {activeTab === "karin" ? "Contact" : activeTab === "merchant" ? "Merchant" : "Account"}
+                      </>
+                    )}
+                  </button>
+                );
+              })()}
             </form>
 
             <div className="mt-6 flex items-start gap-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl">
