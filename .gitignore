@@ -67,6 +67,7 @@ htmlcov/
 .nyc_output/
 .tox/
 performance_tests/
+test-results/
 # Playwright
 frontend/test-results/
 frontend/test-results-*/

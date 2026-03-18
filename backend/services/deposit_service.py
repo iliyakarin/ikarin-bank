@@ -127,7 +127,7 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
     
     if mode == "payment":
         amount_cents = int(amount_total)
-        idempotency_key = f"stripe_deposit_{session_id}"
+        idempotency_key = f"deposit_mock_{session_id}"
  
         try:
             await _atomic_topup_balance(
@@ -144,8 +144,8 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
 
     elif mode == "subscription":
         # Handle subscription creation
-        stripe_sub_id = session.get("subscription")
-        idempotency_key = f"stripe_sub_{stripe_sub_id}"
+        deposit_sub_id = session.get("subscription")
+        idempotency_key = f"deposit_sub_{deposit_sub_id}"
         
         # Check idempotency
         res = await db.execute(select(IdempotencyKey).filter(IdempotencyKey.key == idempotency_key))
@@ -177,26 +177,26 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
                 category="settings",
                 action="subscription_started",
                 title="Upgraded to Karin Black",
-                details={"stripe_subscription_id": stripe_sub_id}
+                details={"deposit_subscription_id": deposit_sub_id}
             )
             await db.commit()
             logger.info(f"Subscription activated for user {user_id}")
 
-async def handle_subscription_deleted(stripe_subscription: dict, db: AsyncSession):
+async def handle_subscription_deleted(deposit_subscription: dict, db: AsyncSession):
     """
-    Handles subscription cancellation from Stripe.
+    Handles subscription cancellation from Deposit Mock.
     """
-    stripe_sub_id = stripe_subscription.get("id")
+    deposit_sub_id = deposit_subscription.get("id")
     # Finding user by searching for active subscription with this ID would be ideal
     # For now, we'll search by user_id if present in metadata or just find the user's active sub
-    customer_id = stripe_subscription.get("customer")
+    customer_id = deposit_subscription.get("customer")
     
-    # Normally we'd look up user by stripe_customer_id
+    # Normally we'd look up user by deposit_customer_id
     # But for simplicity in this mock-to-real transition, let's find the user's most recent active sub
-    # In production, you MUST store stripe_customer_id and stripe_subscription_id.
+    # In production, you MUST store deposit_customer_id and deposit_subscription_id.
     
     # For this exercise, we'll try to find the User via metadata if available
-    metadata = stripe_subscription.get("metadata", {})
+    metadata = deposit_subscription.get("metadata", {})
     user_id = metadata.get("user_id")
     
     if user_id:
@@ -222,7 +222,7 @@ async def handle_subscription_deleted(stripe_subscription: dict, db: AsyncSessio
                 category="settings",
                 action="subscription_cancelled",
                 title="Karin Black Subscription Ended",
-                details={"stripe_subscription_id": stripe_sub_id}
+                details={"deposit_subscription_id": deposit_sub_id}
             )
             await db.commit()
             logger.info(f"Subscription deactivated for user {user.id}")

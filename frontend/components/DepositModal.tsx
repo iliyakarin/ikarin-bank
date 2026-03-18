@@ -14,8 +14,8 @@ import { X, CheckCircle2, AlertCircle, CreditCard, Sparkles, Wand2 } from "lucid
 import { useAuth } from "@/lib/AuthContext";
 import { formatCurrency } from "@/lib/transactionUtils";
 
-// Initialize Stripe outside of component to avoid recreation
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "pk_test_mock_stripe_key_12345");
+// Initialize Deposit Service (Mock) outside of component to avoid recreation
+const depositPromise = loadStripe(process.env.NEXT_PUBLIC_DEPOSIT_MOCK_PUBLISHABLE_KEY || "pk_test_mock_deposit_key_12345");
 
 function PaymentForm({
   amount,
@@ -79,7 +79,7 @@ function PaymentForm({
   const handleAutofill = () => {
     // In a real Payment Element, we can't programmatically fill the iframe fields for security.
     // However, we can provide a UI hint or pre-fill other fields.
-    // Stripe test cards: 4242 4242 4242 4242, Exp: Any future date, CVC: Any 3 digits.
+    // Mock Deposit test cards: 4242 4242 4242 4242, Exp: Any future date, CVC: Any 3 digits.
     alert("Use test card: 4242 4242 4242 4242 | Exp: 12/30 | CVC: 123");
   };
 
@@ -235,7 +235,7 @@ export default function DepositModal({
     setIsClient(true);
   }, []);
 
-  const isMock = !process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY.includes("mock");
+  const isMock = !process.env.NEXT_PUBLIC_DEPOSIT_MOCK_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_DEPOSIT_MOCK_PUBLISHABLE_KEY.includes("mock");
 
   if (!isClient || !isOpen) {
     return null;
@@ -424,7 +424,7 @@ export default function DepositModal({
               </div>
             ) : (
               <Elements
-                stripe={stripePromise}
+                stripe={depositPromise}
                 options={{
                   clientSecret,
                   appearance: {

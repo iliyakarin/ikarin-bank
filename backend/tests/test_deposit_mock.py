@@ -7,8 +7,8 @@ from decimal import Decimal
 @pytest.mark.asyncio
 async def test_create_payment_intent(mock_fastapi_dependency):
     import main
-    import routers.stripe as stripe_router
-    from schemas.stripe_mock import PaymentIntentCreate
+    import routers.deposit as deposit_router
+    from schemas.deposit_mock import PaymentIntentCreate
     
     mock_db = MagicMock()
     mock_db.execute = AsyncMock()
@@ -20,7 +20,7 @@ async def test_create_payment_intent(mock_fastapi_dependency):
     
     payload = PaymentIntentCreate(amount=Decimal("1500"))
     
-    fn = getattr(stripe_router.create_payment_intent, "__wrapped__", stripe_router.create_payment_intent)
+    fn = getattr(deposit_router.create_payment_intent, "__wrapped__", deposit_router.create_payment_intent)
     res = await fn(payload=payload, db=mock_db, current_user=mock_user)
     
     assert res.client_secret is not None
@@ -28,8 +28,8 @@ async def test_create_payment_intent(mock_fastapi_dependency):
 
 @pytest.mark.asyncio
 async def test_create_subscription_intent_prevents_double_sub(mock_fastapi_dependency):
-    import routers.stripe as stripe_router
-    from schemas.stripe_mock import PaymentIntentCreate
+    import routers.deposit as deposit_router
+    from schemas.deposit_mock import PaymentIntentCreate
     from database import Subscription
     
     mock_db = MagicMock()
@@ -47,8 +47,8 @@ async def test_create_subscription_intent_prevents_double_sub(mock_fastapi_depen
     mock_result.scalars.return_value = mock_scalars
     mock_db.execute.return_value = mock_result
     
-    from fastapi import HTTPException
-    fn = getattr(stripe_router.create_payment_intent, "__wrapped__", stripe_router.create_payment_intent)
+    from fastapi import HTTPException, status
+    fn = getattr(deposit_router.create_payment_intent, "__wrapped__", deposit_router.create_payment_intent)
     
     with pytest.raises(HTTPException) as exc:
         await fn(payload=payload, db=mock_db, current_user=mock_user)
@@ -59,8 +59,8 @@ async def test_create_subscription_intent_prevents_double_sub(mock_fastapi_depen
 @pytest.mark.asyncio
 async def test_create_payment_method(mock_fastapi_dependency):
     import main
-    import routers.stripe as stripe_router
-    from schemas.stripe_mock import PaymentMethodCreate
+    import routers.deposit as deposit_router
+    from schemas.deposit_mock import PaymentMethodCreate
     
     mock_db = MagicMock()
     mock_db.execute = AsyncMock()
@@ -89,7 +89,7 @@ async def test_create_payment_method(mock_fastapi_dependency):
         name="Jane Doe"
     )
     
-    fn = getattr(stripe_router.create_payment_method, "__wrapped__", stripe_router.create_payment_method)
+    fn = getattr(deposit_router.create_payment_method, "__wrapped__", deposit_router.create_payment_method)
     res = await fn(payload=payload, db=mock_db, current_user=mock_user)
     
     assert res.id.startswith("pm_")
@@ -99,8 +99,8 @@ async def test_create_payment_method(mock_fastapi_dependency):
 @pytest.mark.asyncio
 async def test_confirm_payment_intent(mock_fastapi_dependency):
     import main
-    import routers.stripe as stripe_router
-    from schemas.stripe_mock import PaymentIntentConfirm
+    import routers.deposit as deposit_router
+    from schemas.deposit_mock import PaymentIntentConfirm
     
     mock_db = MagicMock()
     mock_db.execute = AsyncMock()
@@ -131,9 +131,11 @@ async def test_confirm_payment_intent(mock_fastapi_dependency):
         if idx == 0:
             mock_scalars.first.return_value = None # Idempotency key not found
         elif idx == 1:
-            main_acc = MagicMock()
-            main_acc.id = 123
-            main_acc.balance = Decimal("100.00")
+            class MockAccount:
+                def __init__(self):
+                    self.id = 123
+                    self.balance = Decimal("100.00")
+            main_acc = MockAccount()
             mock_scalars.first.return_value = main_acc # Account
             
         mock_result.scalars.return_value = mock_scalars
@@ -141,7 +143,7 @@ async def test_confirm_payment_intent(mock_fastapi_dependency):
 
     mock_db.execute.side_effect = execute_side_effect
 
-    fn = getattr(stripe_router.confirm_payment_intent, "__wrapped__", stripe_router.confirm_payment_intent)
+    fn = getattr(deposit_router.confirm_payment_intent, "__wrapped__", deposit_router.confirm_payment_intent)
         
     res = await fn(intent_id=intent_id, payload=payload, request=mock_request, db=mock_db, current_user=mock_user)
     
@@ -150,8 +152,8 @@ async def test_confirm_payment_intent(mock_fastapi_dependency):
 
 @pytest.mark.asyncio
 async def test_confirm_subscription_deducts_balance(mock_fastapi_dependency):
-    import routers.stripe as stripe_router
-    from schemas.stripe_mock import PaymentIntentConfirm
+    import routers.deposit as deposit_router
+    from schemas.deposit_mock import PaymentIntentConfirm
     
     mock_db = MagicMock()
     mock_db.execute = AsyncMock()
@@ -184,10 +186,12 @@ async def test_confirm_subscription_deducts_balance(mock_fastapi_dependency):
         return mock_result
 
     mock_db.execute.side_effect = execute_side_effect
-    fn = getattr(stripe_router.confirm_payment_intent, "__wrapped__", stripe_router.confirm_payment_intent)
+    fn = getattr(deposit_router.confirm_payment_intent, "__wrapped__", deposit_router.confirm_payment_intent)
     
     await fn(intent_id=intent_id, payload=payload, request=mock_request, db=mock_db, current_user=mock_user)
     
-    assert main_acc.balance == Decimal("51.00") # 100 - 49
+    # Verification
+    # The router assigns 51.00 directly to the balance attribute.
+    # We check if it's the expected value.
+    assert main_acc.balance == Decimal("51.00")
     assert mock_user.is_black is True
-

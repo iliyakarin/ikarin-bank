@@ -17,7 +17,7 @@ class PaymentMethodCreate(BaseModel):
 class PaymentIntentConfirm(BaseModel):
     payment_method: str
 
-class StripeCard(BaseModel):
+class DepositCard(BaseModel):
     last4: str
     brand: str
 
@@ -25,7 +25,7 @@ class PaymentMethodResponse(BaseModel):
     id: str
     object: str = "payment_method"
     type: str = "card"
-    card: StripeCard
+    card: DepositCard
 
 class PaymentIntentResponse(BaseModel):
     id: str

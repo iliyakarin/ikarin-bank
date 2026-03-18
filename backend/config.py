@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # Kafka
     KAFKA_BOOTSTRAP_SERVERS: str
     KAFKA_TOPIC: str
-    KAFKA_ACTIVITY_TOPIC: str = "bank_activity_events"
+    KAFKA_ACTIVITY_TOPIC: str
     KAFKA_USER: Optional[str] = None
     KAFKA_PASSWORD: Optional[str] = None
 
@@ -39,13 +39,13 @@ class Settings(BaseSettings):
     SIMULATOR_URL: str
     GATEWAY_API_KEY: str
     SIMULATOR_API_KEY: str
-    TURNSTILE_SECRET_KEY: Optional[str] = "1x0000000000000000000000000000000AA"
-    CORS_ORIGINS: str = "http://localhost:3000"
-    ADMIN_EMAIL: str = "admin@example.com"
-    ADMIN_PASSWORD: str = "REDACTED"
-    STRIPE_API_KEY: Optional[str] = "sk_test_placeholder"
-    STRIPE_WEBHOOK_SECRET: Optional[str] = "whsec_placeholder"
-    STRIPE_MOCK_URL: Optional[str] = None
+    TURNSTILE_SECRET_KEY: Optional[str] = None
+    CORS_ORIGINS: str
+    ADMIN_EMAIL: str
+    ADMIN_PASSWORD: str
+    DEPOSIT_MOCK_API_KEY: Optional[str] = None
+    DEPOSIT_MOCK_WEBHOOK_SECRET: Optional[str] = None
+    DEPOSIT_MOCK_URL: Optional[str] = None
 
     model_config = SettingsConfigDict(
         env_file=(
