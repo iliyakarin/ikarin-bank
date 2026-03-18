@@ -3,7 +3,8 @@ import pytest
 from unittest.mock import MagicMock, patch
 import os
 
-# Set JWT_SECRET_KEY before importing main
+# Set environment variables for tests
+os.environ["ENV"] = "development"
 os.environ["JWT_SECRET_KEY"] = "test_secret_key"
 
 # Define Mock classes to capture arguments

@@ -28,8 +28,7 @@ async def session_factory():
 
 @pytest.fixture(autouse=True)
 def mock_startup():
-    with patch("main.run_all_migrations", new_callable=AsyncMock) as m_run, \
-         patch("main.AIOKafkaProducer") as m_kafka:
+    with patch("main.AIOKafkaProducer") as m_kafka:
         
         instance = m_kafka.return_value
         instance.start = AsyncMock()
