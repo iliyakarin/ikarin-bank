@@ -17,7 +17,7 @@ async def create_payment_intent(request: Request):
     currency = form_data.get("currency", "usd")
     metadata = {}
     
-    # Parse metadata from form data if present (stripe client sends metadata[key])
+    # Parse metadata from form data if present (deposit client sends metadata[key])
     for key, value in form_data.items():
         if key.startswith("metadata[") and key.endswith("]"):
             meta_key = key[9:-1]
@@ -53,7 +53,7 @@ async def create_checkout_session(request: Request):
     Mock Deposit Funds Checkout Session creation.
     """
     form_data = await request.form()
-    success_url = form_data.get("success_url", "http://localhost:3000/dashboard/stripe/success")
+    success_url = form_data.get("success_url", "http://localhost:3000/dashboard/deposit/success")
     session_id = f"cs_test_{uuid.uuid4().hex}"
     
     return JSONResponse({

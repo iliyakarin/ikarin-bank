@@ -11,9 +11,9 @@ import uuid
 
 # Set required environment variables before importing
 os.environ["JWT_SECRET_KEY"] = "test_secret_key"
-os.environ["STRIPE_API_KEY"] = "sk_test_mock_key"
-os.environ["STRIPE_MOCK_URL"] = "http://mock-stripe"
-os.environ["STRIPE_WEBHOOK_SECRET"] = "whsec_mock_secret"
+os.environ["DEPOSIT_MOCK_API_KEY"] = "sk_test_mock_key"
+os.environ["DEPOSIT_MOCK_URL"] = "http://mock-deposit"
+os.environ["DEPOSIT_MOCK_WEBHOOK_SECRET"] = "whsec_mock_secret"
 
 # Mock database module to avoid connection issues
 sys.modules['database'] = MagicMock()
@@ -122,32 +122,32 @@ class TestEnvironmentVariables:
     """Test that required Gateway environment variables are properly validated."""
 
     @pytest.mark.asyncio
-    async def test_stripe_api_key_required(self):
-        """Test that Stripe API key is required (Underlying Gateway)."""
-        with patch.dict(os.environ, {"STRIPE_API_KEY": ""}, clear=False):
+    async def test_deposit_mock_api_key_required(self):
+        """Test that Deposit Mock API key is required."""
+        with patch.dict(os.environ, {"DEPOSIT_MOCK_API_KEY": ""}, clear=False):
             with pytest.raises(ValueError) as exc:
-                stripe.api_key = os.getenv("STRIPE_API_KEY")
-            assert "STRIPE_API_KEY" in str(exc.value)
+                stripe.api_key = os.getenv("DEPOSIT_MOCK_API_KEY")
+            assert "DEPOSIT_MOCK_API_KEY" in str(exc.value)
 
     @pytest.mark.asyncio
-    async def test_stripe_mock_url_optional(self):
-        """Test that Gateway mock URL is optional."""
-        with patch.dict(os.environ, {"STRIPE_MOCK_URL": ""}, clear=False):
+    async def test_deposit_mock_url_optional(self):
+        """Test that Deposit mock URL is optional."""
+        with patch.dict(os.environ, {"DEPOSIT_MOCK_URL": ""}, clear=False):
             # Should not raise error, use default
-            stripe.api_base = os.getenv("STRIPE_MOCK_URL", stripe.api_base)
+            stripe.api_base = os.getenv("DEPOSIT_MOCK_URL", stripe.api_base)
 
     @pytest.mark.asyncio
-    async def test_stripe_webhook_secret_required(self):
-        """Test that Gateway webhook secret is required."""
-        with patch.dict(os.environ, {"STRIPE_WEBHOOK_SECRET": ""}, clear=False):
+    async def test_deposit_mock_webhook_secret_required(self):
+        """Test that Deposit mock webhook secret is required."""
+        with patch.dict(os.environ, {"DEPOSIT_MOCK_WEBHOOK_SECRET": ""}, clear=False):
             with pytest.raises(ValueError) as exc:
-                WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-            assert "STRIPE_WEBHOOK_SECRET" in str(exc.value)
+                WEBHOOK_SECRET = os.getenv("DEPOSIT_MOCK_WEBHOOK_SECRET")
+            assert "DEPOSIT_MOCK_WEBHOOK_SECRET" in str(exc.value)
 
     @pytest.mark.asyncio
     async def test_all_required_env_vars_set(self):
         """Test that all required environment variables are set."""
-        required_vars = ["STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET"]
+        required_vars = ["DEPOSIT_MOCK_API_KEY", "DEPOSIT_MOCK_WEBHOOK_SECRET"]
         for var in required_vars:
             assert os.getenv(var), f"{var} must be set"
 
@@ -171,7 +171,7 @@ class TestPaymentIntent:
 
         payload = PaymentIntentCreate(amount=Decimal("1500"), currency="usd")
 
-        fn = getattr(stripe_router.create_payment_intent, "__wrapped__", stripe_router.create_payment_intent)
+        fn = getattr(deposit_router.create_payment_intent, "__wrapped__", deposit_router.create_payment_intent)
         res = await fn(payload=payload, db=mock_db, current_user=mock_user)
 
         assert res.client_secret is not None
@@ -198,7 +198,7 @@ class TestPaymentIntent:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        fn = getattr(stripe_router.create_payment_intent, "__wrapped__", stripe_router.create_payment_intent)
+        fn = getattr(deposit_router.create_payment_intent, "__wrapped__", deposit_router.create_payment_intent)
 
         with pytest.raises(HTTPException) as exc:
             await fn(payload=payload, db=mock_db, current_user=mock_user)
@@ -223,7 +223,7 @@ class TestPaymentIntent:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        fn = getattr(stripe_router.create_payment_intent, "__wrapped__", stripe_router.create_payment_intent)
+        fn = getattr(deposit_router.create_payment_intent, "__wrapped__", deposit_router.create_payment_intent)
         res = await fn(payload=payload, db=mock_db, current_user=mock_user)
 
         assert res.client_secret is not None
@@ -261,7 +261,7 @@ class TestPaymentMethod:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        fn = getattr(stripe_router.create_payment_method, "__wrapped__", stripe_router.create_payment_method)
+        fn = getattr(deposit_router.create_payment_method, "__wrapped__", deposit_router.create_payment_method)
         res = await fn(payload=payload, db=mock_db, current_user=mock_user)
 
         assert res.id.startswith("pm_")
@@ -293,7 +293,7 @@ class TestPaymentMethod:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        fn = getattr(stripe_router.create_payment_method, "__wrapped__", stripe_router.create_payment_method)
+        fn = getattr(deposit_router.create_payment_method, "__wrapped__", deposit_router.create_payment_method)
 
         with pytest.raises(HTTPException) as exc:
             await fn(payload=payload, db=mock_db, current_user=mock_user)
@@ -344,7 +344,7 @@ class TestPaymentIntentConfirmation:
 
         mock_db.execute.side_effect = execute_side_effect
 
-        fn = getattr(stripe_router.confirm_payment_intent, "__wrapped__", stripe_router.confirm_payment_intent)
+        fn = getattr(deposit_router.confirm_payment_intent, "__wrapped__", deposit_router.confirm_payment_intent)
         res = await fn(intent_id=intent_id, payload=payload, request=mock_request, db=mock_db, current_user=mock_user)
 
         assert res.status == "succeeded"
@@ -378,7 +378,7 @@ class TestPaymentIntentConfirmation:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        fn = getattr(stripe_router.confirm_payment_intent, "__wrapped__", stripe_router.confirm_payment_intent)
+        fn = getattr(deposit_router.confirm_payment_intent, "__wrapped__", deposit_router.confirm_payment_intent)
         res = await fn(intent_id=intent_id, payload=payload, request=mock_request, db=mock_db, current_user=mock_user)
 
         assert res.status == "succeeded"
@@ -421,7 +421,7 @@ class TestPaymentIntentConfirmation:
 
         mock_db.execute.side_effect = execute_side_effect
 
-        fn = getattr(stripe_router.confirm_payment_intent, "__wrapped__", stripe_router.confirm_payment_intent)
+        fn = getattr(deposit_router.confirm_payment_intent, "__wrapped__", deposit_router.confirm_payment_intent)
         await fn(intent_id=intent_id, payload=payload, request=mock_request, db=mock_db, current_user=mock_user)
 
         assert mock_main_account.balance == Decimal("51.00")  # 100 - 49
@@ -449,7 +449,7 @@ class TestSubscription:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        res = await stripe_router.get_my_subscription(db=mock_db, current_user=mock_user)
+        res = await deposit_router.get_my_subscription(db=mock_db, current_user=mock_user)
 
         assert res["active"] is True
         assert res["plan_name"] == "Karin Black"
@@ -471,7 +471,7 @@ class TestSubscription:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        res = await stripe_router.get_my_subscription(db=mock_db, current_user=mock_user)
+        res = await deposit_router.get_my_subscription(db=mock_db, current_user=mock_user)
 
         assert res["active"] is False
 
@@ -491,7 +491,7 @@ class TestSubscription:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        res = await stripe_router.cancel_subscription(db=mock_db, current_user=mock_user)
+        res = await deposit_router.cancel_subscription(db=mock_db, current_user=mock_user)
 
         assert "cancelled successfully" in res["message"]
         assert mock_user.is_black is False
@@ -513,7 +513,7 @@ class TestSubscription:
         mock_db.execute.return_value = mock_result
 
         with pytest.raises(HTTPException) as exc:
-            await stripe_router.cancel_subscription(db=mock_db, current_user=mock_user)
+            await deposit_router.cancel_subscription(db=mock_db, current_user=mock_user)
         assert exc.value.status_code == 404
         assert "No active subscription found" in exc.value.detail
 
@@ -549,7 +549,7 @@ class TestEdgeCases:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        fn = getattr(stripe_router.create_payment_method, "__wrapped__", stripe_router.create_payment_method)
+        fn = getattr(deposit_router.create_payment_method, "__wrapped__", deposit_router.create_payment_method)
 
         # Should succeed with mock (mocks brand detection)
         res = await fn(payload=payload, db=mock_db, current_user=mock_user)
@@ -580,7 +580,7 @@ class TestEdgeCases:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        fn = getattr(stripe_router.create_payment_method, "__wrapped__", stripe_router.create_payment_method)
+        fn = getattr(deposit_router.create_payment_method, "__wrapped__", deposit_router.create_payment_method)
         res = await fn(payload=payload, db=mock_db, current_user=mock_user)
 
         assert res.card.last4 == "4242"
@@ -621,7 +621,7 @@ class TestEdgeCases:
 
         mock_db.execute.side_effect = execute_side_effect
 
-        fn = getattr(stripe_router.confirm_payment_intent, "__wrapped__", stripe_router.confirm_payment_intent)
+        fn = getattr(deposit_router.confirm_payment_intent, "__wrapped__", deposit_router.confirm_payment_intent)
 
         # Should succeed but balance will be negative
         await fn(intent_id=intent_id, payload=payload, request=mock_request, db=mock_db, current_user=mock_user)
@@ -657,7 +657,7 @@ class TestEdgeCases:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        fn = getattr(stripe_router.confirm_payment_intent, "__wrapped__", stripe_router.confirm_payment_intent)
+        fn = getattr(deposit_router.confirm_payment_intent, "__wrapped__", deposit_router.confirm_payment_intent)
         res = await fn(intent_id=intent_id, payload=payload, request=mock_request, db=mock_db, current_user=mock_user)
 
         assert res.status == "succeeded"
@@ -692,7 +692,7 @@ class TestDepositIntegration:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        create_fn = getattr(stripe_router.create_payment_intent, "__wrapped__", stripe_router.create_payment_intent)
+        create_fn = getattr(deposit_router.create_payment_intent, "__wrapped__", deposit_router.create_payment_intent)
         intent_res = await create_fn(payload=intent_payload, db=mock_db, current_user=mock_user)
 
         assert intent_res.status == "requires_payment_method"
@@ -721,7 +721,7 @@ class TestDepositIntegration:
 
         mock_db.execute.side_effect = execute_side_effect
 
-        confirm_fn = getattr(stripe_router.confirm_payment_intent, "__wrapped__", stripe_router.confirm_payment_intent)
+        confirm_fn = getattr(deposit_router.confirm_payment_intent, "__wrapped__", deposit_router.confirm_payment_intent)
         confirm_res = await confirm_fn(intent_id=intent_id, payload=confirm_payload, request=mock_request, db=mock_db, current_user=mock_user)
 
         assert confirm_res.status == "succeeded"
@@ -734,7 +734,7 @@ class TestDepositIntegration:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        get_sub_fn = getattr(stripe_router.get_my_subscription, "__wrapped__", stripe_router.get_my_subscription)
+        get_sub_fn = getattr(deposit_router.get_my_subscription, "__wrapped__", deposit_router.get_my_subscription)
         sub_res = await get_sub_fn(db=mock_db, current_user=mock_user)
 
         assert sub_res["active"] is True
@@ -762,7 +762,7 @@ class TestDepositIntegration:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        create_fn = getattr(stripe_router.create_payment_intent, "__wrapped__", stripe_router.create_payment_intent)
+        create_fn = getattr(deposit_router.create_payment_intent, "__wrapped__", deposit_router.create_payment_intent)
         intent_res = await create_fn(payload=intent_payload, db=mock_db, current_user=mock_user)
 
         assert intent_res.status == "requires_payment_method"
@@ -791,7 +791,7 @@ class TestDepositIntegration:
 
         mock_db.execute.side_effect = execute_side_effect
 
-        confirm_fn = getattr(stripe_router.confirm_payment_intent, "__wrapped__", stripe_router.confirm_payment_intent)
+        confirm_fn = getattr(deposit_router.confirm_payment_intent, "__wrapped__", deposit_router.confirm_payment_intent)
         confirm_res = await confirm_fn(intent_id=intent_id, payload=confirm_payload, request=mock_request, db=mock_db, current_user=mock_user)
 
         assert confirm_res.status == "succeeded"

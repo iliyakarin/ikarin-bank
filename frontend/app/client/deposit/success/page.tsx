@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CheckCircle } from "lucide-react";
 
-export default async function StripeSuccessPage({ searchParams }: { searchParams: Promise<{ session_id?: string }> }) {
+export default async function DepositSuccessPage({ searchParams }: { searchParams: Promise<{ session_id?: string }> }) {
     const { session_id } = await searchParams;
     return (
         <div className="min-h-[80vh] flex items-center justify-center bg-black text-white p-8 font-sans">

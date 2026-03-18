@@ -50,7 +50,7 @@ export default function DepositPage() {
     console.log("DEBUG: DepositPage Render", { toast, isPaymentModalOpen, selectedAmount });
 
     useEffect(() => {
-        console.log("StripePage State Update:", {
+        console.log("DepositPage State Update:", {
             loading,
             amountCents,
             customAmount,
@@ -194,7 +194,7 @@ export default function DepositPage() {
             if (!response.ok) throw new Error("Failed to create session");
             const data = await response.json() as { id: string, url: string };
 
-            // Redirect to Stripe Checkout
+            // Redirect to Deposit Checkout
             window.location.href = data.url;
         } catch (e) {
             console.error("CRITICAL ERROR IN startCheckout:", e);
@@ -246,7 +246,7 @@ export default function DepositPage() {
             }
             const data = await response.json() as { url: string };
 
-            // Redirect to Stripe Customer Portal
+            // Redirect to Deposit Customer Portal
             window.location.href = data.url;
         } catch (e) {
             console.error(e);

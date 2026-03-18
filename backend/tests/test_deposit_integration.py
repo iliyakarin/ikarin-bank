@@ -8,25 +8,25 @@ from sqlalchemy import select
 client = TestClient(app)
 
 @pytest.fixture
-def mock_stripe():
-    with patch("routers.stripe.stripe") as mock:
+def mock_deposit_router():
+    with patch("routers.deposit.stripe") as mock:
         yield mock
 
 @pytest.fixture
-def mock_stripe_service():
-    with patch("routers.stripe.handle_checkout_completed") as mock_checkout, \
-         patch("routers.stripe.handle_subscription_deleted") as mock_sub:
+def mock_deposit_service():
+    with patch("routers.deposit.handle_checkout_completed") as mock_checkout, \
+         patch("routers.deposit.handle_subscription_deleted") as mock_sub:
         yield mock_checkout, mock_sub
 
-def test_create_checkout_session(token, mock_stripe):
+def test_create_checkout_session(token, mock_deposit_router):
     # Mock stripe.checkout.Session.create
-    mock_stripe.checkout.Session.create.return_value = MagicMock(
+    mock_deposit_router.checkout.Session.create.return_value = MagicMock(
         id="sess_123",
         url="https://checkout.stripe.com/pay/sess_123"
     )
 
     response = client.post(
-        "/api/v1/stripe/create-checkout-session",
+        "/api/v1/deposits/create-checkout-session",
         headers={"Authorization": f"Bearer {token}"},
         json={
             "amount": 1000,
@@ -41,18 +41,18 @@ def test_create_checkout_session(token, mock_stripe):
     data = response.json()
     assert data["id"] == "sess_123"
     assert data["url"] == "https://checkout.stripe.com/pay/sess_123"
-    mock_stripe.checkout.Session.create.assert_called_once()
+    mock_deposit_router.checkout.Session.create.assert_called_once()
 
 
-def test_create_portal_session(token, mock_stripe):
+def test_create_portal_session(token, mock_deposit_router):
     # Mock stripe.Customer.list and stripe.billing_portal.Session.create
-    mock_stripe.Customer.list.return_value = MagicMock(data=[MagicMock(id="cus_123")])
-    mock_stripe.billing_portal.Session.create.return_value = MagicMock(
+    mock_deposit_router.Customer.list.return_value = MagicMock(data=[MagicMock(id="cus_123")])
+    mock_deposit_router.billing_portal.Session.create.return_value = MagicMock(
         url="https://billing.stripe.com/p/session/123"
     )
 
     response = client.post(
-        "/api/v1/stripe/create-portal-session",
+        "/api/v1/deposits/create-portal-session",
         headers={"Authorization": f"Bearer {token}"},
         json={"return_url": "http://localhost:3000/client"}
     )
@@ -61,12 +61,12 @@ def test_create_portal_session(token, mock_stripe):
     assert response.json()["url"] == "https://billing.stripe.com/p/session/123"
 
 
-def test_webhook_signature_verification_failure(mock_stripe):
+def test_webhook_signature_verification_failure(mock_deposit_router):
     # Mock stripe.Webhook.construct_event to raise error
-    mock_stripe.Webhook.construct_event.side_effect = ValueError("Invalid signature")
+    mock_deposit_router.Webhook.construct_event.side_effect = ValueError("Invalid signature")
 
     response = client.post(
-        "/api/v1/stripe/webhook",
+        "/api/v1/deposits/webhook",
         headers={"Stripe-Signature": "invalid"},
         content="raw_payload"
     )
@@ -75,9 +75,9 @@ def test_webhook_signature_verification_failure(mock_stripe):
     assert "Invalid payload" in response.json()["detail"]
 
 
-@patch("routers.stripe.STRIPE_WEBHOOK_SECRET", "whsec_test")
-def test_webhook_checkout_completed(mock_stripe, mock_stripe_service):
-    mock_checkout, _ = mock_stripe_service
+@patch("routers.deposit.WEBHOOK_SECRET", "whsec_test")
+def test_webhook_checkout_completed(mock_deposit_router, mock_deposit_service):
+    mock_checkout, _ = mock_deposit_service
     
     # Mock event
     event = {
@@ -85,10 +85,10 @@ def test_webhook_checkout_completed(mock_stripe, mock_stripe_service):
         "data": {"object": {"id": "sess_123"}},
         "id": "evt_123"
     }
-    mock_stripe.Webhook.construct_event.return_value = event
+    mock_deposit_router.Webhook.construct_event.return_value = event
 
     response = client.post(
-        "/api/v1/stripe/webhook",
+        "/api/v1/deposits/webhook",
         headers={"Stripe-Signature": "v1=valid"},
         content="raw_payload"
     )

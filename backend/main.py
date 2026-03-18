@@ -38,17 +38,18 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Ensure database tables and schema exist
+    # Ensure database migrations are applied
     try:
-        # 1. Base Metadata creation (ensures tables exist)
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        
-        # 2. Schema Migrations (ensures columns exist, etc.)
-        await run_all_migrations()
-        logger.info("Database tables verified/migrated successfully")
+        import subprocess
+        logger.info("Running database migrations...")
+        # Run alembic upgrade head
+        result = subprocess.run(["alembic", "upgrade", "head"], capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"Alembic migration failed: {result.stderr}")
+        else:
+            logger.info("Alembic migrations completed successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
+        logger.error(f"Failed to run migrations: {e}")
 
     global producer
     max_retries = 30
@@ -119,7 +120,6 @@ from auth_utils import (
     pwd_context, oauth2_scheme, verify_password, get_password_hash, 
     create_access_token, get_db, get_current_user, RoleChecker
 )
-from migrations import run_all_migrations
 
 
 from schemas.users import UserCreate, Token, UserResponse, NotificationResponse, UserBackupUpdate, UserPasswordUpdate, UserPreferencesUpdate

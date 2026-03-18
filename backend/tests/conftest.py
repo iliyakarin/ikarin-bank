@@ -159,6 +159,7 @@ def mock_fastapi_dependency():
 
     mock_clickhouse = MagicMock()
     mock_database = MagicMock()
+    mock_stripe = MagicMock()
 
     mock_sqlalchemy = MagicMock()
     mock_sqlalchemy_orm = MagicMock()
@@ -188,7 +189,8 @@ def mock_fastapi_dependency():
         "sqlalchemy.ext.asyncio": mock_sqlalchemy_ext_asyncio,
         "sqlalchemy.exc": mock_sqlalchemy_exc,
         "sync_checker": mock_sync_checker,
-        "backend.sync_checker": mock_sync_checker
+        "backend.sync_checker": mock_sync_checker,
+        "stripe": mock_stripe
     }
 
     if "main" in sys.modules:
