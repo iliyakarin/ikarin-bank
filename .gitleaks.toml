@@ -8,9 +8,8 @@ paths = [
     '''^scripts/redactor\.py$''',
     '''^scripts/cleanup_history\.sh$'''
 ]
-# We allow the redacted string itself
-stopwords = [
-    "REDACTED"
+regexes = [
+    '''(?i)REDACTED'''
 ]
 
 [[rules]]
