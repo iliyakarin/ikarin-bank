@@ -55,7 +55,7 @@ services:
       - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
       - KAFKA_CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk
-      - KAFKA_OPTS=-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf -DKAFKA_ADMIN_PASSWORD=REDACTED -DKAFKA_CLIENT_PASSWORD=REDACTED
+      - KAFKA_OPTS=-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf -DKAFKA_ADMIN_PASSWORD=${KAFKA_ADMIN_PASSWORD} -DKAFKA_CLIENT_PASSWORD=${KAFKA_CLIENT_PASSWORD}
     volumes:
       - ./data/kafka:/var/lib/kafka/data
       - ./init-db/kafka-server-jaas.conf:/etc/kafka/kafka_server_jaas.conf:ro

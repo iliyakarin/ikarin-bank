@@ -17,6 +17,17 @@ jobs:
         if: github.event_name == 'pull_request'
         run: git fetch origin ${{ github.base_ref }}:${{ github.base_ref }}
       - name: Gitleaks Scan
+        id: gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # During history rewrites, the range calculation might fail.
+        # This fallback ensures we still scan if the range is invalid.
+        continue-on-error: true
+      - name: Gitleaks Full Scan if Range Failed
+        if: steps.gitleaks.outcome == 'failure'
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --verbose --redact
