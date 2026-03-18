@@ -14,17 +14,7 @@ from confluent_kafka import Consumer, KafkaError
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration from .env
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
-KAFKA_ACTIVITY_TOPIC = os.getenv("KAFKA_ACTIVITY_TOPIC")
-KAFKA_USER = os.getenv("KAFKA_USER")
-KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
-CH_HOST = os.getenv("CLICKHOUSE_HOST")
-CH_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
-CH_USER = os.getenv("CLICKHOUSE_USER")
-CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD")
-CH_DB = os.getenv("CLICKHOUSE_DB")
+from config import settings
 
 # OPTIMIZED CONFIGURATION
 OPTIMAL_BATCH_SIZE = 100
@@ -69,7 +59,7 @@ def log_malformed_message_batch(malformed_messages):
         logger.info(
             f"📝 Batch logged {len(malformed_messages)} malformed messages to DLQ"
         )
-    except Exception as e:
+    except OSError as e:
         logger.error(f"❌ Failed to write to DLQ: {e}")
 
 
@@ -110,7 +100,7 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
             await loop.run_in_executor(
                 None,
                 lambda: client.insert(
-                    f"{CH_DB}.transactions",
+                    f"{settings.CLICKHOUSE_DB}.transactions",
                     data_to_insert,
                     column_names=[
                         "transaction_id",
@@ -133,12 +123,12 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
             )
             logger.info(f"🚀 Async flush completed in {time.time() - start_time:.2f}s")
             return True
-            return True
+
         except Exception as e:
             logger.warning(f"⚠️ Async flush failed, falling back to sync: {e}")
             # Fallback to sync insert
             client.insert(
-                f"{CH_DB}.transactions",
+                f"{settings.CLICKHOUSE_DB}.transactions",
                 data_to_insert,
                 column_names=[
                     "transaction_id",
@@ -181,7 +171,7 @@ async def flush_activity_to_clickhouse(batch: List[Dict[str, Any]]) -> bool:
                 msg["user_id"],
                 msg["category"],
                 msg["action"],
-                datetime.strptime(msg["event_time"], "%Y-%m-%d %H:%M:%S") if isinstance(msg["event_time"], str) and "T" not in msg["event_time"] else (datetime.fromisoformat(msg["event_time"].replace("Z", "+00:00")) if isinstance(msg["event_time"], str) else msg["event_time"]),
+                datetime.fromisoformat(msg["event_time"].replace("Z", "+00:00")) if isinstance(msg["event_time"], str) else msg["event_time"],
                 msg["title"],
                 msg.get("details", "{}"),
             ]
@@ -193,7 +183,7 @@ async def flush_activity_to_clickhouse(batch: List[Dict[str, Any]]) -> bool:
             await loop.run_in_executor(
                 None,
                 lambda: client.insert(
-                    f"{CH_DB}.activity_events",
+                    f"{settings.CLICKHOUSE_DB}.activity_events",
                     data_to_insert,
                     column_names=[
                         "event_id",
@@ -211,7 +201,7 @@ async def flush_activity_to_clickhouse(batch: List[Dict[str, Any]]) -> bool:
         except Exception as e:
             logger.warning(f"⚠️ Async activity flush failed, sync fallback: {e}")
             client.insert(
-                f"{CH_DB}.activity_events",
+                f"{settings.CLICKHOUSE_DB}.activity_events",
                 data_to_insert,
                 column_names=[
                     "event_id",
@@ -235,7 +225,7 @@ async def run_consumer():
 
     # OPTIMIZED Kafka Consumer Config
     conf = {
-        "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
+        "bootstrap.servers": settings.KAFKA_BOOTSTRAP_SERVERS,
         "group.id": "clickhouse-bi-group-v3",
         "auto.offset.reset": "earliest",  # Start from earliest to process old events
         "enable.auto.commit": False,  # Manual commit control
@@ -248,18 +238,18 @@ async def run_consumer():
         "retry.backoff.ms": 1000,
     }
 
-    if KAFKA_USER and KAFKA_PASSWORD:
+    if settings.KAFKA_USER and settings.KAFKA_PASSWORD:
         conf.update(
             {
                 "sasl.mechanisms": "PLAIN",
                 "security.protocol": "SASL_PLAINTEXT",
-                "sasl.username": KAFKA_USER,
-                "sasl.password": KAFKA_PASSWORD,
+                "sasl.username": settings.KAFKA_USER,
+                "sasl.password": settings.KAFKA_PASSWORD,
             }
         )
 
     consumer = Consumer(conf)
-    consumer.subscribe([KAFKA_TOPIC, KAFKA_ACTIVITY_TOPIC])
+    consumer.subscribe([settings.KAFKA_TOPIC, settings.KAFKA_ACTIVITY_TOPIC])
 
     buffer = []
     activity_buffer = []
@@ -323,7 +313,7 @@ async def run_consumer():
                     continue
 
                 msg_topic = msg.topic()
-                if msg_topic == KAFKA_ACTIVITY_TOPIC:
+                if msg_topic == settings.KAFKA_ACTIVITY_TOPIC:
                     required_fields = ["event_id", "user_id", "category", "action", "event_time", "title"]
                 else:
                     required_fields = [
@@ -337,7 +327,7 @@ async def run_consumer():
                 missing_fields = [f for f in required_fields if f not in val]
 
                 if missing_fields:
-                    logger.warning(f"⚠️  Missing fields: {missing_fields} (topic: '{msg_topic}', expected: '{KAFKA_ACTIVITY_TOPIC}')")
+                    logger.warning(f"⚠️  Missing fields: {missing_fields} (topic: '{msg_topic}', expected: '{settings.KAFKA_ACTIVITY_TOPIC}')")
                     malformed_batch.append(
                         {
                             "partition": msg.partition(),
@@ -350,7 +340,7 @@ async def run_consumer():
                     continue
 
                 # Add to buffer with minimal processing
-                if msg_topic == KAFKA_ACTIVITY_TOPIC:
+                if msg_topic == settings.KAFKA_ACTIVITY_TOPIC:
                     activity_buffer.append(val)
                 else:
                     buffer.append(val)
@@ -394,7 +384,7 @@ async def run_consumer():
 
     except KeyboardInterrupt:
         logger.info("🛑 Consumer stopped by user")
-    except Exception as e:
+    except KafkaError as e:
         logger.error(f"❌ Consumer error: {e}")
     finally:
         # Final flush

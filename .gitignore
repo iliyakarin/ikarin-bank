@@ -1,6 +1,7 @@
 # Security & Environment
 .env
 .env.local
+.env.dev
 .env.development.local
 .env.test.local
 .env.production.local
@@ -9,6 +10,7 @@
 *.cert
 id_rsa
 id_ed25519
+.config-history/
 
 # Data & Databases
 data/
@@ -65,6 +67,17 @@ htmlcov/
 .nyc_output/
 .tox/
 performance_tests/
+test-results/
+# Playwright
+frontend/test-results/
+frontend/test-results-*/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/playwright/.cache/
+frontend/e2e_error.log
+# TypeScript
+*.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
 
 # AI & Internal Tooling
 .Jules/
@@ -74,6 +87,8 @@ performance_tests/
 .gemini/
 .cursor/
 .codex/
+.config-history/
+init-db/setup-admin.xml
 
 # Local Database Configuration (Generated or Mocked)
 init-db/*.conf
@@ -95,3 +110,4 @@ init-db/*.prod.conf
 init-db/*.prod.xml
 nginx.prod.conf
 deploy.sh
+backend/scripts/

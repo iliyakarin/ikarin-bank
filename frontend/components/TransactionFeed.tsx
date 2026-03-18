@@ -1,6 +1,7 @@
 "use client";
 import { Transaction } from '@/lib/types';
 import { CATEGORY_ICONS, DEFAULT_CATEGORY_ICON } from '@/lib/constants';
+import { formatCurrency } from '@/lib/transactionUtils';
 
 interface TransactionItemProps {
     transaction: Transaction;
@@ -15,7 +16,6 @@ function TransactionItem({ transaction }: TransactionItemProps) {
     const isIncome = transaction.transaction_type === 'income';
     const isDeduction = transaction.transaction_type === 'expense' || transaction.transaction_type === 'transfer';
     const amountColor = isIncome ? 'text-gray-900' : 'text-red-500';
-    const amountPrefix = isIncome ? '+' : '-';
 
     return (
         <div className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer group">
@@ -50,7 +50,7 @@ function TransactionItem({ transaction }: TransactionItemProps) {
             </div>
             <div className="text-right">
                 <p className={`font-bold ${amountColor}`}>
-                    {amountPrefix}${Math.abs(transaction.amount).toFixed(2)}
+                    {formatCurrency(transaction.amount)}
                 </p>
                 <p className="text-[10px] text-gray-400">
                     {new Date(transaction.created_at + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}

@@ -2,6 +2,7 @@
 import React from 'react';
 import { ArrowUpRight, TrendingUp } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
+import { formatCurrency } from '@/lib/transactionUtils';
 
 // Mock data for sparkline
 const data = [
@@ -28,7 +29,7 @@ export default function HeroBalanceCard({ balance }: { balance: number }) {
                     </p>
                     <div className="flex items-baseline gap-2">
                         <span className="text-5xl md:text-7xl font-bold tracking-tighter">
-                            ${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            {formatCurrency(balance)}
                         </span>
                         <span className="text-gray-400 font-semibold">USD</span>
                     </div>

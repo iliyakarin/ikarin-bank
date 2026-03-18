@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, ChevronDown, ChevronUp, Wallet, Settings, Send } from "lucide-react";
 import { AccountData } from "@/hooks/useDashboard";
 import { useAuth } from "@/lib/AuthContext";
+import { formatCurrency } from "@/lib/transactionUtils";
 import Link from "next/link";
 
 interface SubAccountManagerProps {
@@ -23,12 +24,6 @@ export default function SubAccountManager({ accounts, refresh }: SubAccountManag
     const mainAccount = accounts.find((a) => a.is_main);
     const subAccounts = accounts.filter((a) => !a.is_main);
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: "USD",
-        }).format(amount);
-    };
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();

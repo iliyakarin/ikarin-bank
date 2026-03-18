@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { Filter } from "lucide-react";
+import { formatCurrency } from "@/lib/transactionUtils";
 
 interface Transaction {
   id: string;
@@ -39,7 +40,7 @@ export default function TransactionsPage() {
         params.set("sort", sortAsc ? "asc" : "desc");
 
         const res = await fetch(
-          `/api/transactions?${params.toString()}`,
+          `/api/v1/transactions?${params.toString()}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           },
@@ -47,11 +48,15 @@ export default function TransactionsPage() {
 
         if (res.ok) {
           const data = await res.json();
+          console.log(`[TransactionsPage] Received 200 OK from ${res.url}`);
+          console.log(`[TransactionsPage] Received data keys: ${Object.keys(data)}`);
+          console.log(`[TransactionsPage] data.transactions length: ${data.transactions?.length}`);
+          console.log(`[TransactionsPage] Transactions data:`, JSON.stringify(data.transactions));
           console.log(`[TransactionsPage] Fetched ${data.transactions?.length || 0} transactions`);
           setTransactions(data.transactions || []);
         } else {
           const errorText = await res.text();
-          console.error("[TransactionsPage] Failed to load transactions", errorText);
+          console.error(`[TransactionsPage] Failed to load transactions from ${res.url}. Status: ${res.status}`, errorText);
         }
       } catch (error) {
         console.error("[TransactionsPage] Error fetching transactions:", error);
@@ -297,8 +302,7 @@ export default function TransactionsPage() {
                         className={`px-6 py-4 text-right font-mono font-semibold ${tx.amount > 0 ? "text-emerald-400" : "text-red-400"
                           }`}
                       >
-                        {tx.amount > 0 ? "+" : "-"}$
-                        {Math.abs(tx.amount).toFixed(2)}
+                        {tx.amount > 0 ? "+" : ""}{formatCurrency(tx.amount)}
                       </td>
                       <td className="px-6 py-4 text-white/60 text-sm text-right">
                         {(() => {
@@ -340,13 +344,13 @@ export default function TransactionsPage() {
               <div>
                 <p className="text-white/60 text-sm mb-2">Total Sent</p>
                 <p className="text-white text-2xl font-bold">
-                  ${stats.sent.toFixed(2)}
+                  ${(stats.sent / 100).toFixed(2)}
                 </p>
               </div>
               <div>
                 <p className="text-white/60 text-sm mb-2">Total Received</p>
                 <p className="text-emerald-400 text-2xl font-bold">
-                  ${stats.received.toFixed(2)}
+                  ${(stats.received / 100).toFixed(2)}
                 </p>
               </div>
             </div>

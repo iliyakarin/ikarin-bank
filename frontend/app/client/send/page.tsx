@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
+import { toCents, formatCurrency } from "@/lib/transactionUtils";
 import { useBalance } from "@/hooks/useDashboard";
 import {
   Send,
@@ -109,10 +110,23 @@ export default function SendMoneyPage() {
   }, [recipient, vendors]);
 
   useEffect(() => {
-    // Check if recipient is a vendor for scheduled
+    // Check if recipient is a validator for scheduled
     const vendorMatch = vendors.find(v => v.email === schedRecipient);
     setIsSchedVendor(!!vendorMatch);
   }, [schedRecipient, vendors]);
+
+  useEffect(() => {
+    // Auto-fill subscriber ID if the recipient matches a known merchant contact
+    if (recipient && !subscriberId) {
+      const contact = contacts.find(c => 
+        c.contact_type === "merchant" && 
+        (c.email === recipient || (c.merchant_id && vendors.find(v => v.id === c.merchant_id)?.email === recipient))
+      );
+      if (contact?.subscriber_id) {
+        setSubscriberId(contact.subscriber_id);
+      }
+    }
+  }, [recipient, contacts, vendors, subscriberId]);
 
   useEffect(() => {
     // Fetch mock vendors from our new simulator service proxy
@@ -161,7 +175,7 @@ export default function SendMoneyPage() {
     setInstantHistoryLoading(true);
     try {
       const res = await fetch(
-        "/api/transactions?tx_type=transfer&days=30",
+        "/api/v1/transactions?tx_type=transfer&days=30",
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -263,7 +277,7 @@ export default function SendMoneyPage() {
         : selectedRepeatTx.sender_email;
 
       const cleanCommentary = DOMPurify.sanitize(repeatCommentary);
-      const res = await fetch("/api/p2p-transfer", {
+      const res = await fetch("/api/v1/p2p-transfer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -271,7 +285,7 @@ export default function SendMoneyPage() {
         },
         body: JSON.stringify({
           recipient_email: targetEmail,
-          amount: parseFloat(repeatAmount),
+          amount: toCents(repeatAmount),
           commentary: cleanCommentary || null,
           source_account_id: repeatSourceAccountId || undefined,
         }),
@@ -316,7 +330,7 @@ export default function SendMoneyPage() {
 
     try {
       const cleanCommentary = DOMPurify.sanitize(commentary);
-      const res = await fetch("/api/p2p-transfer", {
+      const res = await fetch("/api/v1/p2p-transfer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -324,7 +338,7 @@ export default function SendMoneyPage() {
         },
         body: JSON.stringify({
           recipient_email: recipient,
-          amount: parseFloat(amount),
+          amount: toCents(amount),
           commentary: cleanCommentary || null,
           source_account_id: sourceAccountId || undefined,
           subscriber_id: subscriberId || undefined,
@@ -414,7 +428,7 @@ export default function SendMoneyPage() {
     try {
       const payload = {
         recipient_email: schedRecipient,
-        amount: amt,
+        amount: toCents(amt),
         frequency: frequency,
         frequency_interval: freqInterval,
         start_date: new Date(startDate).toISOString(),
@@ -492,7 +506,7 @@ export default function SendMoneyPage() {
         },
         body: JSON.stringify({
           target_email: requestEmail,
-          amount: amt,
+          amount: toCents(amt),
           purpose: cleanPurpose || null,
         }),
       });
@@ -527,7 +541,7 @@ export default function SendMoneyPage() {
 
     if (action === "pay") {
       // Re-route 'pay' to the standard p2p-transfer endpoint, linking the request
-      endpoint = "/api/p2p-transfer";
+      endpoint = "/api/v1/p2p-transfer";
       // Need the original target email from the request object:
       const reqObj = paymentRequests.find((r) => r.id === requestId);
       if (!reqObj) return;
@@ -538,7 +552,7 @@ export default function SendMoneyPage() {
         payment_request_id: requestId,
       };
     } else if (action === "counter") {
-      body = { amount };
+      body = { amount: toCents(amount || 0) };
     }
 
     try {
@@ -654,6 +668,7 @@ export default function SendMoneyPage() {
               initial={{ opacity: 0, x: 50 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 50, transition: { duration: 0.2 } }}
+              data-testid="success-toast"
               className="bg-[#1a2f26] border border-emerald-500/50 rounded-xl p-4 flex items-start gap-4 shadow-2xl shadow-emerald-500/10 text-emerald-100 font-medium"
             >
               <CheckCircle
@@ -1013,9 +1028,15 @@ export default function SendMoneyPage() {
                       >
                         <span className="truncate">
                           {repeatSourceAccountId === "" ? (
-                            `Main Account - ${accounts.find(a => a.is_main)?.masked_account_number || ''} - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
+                            (() => {
+                              const mainAcc = accounts.find(a => a.is_main);
+                              return `Main Account - ${mainAcc?.masked_account_number || ''} - ${formatCurrency(mainAcc?.balance || 0)}`;
+                            })()
                           ) : (
-                            `${accounts.find(a => a.id === repeatSourceAccountId)?.name} - ${accounts.find(a => a.id === repeatSourceAccountId)?.masked_account_number || ''} - $${accounts.find(a => a.id === repeatSourceAccountId)?.balance.toFixed(2) || '0.00'}`
+                            (() => {
+                              const acc = accounts.find(a => a.id === repeatSourceAccountId);
+                              return `${acc?.name} - ${acc?.masked_account_number || ''} - ${formatCurrency(acc?.balance || 0)}`;
+                            })()
                           )}
                         </span>
                         <ChevronDown className={`text-white/40 transition-transform ${isRepeatSourceDropdownOpen ? 'rotate-180' : ''}`} size={20} />
@@ -1034,7 +1055,10 @@ export default function SendMoneyPage() {
                                 onClick={() => { setRepeatSourceAccountId(""); setIsRepeatSourceDropdownOpen(false); }}
                                 className={`px-4 py-2 hover:bg-white/10 rounded-lg cursor-pointer ${repeatSourceAccountId === "" ? "bg-purple-500/20 text-purple-300 font-bold" : "text-white"}`}
                               >
-                                Main Account - {accounts.find(a => a.is_main)?.masked_account_number || ''} - ${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}
+                                {(() => {
+                                  const mainAcc = accounts.find(a => a.is_main);
+                                  return `Main Account - ${mainAcc?.masked_account_number || ''} - ${formatCurrency(mainAcc?.balance || 0)}`;
+                                })()}
                               </div>
                               {accounts.filter(acc => !acc.is_main).map(acc => (
                                 <div
@@ -1042,7 +1066,7 @@ export default function SendMoneyPage() {
                                   onClick={() => { setRepeatSourceAccountId(acc.id); setIsRepeatSourceDropdownOpen(false); }}
                                   className={`px-4 py-2 hover:bg-white/10 rounded-lg cursor-pointer ${repeatSourceAccountId === acc.id ? "bg-purple-500/20 text-purple-300 font-bold" : "text-white"}`}
                                 >
-                                  {acc.name} - {acc.masked_account_number || ''} - ${acc.balance.toFixed(2)}
+                                  {acc.name} - {acc.masked_account_number || ''} - {formatCurrency(acc.balance)}
                                 </div>
                               ))}
                             </div>
@@ -1133,11 +1157,14 @@ export default function SendMoneyPage() {
                 >
                   <span className="truncate">
                     {sourceAccountId === "" ? (
-                      `Main Account - ${accounts.find(a => a.is_main)?.masked_account_number || ''} - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
+                      (() => {
+                        const mainAcc = accounts.find(a => a.is_main);
+                        return `Main Account - ${mainAcc?.masked_account_number || ''} - ${formatCurrency(mainAcc?.balance || 0)}`;
+                      })()
                     ) : (
                       (() => {
                         const acc = accounts.find(a => a.id === sourceAccountId);
-                        return `${acc?.name} - ${acc?.masked_account_number || ''} - $${acc?.balance.toFixed(2) || '0.00'}`;
+                        return `${acc?.name} - ${acc?.masked_account_number || ''} - ${formatCurrency(acc?.balance || 0)}`;
                       })()
                     )}
                   </span>
@@ -1165,7 +1192,7 @@ export default function SendMoneyPage() {
                           className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === "" ? 'bg-purple-500/20 text-purple-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                         >
                           <span className="block truncate">Main Account - {accounts.find(a => a.is_main)?.masked_account_number || ''}</span>
-                          <span className="text-xs opacity-70">${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}</span>
+                          <span className="text-xs opacity-70">{formatCurrency((accounts.find(a => a.is_main)?.balance || 0))}</span>
                         </div>
                         {accounts.filter(acc => !acc.is_main).map(acc => (
                           <div
@@ -1177,7 +1204,7 @@ export default function SendMoneyPage() {
                             className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === acc.id ? 'bg-purple-500/20 text-purple-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                           >
                             <span className="block truncate">{acc.name} - {acc.masked_account_number || ''}</span>
-                            <span className="text-xs opacity-70">${acc.balance.toFixed(2)}</span>
+                            <span className="text-xs opacity-70">{formatCurrency(acc.balance)}</span>
                           </div>
                         ))}
                       </div>
@@ -1265,11 +1292,10 @@ export default function SendMoneyPage() {
                                     {c.contact_type === "merchant" ? `Merchant: ${c.merchant_id}` : c.contact_email}
                                   </p>
                                 </div>
-                                <span className={`text-[10px] px-2 py-0.5 rounded border uppercase font-bold tracking-wider ${
-                                  c.contact_type === "karin" ? "bg-purple-500/20 text-purple-400 border-purple-500/30" :
-                                  c.contact_type === "merchant" ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30" :
-                                  "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                                }`}>
+                                <span className={`text-[10px] px-2 py-0.5 rounded border uppercase font-bold tracking-wider ${c.contact_type === "karin" ? "bg-purple-500/20 text-purple-400 border-purple-500/30" :
+                                    c.contact_type === "merchant" ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30" :
+                                      "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                                  }`}>
                                   {c.contact_type === "karin" ? "Karin" : c.contact_type}
                                 </span>
                               </div>
@@ -1404,14 +1430,21 @@ export default function SendMoneyPage() {
                           className="border-b border-white/5 hover:bg-white/5 transition-colors"
                         >
                           <td className="py-4 text-white/70 text-sm">
-                            {new Date(tx.timestamp + (tx.timestamp.endsWith('Z') ? '' : 'Z')).toLocaleString(settings.useEUDates ? 'en-GB' : 'en-US', {
-                              year: 'numeric',
-                              month: '2-digit',
-                              day: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              hour12: !settings.use24Hour
-                            })}
+                            {(() => {
+                              const dateStr = (tx.timestamp || tx.created_at || "").toString();
+                              if (!dateStr) return "N/A";
+                              // Try parsing directly, then with T separator, then with Z suffix
+                              let d = new Date(dateStr);
+                              if (isNaN(d.getTime())) d = new Date(dateStr.replace(" ", "T"));
+                              if (isNaN(d.getTime())) d = new Date(dateStr + "Z");
+                              
+                              return isNaN(d.getTime()) ? "N/A" : d.toLocaleString(settings.useEUDates ? 'en-GB' : 'en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              });
+                            })()}
                           </td>
                           <td className="py-4">
                             <div className="text-white font-medium">
@@ -1427,15 +1460,20 @@ export default function SendMoneyPage() {
                           <td
                             className={`py-4 text-right font-bold ${isOutgoing ? "text-red-400" : "text-emerald-400"}`}
                           >
-                            {isOutgoing ? "-" : "+"}$
-                            {Math.abs(tx.amount).toFixed(2)}
+                            {tx.amount > 0 ? "+" : ""}{formatCurrency(tx.amount)}
                           </td>
                           <td className="py-4 px-4">
-                            <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider ${tx.status === 'cleared' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                              tx.status === 'pending' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                                'bg-white/10 text-white/50'
+                            <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider ${tx.status === 'cleared' || tx.status === 'Completed' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                              tx.status === 'pending' || tx.status === 'Pending' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                                tx.status === 'processing' || tx.status === 'Processing' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                                  tx.status === 'failed' || tx.status === 'Failed' || tx.status === 'Declined' || tx.status === 'Rejected' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                                    'bg-white/10 text-white/50'
                               }`}>
-                              {tx.status || 'cleared'}
+                              {tx.status === 'cleared' ? 'Completed' :
+                                tx.status === 'pending' ? 'Pending' :
+                                  tx.status === 'processing' ? 'Processing' :
+                                    tx.status === 'failed' ? 'Failed / Declined / Rejected' :
+                                      (tx.status || 'Processing')}
                             </span>
                           </td>
                           <td className="py-4 text-right">
@@ -1500,11 +1538,14 @@ export default function SendMoneyPage() {
                 >
                   <span className="truncate">
                     {sourceAccountId === "" ? (
-                      `Main Account - ${accounts.find(a => a.is_main)?.masked_account_number || ''} - $${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}`
+                      (() => {
+                        const mainAcc = accounts.find(a => a.is_main);
+                        return `Main Account - ${mainAcc?.masked_account_number || ''} - ${formatCurrency(mainAcc?.balance || 0)}`;
+                      })()
                     ) : (
                       (() => {
                         const acc = accounts.find(a => a.id === sourceAccountId);
-                        return `${acc?.name} - ${acc?.masked_account_number || ''} - $${acc?.balance.toFixed(2) || '0.00'}`;
+                        return `${acc?.name} - ${acc?.masked_account_number || ''} - ${formatCurrency(acc?.balance || 0)}`;
                       })()
                     )}
                   </span>
@@ -1532,7 +1573,7 @@ export default function SendMoneyPage() {
                           className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === "" ? 'bg-indigo-500/20 text-indigo-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                         >
                           <span className="block truncate">Main Account - {accounts.find(a => a.is_main)?.masked_account_number || ''}</span>
-                          <span className="text-xs opacity-70">${accounts.find(a => a.is_main)?.balance.toFixed(2) || '0.00'}</span>
+                          <span className="text-xs opacity-70">{formatCurrency((accounts.find(a => a.is_main)?.balance || 0))}</span>
                         </div>
                         {accounts.filter(acc => !acc.is_main).map(acc => (
                           <div
@@ -1543,8 +1584,8 @@ export default function SendMoneyPage() {
                             }}
                             className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${sourceAccountId === acc.id ? 'bg-indigo-500/20 text-indigo-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                           >
-                            <span className="block truncate">{acc.name} - {acc.masked_account_number || ''}</span>
-                            <span className="text-xs opacity-70">${acc.balance.toFixed(2)}</span>
+                             <span className="block truncate">{acc.name} - {acc.masked_account_number || ''}</span>
+                             <span className="text-xs opacity-70">{formatCurrency(acc.balance)}</span>
                           </div>
                         ))}
                       </div>
@@ -1904,13 +1945,15 @@ export default function SendMoneyPage() {
                               <span className="bg-white/10 px-1.5 py-0.5 rounded font-mono">
                                 *{(() => {
                                   const acc = accounts.find(a => a.id === pmt.funding_account_id);
-                                  return acc?.masked_account_number || accounts.find(a => a.is_main)?.masked_account_number || '????';
+                                  if (acc) return acc.masked_account_number;
+                                  const mainAcc = accounts.find(a => a.is_main);
+                                  return mainAcc?.masked_account_number || '????';
                                 })()}
                               </span>
                             </div>
                           </td>
                           <td className="p-4 text-white font-semibold">
-                            ${parseFloat(pmt.amount).toFixed(2)}
+                            {formatCurrency(pmt.amount)}
                           </td>
                           <td className="p-4 text-white/70">
                             {pmt.frequency}
@@ -1918,11 +1961,14 @@ export default function SendMoneyPage() {
                               ` (${pmt.frequency_interval})`}
                           </td>
                           <td className="p-4 text-white/70">
-                            {pmt.next_run_at
-                              ? new Date(
-                                pmt.next_run_at + "Z",
-                              ).toLocaleDateString(settings.useEUDates ? 'en-GB' : 'en-US')
-                              : "N/A"}
+                            {(() => {
+                              const dateStr = (pmt.next_run_at || "").toString();
+                              if (!dateStr) return "N/A";
+                              let d = new Date(dateStr);
+                              if (isNaN(d.getTime())) d = new Date(dateStr.replace(" ", "T"));
+                              if (isNaN(d.getTime())) d = new Date(dateStr + "Z");
+                              return isNaN(d.getTime()) ? "N/A" : d.toLocaleDateString(settings.useEUDates ? 'en-GB' : 'en-US');
+                            })()}
                           </td>
                           <td className="p-4">
                             <span
@@ -2162,7 +2208,14 @@ export default function SendMoneyPage() {
                       className="border-b border-white/5 hover:bg-white/5 transition-colors"
                     >
                       <td className="py-4 text-white/70 text-sm">
-                        {new Date(req.created_at + "Z").toLocaleDateString(settings.useEUDates ? 'en-GB' : 'en-US')}
+                        {(() => {
+                          const dateStr = (req.created_at || "").toString();
+                          if (!dateStr) return "N/A";
+                          let d = new Date(dateStr);
+                          if (isNaN(d.getTime())) d = new Date(dateStr.replace(" ", "T"));
+                          if (isNaN(d.getTime())) d = new Date(dateStr + "Z");
+                          return isNaN(d.getTime()) ? "N/A" : d.toLocaleDateString(settings.useEUDates ? 'en-GB' : 'en-US');
+                        })()}
                       </td>
                       <td className="py-4">
                         <div className="text-white font-medium">
@@ -2173,7 +2226,7 @@ export default function SendMoneyPage() {
                         </div>
                       </td>
                       <td className="py-4 font-bold text-emerald-400">
-                        ${req.amount.toFixed(2)}
+                        {formatCurrency(req.amount)}
                       </td>
                       <td className="py-4">
                         <span
@@ -2277,7 +2330,7 @@ export default function SendMoneyPage() {
               <div className="p-6 space-y-6">
                 <div className="flex flex-col items-center py-4 bg-white/5 rounded-2xl border border-white/5">
                   <span className={`text-3xl font-bold ${selectedTxDetails.amount < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                    {selectedTxDetails.amount < 0 ? '-' : '+'}${Math.abs(selectedTxDetails.amount).toFixed(2)}
+                    {selectedTxDetails.amount < 0 ? '' : '+'}{formatCurrency(selectedTxDetails.amount)}
                   </span>
                   <span className="text-white/50 text-sm mt-1 uppercase tracking-widest font-semibold">
                     {selectedTxDetails.transaction_side || (selectedTxDetails.amount < 0 ? 'Debit' : 'Credit')}

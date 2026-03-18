@@ -15,3 +15,6 @@ gunicorn
 pytest
 pytest-asyncio
 httpx
+stripe
+alembic
+pydantic-settings

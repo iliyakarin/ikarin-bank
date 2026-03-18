@@ -12,6 +12,13 @@ from schemas import (
 
 # Configuration
 DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    user = os.getenv("FED_GATEWAY_DB_USER")
+    password = os.getenv("FED_GATEWAY_DB_PASSWORD")
+    host = os.getenv("FED_GATEWAY_DB_HOST")
+    db_name = os.getenv("FED_GATEWAY_DB_NAME")
+    DATABASE_URL = f"postgresql+asyncpg://{user}:{password}@{host}:5432/{db_name}"
+
 GATEWAY_API_KEY = os.getenv("GATEWAY_API_KEY")
 
 # Engine & Session
@@ -73,3 +80,14 @@ async def get_banks(db: AsyncSession = Depends(get_db)):
 async def startup_event():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Seeding banks if empty
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Bank))
+        if not result.scalars().first():
+            session.add_all([
+                Bank(name="Chase", routing_number="021000021"),
+                Bank(name="Wells Fargo", routing_number="987654321"),
+                Bank(name="Bank of America", routing_number="111222333"),
+            ])
+            await session.commit()

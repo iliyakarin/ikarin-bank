@@ -7,6 +7,7 @@ import { useBalance, useTransactions, AccountData } from "@/hooks/useDashboard";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowDownRight, ArrowUpRight, Wallet, AlertCircle, Eye, EyeOff } from "lucide-react";
 import TransactionList from "@/components/TransactionList";
+import { toCents, formatCurrency } from "@/lib/transactionUtils";
 
 export default function SubAccountDetailPage() {
     const { id } = useParams();
@@ -47,7 +48,7 @@ export default function SubAccountDetailPage() {
             setTxLoading(true);
             try {
                 const authToken = token || localStorage.getItem("bank_token");
-                const res = await fetch(`/api/transactions?account_id=${accountId}&days=30`, {
+                const res = await fetch(`/api/v1/transactions?account_id=${accountId}&days=30`, {
                     headers: { Authorization: `Bearer ${authToken}` }
                 });
                 if (res.ok) {
@@ -81,7 +82,7 @@ export default function SubAccountDetailPage() {
         let payload = {
             from_account_id: transferType === "add" ? mainAccount.id : accountId,
             to_account_id: transferType === "add" ? accountId : mainAccount.id,
-            amount: amount,
+            amount: toCents(transferAmount),
             commentary: transferType === "add" ? "Top Up" : "Withdrawal"
         };
 
@@ -106,7 +107,7 @@ export default function SubAccountDetailPage() {
             setTransferAmount("");
             refreshBalance();
             // Reload txs
-            const fetchTx = await fetch(`/api/transactions?account_id=${accountId}&days=30`, {
+            const fetchTx = await fetch(`/api/v1/transactions?account_id=${accountId}&days=30`, {
                 headers: { Authorization: `Bearer ${authToken}` }
             });
             const txData = await fetchTx.json();
@@ -143,12 +144,6 @@ export default function SubAccountDetailPage() {
         }
     };
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: "USD",
-        }).format(amount);
-    };
 
     if (!account) return <div className="p-8 text-white/50">Loading account details...</div>;
 

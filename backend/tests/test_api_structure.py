@@ -15,9 +15,11 @@ def test_admin_stats_exists(mock_fastapi_dependency):
     found_stats = False
 
     # Check calls to app.get
-    for call in app.get.call_args_list:
+    import sys
+    mock_router = sys.modules['fastapi'].APIRouter.return_value
+    for call in mock_router.get.call_args_list:
         args, kwargs = call
-        if args and args[0] == "/admin/stats":
+        if args and args[0] == "/v1/admin/stats":
             found_stats = True
 
     assert found_stats, "Could not find /admin/stats endpoint definition"
@@ -29,8 +31,11 @@ def test_metrics_removal_verification(mock_fastapi_dependency):
     app_module = mock_fastapi_dependency
     app = app_module.app
 
+    import sys
+    mock_router = sys.modules["fastapi"].APIRouter.return_value
+
     found_metrics = False
-    for call in app.get.call_args_list:
+    for call in mock_router.get.call_args_list:
         args, kwargs = call
         if args and args[0] == "/admin/metrics":
             found_metrics = True

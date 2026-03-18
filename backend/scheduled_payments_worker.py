@@ -2,21 +2,24 @@ import asyncio
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
+from datetime import timezone, timedelta
 import uuid
 import httpx
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from database import SessionLocal, ScheduledPayment, Account, User, Transaction, Outbox
-from main import _create_p2p_transactions, _create_p2p_outbox_entries, _calculate_next_run_at
+from services.transfer_service import _create_p2p_transactions, _create_p2p_outbox_entries, _calculate_next_run_at
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-SIMULATOR_URL = os.getenv("SIMULATOR_URL")
-SIMULATOR_API_KEY = os.getenv("SIMULATOR_API_KEY")
+from config import settings
+
+SIMULATOR_URL = settings.SIMULATOR_URL
+SIMULATOR_API_KEY = settings.SIMULATOR_API_KEY
 
 async def get_vendors():
     async with httpx.AsyncClient() as client:
@@ -24,11 +27,12 @@ async def get_vendors():
             resp = await client.get(f"{SIMULATOR_URL}/vendors")
             if resp.status_code == 200:
                 return resp.json().get("vendors", [])
-        except Exception as e:
-            logger.error(f"Error fetching vendors: {e}")
-        return []
+        except httpx.RequestError as e:
+            logger.error(f"Network error fetching vendors: {e}")
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error fetching vendors: {e}")
 
-async def execute_vendor_payment(merchant_id: str, subscriber_id: str, amount: float):
+async def execute_vendor_payment(merchant_id: str, subscriber_id: str, amount: int):
     async with httpx.AsyncClient() as client:
         try:
             payload = {
@@ -42,14 +46,17 @@ async def execute_vendor_payment(merchant_id: str, subscriber_id: str, amount: f
                 headers={"X-API-KEY": SIMULATOR_API_KEY}
             )
             return resp.json()
-        except Exception as e:
-            logger.error(f"Error executing vendor payment: {e}")
+        except httpx.RequestError as e:
+            logger.error(f"Network error executing vendor payment: {e}")
+            return {"status": "FAILED", "failure_reason": str(e), "trace_id": "ERROR"}
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error executing vendor payment: {e}")
             return {"status": "FAILED", "failure_reason": str(e), "trace_id": "ERROR"}
 
 async def process_scheduled_payments():
     async with SessionLocal() as db:
         try:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             # Find due payments: (Active or Retrying) and next_run_at <= now
             result = await db.execute(select(ScheduledPayment).filter(
                 ScheduledPayment.status.in_(["Active", "Retrying"]),
@@ -115,7 +122,7 @@ async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, no
             sim_resp = await execute_vendor_payment(
                 merchant_id=vendor["id"],
                 subscriber_id=payment.subscriber_id or "UNKNOWN",
-                amount=float(payment.amount)
+                amount=int(payment.amount)
             )
 
             # Update Balance
@@ -134,9 +141,12 @@ async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, no
                 transaction_side="DEBIT",
                 failure_reason=sim_resp.get("failure_reason"),
                 commentary=f"Bill Payment to {vendor['name']}",
+                internal_account_last_4=funding_account.account_number_last_4,
+                sender_email=sender_user.email,
+                recipient_email=vendor["email"],
                 subscriber_id=payment.subscriber_id,
                 idempotency_key=str(uuid.uuid4()),
-                created_at=datetime.utcnow()
+                created_at=datetime.now(timezone.utc)
             )
             db.add(vendor_tx)
 
@@ -200,7 +210,9 @@ async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, no
             str(uuid.uuid4()), # Need new idempotency key for this run
             "127.0.0.1",
             "system-worker",
-            "Scheduled Payment"
+            sender_account_last_4=sender_locked.account_number_last_4,
+            recipient_account_last_4=recipient_locked.account_number_last_4,
+            commentary="Scheduled Payment"
         )
         # Update Transactions with subscriber_id if any (unlikely for P2P but for completeness)
         # (Already handled by helper in main.py usually, but we could add it here)
@@ -262,8 +274,11 @@ async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment,
         transaction_side="DEBIT",
         failure_reason="Insufficient funds",
         commentary="Recurring payment failed. Please Top Up and Retry.",
+        internal_account_last_4=funding_account.account_number_last_4,
+        sender_email=sender.email,
+        recipient_email=recipient.email,
         subscriber_id=getattr(payment, 'subscriber_id', None),
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc)
     )
     db.add(failed_tx)
     
@@ -276,40 +291,38 @@ async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment,
         payload={
             "transaction_id": failed_tx.id,
             "account_id": funding_account.id,
-            "amount": float(failed_tx.amount),
+            "amount": int(failed_tx.amount),
             "category": failed_tx.category,
             "merchant": failed_tx.merchant,
             "transaction_type": failed_tx.transaction_type,
             "transaction_side": failed_tx.transaction_side,
             "status": "failed",
             "failure_reason": failed_tx.failure_reason,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "commentary": failed_tx.commentary
         }
     ))
+    # Invoke common fail_payment logic for retry handling
+    fail_payment(db, payment, "Insufficient funds", permanently=False)
 
-    if payment.retry_count >= 3:
-        payment.status = "Failed" # Terminal state
-        payment.next_run_at = None
-        logger.info(f"Payment {payment.id} permanently failed after 3 retries.")
-    else:
-        payment.status = "Retrying"
-        payment.next_run_at = datetime.utcnow() + timedelta(days=1)
-        logger.info(f"Payment {payment.id} failed logic due to funds. Retry {payment.retry_count}/3 scheduled for +24h.")
 
 def fail_payment(db: AsyncSession, payment: ScheduledPayment, reason: str, permanently: bool = True):
+    payment.failure_reason = reason
     if permanently:
         payment.status = "Failed"
         payment.next_run_at = None
+        logger.info(f"Payment {payment.id} permanently failed: {reason}")
     else:
-        # Same logic as insufficient funds basically
+        # Retry logic consolidated here
         payment.retry_count += 1
         if payment.retry_count >= 3:
             payment.status = "Failed"
             payment.next_run_at = None
+            logger.info(f"Payment {payment.id} permanently failed after 3 retries due to {reason}.")
         else:
             payment.status = "Retrying"
-            payment.next_run_at = datetime.utcnow() + timedelta(days=1)
+            payment.next_run_at = datetime.now(timezone.utc) + timedelta(days=1)
+            logger.info(f"Payment {payment.id} failed logic due to {reason}. Retry {payment.retry_count}/3 scheduled for +24h.")
 
 async def main():
     logger.info("Starting Scheduled Payments Worker...")

@@ -30,7 +30,7 @@ export default function NotFound() {
 
                 <div className="flex flex-col sm:flex-row gap-4 items-center justify-center pt-6">
                     <Link
-                        href="/dashboard"
+                        href="/client"
                         className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black text-xs uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-purple-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
                     >
                         <Home className="w-4 h-4" />

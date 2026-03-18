@@ -32,7 +32,7 @@ export default function LoginPage() {
                 params.append('captcha_token', captchaToken);
             }
 
-            const res = await fetch('/api/auth/login', {
+            const res = await fetch('/api/v1/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: params,
@@ -41,8 +41,13 @@ export default function LoginPage() {
             if (res.ok) {
                 const data = await res.json();
                 await login(data.access_token);
-            } else {
+            } else if (res.status === 401) {
                 setError('Invalid email or password');
+            } else if (res.status === 400) {
+                const data = await res.json();
+                setError(data.detail || 'Invalid request');
+            } else {
+                setError('Server error (500). Please check backend logs.');
             }
         } catch (err) {
             setError('Connection error. Is the API running?');

@@ -12,6 +12,7 @@ import {
   ArrowDownRight,
   Target
 } from 'lucide-react';
+import { formatCurrency } from '@/lib/transactionUtils';
 
 interface BankingMetrics {
   totalVolume: number;
@@ -41,14 +42,6 @@ export default function BankingDashboard({ metrics, loading }: BankingDashboardP
     );
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat('en-US').format(num);

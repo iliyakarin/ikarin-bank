@@ -1,16 +1,16 @@
-version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
     container_name: bank-postgres
     env_file: .env.dev
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "5432:5432"
     volumes:
-      - ./init-db/postgres_init.sql:/docker-entrypoint-initdb.d/init.sql
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d banking_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -19,11 +19,13 @@ services:
     image: clickhouse/clickhouse-server:latest
     container_name: bank-clickhouse
     env_file: .env.dev
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "8123:8123"
     volumes:
-      - ./init-db/clickhouse_init.sql:/docker-entrypoint-initdb.d/init.sql
       - ./data/clickhouse:/var/lib/clickhouse
+      - ./init-db/setup-admin.xml:/etc/clickhouse-server/users.d/setup-admin.xml
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "localhost:8123/ping"]
       interval: 5s
@@ -33,6 +35,8 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.6.1
     container_name: bank-kafka
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "9092:9092"
     env_file: .env.dev
@@ -50,10 +54,17 @@ services:
       - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
-      - KAFKA_OPTS=-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf -DKAFKA_ADMIN_PASSWORD=${KAFKA_ADMIN_PASSWORD} -DKAFKA_CLIENT_PASSWORD=${KAFKA_CLIENT_PASSWORD}
+      - KAFKA_CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk
+      - KAFKA_OPTS=-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf -DKAFKA_ADMIN_PASSWORD=REDACTED -DKAFKA_CLIENT_PASSWORD=REDACTED
     volumes:
       - ./data/kafka:/var/lib/kafka/data
       - ./init-db/kafka-server-jaas.conf:/etc/kafka/kafka_server_jaas.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9092 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
 
   api:
@@ -64,6 +75,10 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - PYTHONUNBUFFERED=1
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     # Removed ports binding to avoid conflicts when scaling
     # ports:
     #   - "8000:8000"
@@ -73,15 +88,19 @@ services:
       postgres:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
       clickhouse:
         condition: service_healthy
 
   proxy:
-    image: nginx:alpine
+    image: nginxinc/nginx-unprivileged:alpine
     container_name: bank-proxy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "8000:80"
+      - "8000:8080"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -97,10 +116,13 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - PYTHONUNBUFFERED=1
-
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       kafka:
-        condition: service_started
+        condition: service_healthy
       clickhouse:
         condition: service_healthy
   outbox-worker:
@@ -113,11 +135,15 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - PYTHONUNBUFFERED=1
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       postgres:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
 
   sync-checker:
     build: ./backend
@@ -129,6 +155,10 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - PYTHONUNBUFFERED=1
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       postgres:
         condition: service_healthy
@@ -138,6 +168,10 @@ services:
   frontend:
     build: ./frontend
     container_name: bank-frontend
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "3000:3000"
     env_file: .env.dev
@@ -155,6 +189,10 @@ services:
       - ./backend:/app
     environment:
       - PYTHONUNBUFFERED=1
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       postgres:
         condition: service_healthy
@@ -170,11 +208,15 @@ services:
   vendor-simulator:
     build: ./vendor-simulator
     container_name: bank-vendor-simulator
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "8001:8001"
     env_file: .env.dev
     environment:
-      - DATABASE_URL=${VENDOR_SIMULATOR_DB_URL}
+      - VENDOR_SIMULATOR_DB_HOST=vendor-simulator-db
       - SIMULATOR_API_KEY=${SIMULATOR_API_KEY}
     depends_on:
       vendor-simulator-db:
@@ -184,12 +226,16 @@ services:
     image: postgres:16-alpine
     container_name: bank-vendor-simulator-db
     env_file: .env.dev
+    security_opt:
+      - no-new-privileges:true
     environment:
       - POSTGRES_USER=${VENDOR_SIMULATOR_DB_USER}
       - POSTGRES_PASSWORD=${VENDOR_SIMULATOR_DB_PASSWORD}
       - POSTGRES_DB=${VENDOR_SIMULATOR_DB_NAME}
     ports:
       - "5434:5432"
+    volumes:
+      - ./data/vendor-simulator:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${VENDOR_SIMULATOR_DB_USER} -d ${VENDOR_SIMULATOR_DB_NAME}"]
       interval: 5s
@@ -200,12 +246,16 @@ services:
     image: postgres:16-alpine
     container_name: fed-gateway-db
     env_file: .env.dev
+    security_opt:
+      - no-new-privileges:true
     environment:
       - POSTGRES_USER=${FED_GATEWAY_DB_USER}
       - POSTGRES_PASSWORD=${FED_GATEWAY_DB_PASSWORD}
       - POSTGRES_DB=${FED_GATEWAY_DB_NAME}
     ports:
       - "5433:5432"
+    volumes:
+      - ./data/fed-gateway:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${FED_GATEWAY_DB_USER} -d ${FED_GATEWAY_DB_NAME}"]
       interval: 5s
@@ -215,12 +265,41 @@ services:
   mock-fed-gateway:
     build: ./mock-fed-gateway
     container_name: mock-fed-gateway
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     env_file: .env.dev
     environment:
-      - DATABASE_URL=${FED_GATEWAY_DB_URL}
+      - FED_GATEWAY_DB_HOST=fed-gateway-db
       - GATEWAY_API_KEY=${GATEWAY_API_KEY}
     ports:
       - "8002:8002"
     depends_on:
       fed-gateway-db:
         condition: service_healthy
+
+  deposit-funds-mock:
+    build: ./deposit-funds-mock
+    container_name: deposit-funds-mock
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "8003:8000"
+
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.58.2-jammy
+    container_name: bank-playwright
+    env_file: .env.dev
+    security_opt:
+      - no-new-privileges:true
+    working_dir: /app/frontend
+    volumes:
+      - .:/app
+    environment:
+      - PLAYWRIGHT_BASE_URL=http://frontend:3000
+    depends_on:
+      - frontend
+    command: npx playwright test --project=chromium

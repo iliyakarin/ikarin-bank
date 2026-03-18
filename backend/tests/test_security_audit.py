@@ -9,7 +9,7 @@ os.environ["POSTGRES_USER"] = "test_user"
 os.environ["POSTGRES_DB"] = "test_db"
 os.environ["POSTGRES_HOST"] = "test_host"
 os.environ["POSTGRES_PORT"] = "5432"
-os.environ["SECRET_KEY"] = "test_secret_key"
+os.environ["JWT_SECRET_KEY"] = "test_secret_key"
 
 # Mock the database and other dependencies to avoid needing a real DB/Kafka
 @pytest.fixture
