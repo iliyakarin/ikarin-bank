@@ -100,6 +100,62 @@ def upgrade() -> None:
         if "subscriber_id" not in columns:
             op.add_column('scheduled_payments', sa.Column('subscriber_id', sa.String(length=100), nullable=True))
 
+    # 1.6 Missing Tables Creation
+    # This ensures that tables like subscriptions, payment_requests, etc. exist.
+    # Note: These are created with BigInteger for amount because this migration runs AFTER 9c37a5071631 (refactor to cents).
+    if "subscriptions" not in existing_tables:
+        logger.info("Creating subscriptions table...")
+        op.create_table('subscriptions',
+            sa.Column('id', sa.Integer(), nullable=False, primary_key=True),
+            sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=False),
+            sa.Column('plan_name', sa.String(length=100), server_default='Karin Black', nullable=False),
+            sa.Column('amount', sa.BigInteger(), nullable=False),
+            sa.Column('status', sa.String(length=20), server_default='active', nullable=False),
+            sa.Column('current_period_end', sa.DateTime(timezone=True), nullable=False),
+            sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False)
+        )
+        op.create_index('ix_subscriptions_id', 'subscriptions', ['id'], unique=False)
+        op.create_index('ix_subscriptions_user_id', 'subscriptions', ['user_id'], unique=False)
+
+    if "payment_requests" not in existing_tables:
+        logger.info("Creating payment_requests table...")
+        op.create_table('payment_requests',
+            sa.Column('id', sa.Integer(), nullable=False, primary_key=True),
+            sa.Column('requester_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=False),
+            sa.Column('target_email', sa.String(length=100), nullable=False),
+            sa.Column('amount', sa.BigInteger(), nullable=False),
+            sa.Column('purpose', sa.String(), nullable=True),
+            sa.Column('status', sa.String(length=50), server_default='pending_target', nullable=False),
+            sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False)
+        )
+        op.create_index('ix_payment_requests_id', 'payment_requests', ['id'], unique=False)
+        op.create_index('ix_payment_requests_requester_id', 'payment_requests', ['requester_id'], unique=False)
+        op.create_index('ix_payment_requests_target_email', 'payment_requests', ['target_email'], unique=False)
+
+    if "idempotency_keys" not in existing_tables:
+        logger.info("Creating idempotency_keys table...")
+        op.create_table('idempotency_keys',
+            sa.Column('id', sa.Integer(), nullable=False, primary_key=True),
+            sa.Column('key', sa.String(length=100), nullable=False),
+            sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=False),
+            sa.Column('response_code', sa.Integer(), nullable=True),
+            sa.Column('response_body', sa.JSON(), nullable=True),
+            sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False)
+        )
+        op.create_index('ix_idempotency_keys_key', 'idempotency_keys', ['key'], unique=True)
+
+    if "outbox" not in existing_tables:
+        logger.info("Creating outbox table...")
+        op.create_table('outbox',
+            sa.Column('id', sa.Integer(), nullable=False, primary_key=True),
+            sa.Column('event_type', sa.String(length=50), nullable=False),
+            sa.Column('payload', sa.JSON(), nullable=False),
+            sa.Column('status', sa.String(length=20), server_default='pending', nullable=False),
+            sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column('processed_at', sa.DateTime(timezone=True), nullable=True)
+        )
+
     # 2. ClickHouse Migrations (Sync)
     logger.info("🚀 Starting ClickHouse migrations...")
     try:
