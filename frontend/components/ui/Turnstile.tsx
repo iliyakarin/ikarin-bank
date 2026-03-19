@@ -15,9 +15,9 @@ declare global {
 
 const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    // Access NEXT_PUBLIC_TURNSTILE_SITE_KEY from window if injected at runtime, 
+    // Access TURNSTILE_SITE_KEY from window if injected at runtime, 
     // otherwise fallback to the build-time env var.
-    const runtimeSiteKey = typeof window !== 'undefined' ? (window as any).NEXT_PUBLIC_TURNSTILE_SITE_KEY : null;
+    const runtimeSiteKey = typeof window !== 'undefined' ? ((window as any).TURNSTILE_SITE_KEY || (window as any).NEXT_PUBLIC_TURNSTILE_SITE_KEY) : null;
     const siteKey = runtimeSiteKey || process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '[REDACTED]';
 
     useEffect(() => {

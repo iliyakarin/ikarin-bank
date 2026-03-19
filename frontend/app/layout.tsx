@@ -10,6 +10,8 @@ export const metadata: Metadata = {
     description: "Experience the future of personal finance with high-end glassmorphism design.",
 };
 
+export const dynamic = 'force-dynamic';
+
 import { AuthProvider } from "@/lib/AuthContext";
 import Script from "next/script";
 
@@ -29,7 +31,7 @@ export default function RootLayout({
                     id="turnstile-site-key-injection"
                     strategy="beforeInteractive"
                     dangerouslySetInnerHTML={{
-                        __html: `window.NEXT_PUBLIC_TURNSTILE_SITE_KEY = "${process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || ''}";`
+                        __html: `window.TURNSTILE_SITE_KEY = "${process.env.TURNSTILE_SITE_KEY || process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || ''}";`
                     }}
                 />
                 <ErrorBoundary>
