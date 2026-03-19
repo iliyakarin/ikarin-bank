@@ -38,18 +38,9 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Ensure database migrations are applied
-    try:
-        import subprocess
-        logger.info("Running database migrations...")
-        # Run alembic upgrade head
-        result = subprocess.run(["alembic", "upgrade", "head"], capture_output=True, text=True)
-        if result.returncode != 0:
-            logger.error(f"Alembic migration failed: {result.stderr}")
-        else:
-            logger.info("Alembic migrations completed successfully")
-    except Exception as e:
-        logger.error(f"Failed to run migrations: {e}")
+    # Database migrations are managed during deployment via deploy.sh
+    # to avoid race conditions between multiple API instances.
+    logger.info("Database migrations managed by deployment script.")
 
     global producer
     max_retries = 30
