@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 import datetime
 
@@ -27,8 +27,7 @@ class ContactResponse(BaseModel):
     account_number: Optional[str] = None
     created_at: datetime.datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ContactUpdate(BaseModel):
     contact_name: str

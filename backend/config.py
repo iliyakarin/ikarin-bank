@@ -2,6 +2,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 import os
 
+current_env = os.getenv("ENV", "development")
+env_file_path = (
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env.prod"))
+    if current_env == "production"
+    else os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env.dev"))
+)
+print(f"DEBUG: ENV={current_env}")
+print(f"DEBUG: Config env_file={env_file_path}")
+print(f"DEBUG: File exists={os.path.exists(env_file_path)}")
+
 class Settings(BaseSettings):
     # Environment
     ENV: str
@@ -47,18 +57,8 @@ class Settings(BaseSettings):
     DEPOSIT_MOCK_WEBHOOK_SECRET: Optional[str] = None
     DEPOSIT_MOCK_URL: Optional[str] = None
 
-    current_env = os.getenv("ENV")
-    env_file_path = (
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env.prod"))
-        if current_env == "production"
-        else os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env.dev"))
-    )
-    print(f"DEBUG: ENV={current_env}")
-    print(f"DEBUG: Config env_file={env_file_path}")
-    print(f"DEBUG: File exists={os.path.exists(env_file_path)}")
-
     model_config = SettingsConfigDict(
-        env_file=env_file_path,
+        env_file=env_file_path if os.path.exists(env_file_path) else None,
         env_file_encoding='utf-8',
         extra="ignore"
     )

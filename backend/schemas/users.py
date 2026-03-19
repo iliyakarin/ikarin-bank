@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 import datetime
 
@@ -23,8 +23,7 @@ class UserResponse(BaseModel):
     time_format: str
     date_format: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class NotificationResponse(BaseModel):
     id: str
@@ -35,8 +34,7 @@ class NotificationResponse(BaseModel):
     created_at: datetime.datetime
     link: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserBackupUpdate(BaseModel):
     backup_email: str

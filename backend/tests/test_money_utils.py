@@ -1,5 +1,5 @@
 import pytest
-from backend.money_utils import to_cents, from_cents
+from money_utils import to_cents, from_cents
 
 def test_to_cents():
     assert to_cents("10.00") == 1000
