@@ -21,7 +21,7 @@ async def compliance_delete_user(db: AsyncSession, admin_user_id: int, target_us
     # 2. Collect accounts for ClickHouse purge
     result = await db.execute(select(Account.id).filter(Account.user_id == target_user_id))
     account_ids = [acc_id for acc_id in result.scalars().all()]
-    
+
     # 3. Emit Audit Event BEFORE deletion
     emit_activity(
         db,
@@ -33,15 +33,15 @@ async def compliance_delete_user(db: AsyncSession, admin_user_id: int, target_us
         ip=None,
         user_agent=None
     )
-    
+
     # 4. Anonymize Postgres Transactions
     if account_ids:
         await db.execute(
             text("""
-                UPDATE transactions 
-                SET merchant = 'DELETED_USER', 
-                    commentary = NULL, 
-                    ip_address = NULL, 
+                UPDATE transactions
+                SET merchant = 'DELETED_USER',
+                    commentary = NULL,
+                    ip_address = NULL,
                     user_agent = NULL
                 WHERE account_id = ANY(:account_ids)
             """),

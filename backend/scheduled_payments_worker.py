@@ -102,12 +102,12 @@ async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, no
     # Determine Recipient
     result = await db.execute(select(User).filter(User.email == payment.recipient_email))
     recipient = result.scalars().first()
-    
+
     if not recipient:
         # Check if it's a vendor
         vendors = await get_vendors()
         vendor = next((v for v in vendors if v["email"] == payment.recipient_email), None)
-        
+
         if vendor:
             # VENDOR PAYMENT FLOW
             if funding_account.balance < payment.amount:
@@ -182,14 +182,14 @@ async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, no
         acc1 = result1.scalars().first()
         result2 = await db.execute(select(Account).filter(Account.id == second_id).with_for_update())
         acc2 = result2.scalars().first()
-        
+
         if first_id == funding_account.id:
             sender_locked = acc1
             recipient_locked = acc2
         else:
             sender_locked = acc2
             recipient_locked = acc1
- 
+
         if sender_locked.balance < payment.amount:
             # INSUFFICIENT FUNDS
             await handle_insufficient_funds(db, payment, sender_user, funding_account, recipient)
@@ -216,7 +216,7 @@ async def process_single_payment(db: AsyncSession, payment: ScheduledPayment, no
         )
         # Update Transactions with subscriber_id if any (unlikely for P2P but for completeness)
         # (Already handled by helper in main.py usually, but we could add it here)
-        
+
         _create_p2p_outbox_entries(
             db,
             sender_locked.id,
@@ -254,14 +254,14 @@ def update_payment_schedule(payment: ScheduledPayment, now: datetime):
     else:
         # Set next run date
         payment.next_run_at = _calculate_next_run_at(now, payment.frequency, payment.frequency_interval)
-        
+
         if payment.end_condition == "date" and payment.end_date and payment.next_run_at > payment.end_date:
             payment.status = "Completed"
             payment.next_run_at = None
 
 async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment, sender: User, funding_account: Account, recipient: User):
     payment.retry_count += 1
-    
+
     # Create a failed transaction record to notify the user
     failed_tx = Transaction(
         id=str(uuid.uuid4()),
@@ -281,7 +281,7 @@ async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment,
         created_at=datetime.now(timezone.utc)
     )
     db.add(failed_tx)
-    
+
     # Emit to ClickHouse via Outbox
     from main import _create_p2p_outbox_entries
     from database import Account

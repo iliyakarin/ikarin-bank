@@ -120,12 +120,12 @@ async def get_balance_history(
 
         # Query ClickHouse for balance trend
         query = f"""
-        SELECT 
+        SELECT
             toDate(event_time) as date,
             account_id,
             sum(amount) as daily_change
         FROM {CH_DB}.transactions
-        WHERE account_id = {account.id} 
+        WHERE account_id = {account.id}
             AND event_time >= now() - INTERVAL {days} DAY
         GROUP BY toDate(event_time), account_id
         ORDER BY date
@@ -173,19 +173,19 @@ async def get_recent_transactions(
     """Get recent transactions from the last N hours - user must be sender or recipient."""
     try:
         user_email = current_user.email.lower()
-        
+
         # 1. Get PENDING transactions from Postgres (only outgoing ones exist here)
         result = await db.execute(select(Account).filter(Account.user_id == current_user.id))
         user_accounts = result.scalars().all()
         user_account_ids = [acc.id for acc in user_accounts]
-        
+
         if account_id:
             if account_id not in user_account_ids:
                 raise HTTPException(status_code=403, detail="Access denied to this account")
             account_ids = [account_id]
         else:
             account_ids = user_account_ids
-        
+
         result = await db.execute(
             select(Transaction)
             .filter(Transaction.account_id.in_(account_ids))
@@ -196,20 +196,20 @@ async def get_recent_transactions(
             .limit(10)
         )
         pg_transactions = result.scalars().all()
-        
+
         # 2. Get CLEARED/HISTORY transactions from ClickHouse (incoming AND outgoing)
         ch_client = get_ch_client()
-        
+
         # Join account IDs for ClickHouse query to ensure we only get transactions belonging to the user's specific accounts
         # This prevents duplicate entries for P2P transfers while ensuring both sender and recipient see their record.
         if not account_ids:
             return {"transactions": []}
-            
+
         account_ids_str = ",".join([str(aid) for aid in account_ids])
-        
+
         query = f"""
             SELECT * FROM (
-                SELECT 
+                SELECT
                     toString(transaction_id) as id,
                     amount,
                     category,
@@ -230,15 +230,15 @@ async def get_recent_transactions(
             )
             ORDER BY event_time DESC
         """
-        
+
         ch_results = ch_client.query(query).result_rows
-        
+
         # 3. Merge and formatting
         # We prefer ClickHouse data (confirmed history), but keep Postgres data if it's not in CH yet (pending)
-        
+
         final_txs = []
         ch_ids = set()
-        
+
         # Process ClickHouse results first (Confirmed transactions)
         # Use a temporary dict to keep only the LATEST row for each transaction_id
         # (Since we ORDER BY event_time DESC, the first one encountered is the latest)
@@ -260,11 +260,11 @@ async def get_recent_transactions(
                     "failure_reason": row[10],
                     "status": row[11] # Use the actual status from CH
                 }
-        
+
         for tx_id, tx_data in latest_ch_txs.items():
             ch_ids.add(tx_id)
             final_txs.append(tx_data)
-            
+
         # Process Postgres results (Pending/In-flight)
         for tx in pg_transactions:
             if str(tx.id) not in ch_ids:
@@ -288,7 +288,7 @@ async def get_recent_transactions(
                     sender_email = tx.merchant.replace("Received from ", "")
                 elif tx.category and tx.category.lower() in ["salary", "income", "deposit"]:
                     tx_type = "income"
-                
+
                 final_txs.append({
                     "id": str(tx.id),
                     "amount": float(tx.amount / 100),
@@ -303,7 +303,7 @@ async def get_recent_transactions(
 
         # Sort combined list by date desc
         final_txs.sort(key=lambda x: x["created_at"] or "", reverse=True)
-        
+
         return {"transactions": final_txs[:20]}
 
     except Exception as e:
@@ -429,7 +429,7 @@ async def get_all_transactions(
     try:
         now = datetime.datetime.now(datetime.timezone.utc)
         logging.info(f"[get_all_transactions] now: {now.isoformat()}, cutoff: {cutoff_time.isoformat()}, accounts: {target_account_ids}")
-        
+
         # Test query without cutoff to diagnostic
         diag_query = select(Transaction).filter(Transaction.account_id.in_(target_account_ids))
         diag_res = await db.execute(diag_query)
@@ -493,7 +493,7 @@ async def get_all_transactions(
             all_tx_dict[tx["id"]] = tx
 
     final_transactions = list(all_tx_dict.values())
-    
+
     # Re-sort because original queries were sorted independently
     rev = not (sort and sort.lower() == "asc")
     final_transactions.sort(key=lambda x: x["timestamp"], reverse=rev)

@@ -61,7 +61,7 @@ async def get_db():
 async def get_vendors(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Merchant))
     merchants = result.scalars().all()
-    
+
     return VendorListResponse(
         vendors=[
             VendorInfo(
@@ -77,7 +77,7 @@ async def get_vendors(db: AsyncSession = Depends(get_db)):
 async def validate_subscriber(payload: BillPayValidationRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Merchant).where(Merchant.merchant_id == payload.merchant_id))
     merchant = result.scalar_one_or_none()
-    
+
     if not merchant:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -141,7 +141,7 @@ async def get_transactions(db: AsyncSession = Depends(get_db)):
 async def startup_event():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     # Seeding vendors if empty
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Merchant))

@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from models import Base, Bank
 from schemas import (
-    ACHOriginateRequest, 
+    ACHOriginateRequest,
     StatusResponse
 )
 
@@ -54,7 +54,7 @@ async def originate_ach(payload: ACHOriginateRequest, db: AsyncSession = Depends
     # 1. Validate RTN
     result = await db.execute(select(Bank).where(Bank.routing_number == payload.routing_number))
     bank = result.scalar_one_or_none()
-    
+
     if not bank:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -80,7 +80,7 @@ async def get_banks(db: AsyncSession = Depends(get_db)):
 async def startup_event():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     # Seeding banks if empty
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Bank))

@@ -93,4 +93,3 @@ export default function BalanceCard({ balance, growth, accountNumber }: BalanceC
         </motion.div>
     );
 }
-

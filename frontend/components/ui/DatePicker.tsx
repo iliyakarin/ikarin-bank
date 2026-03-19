@@ -194,8 +194,8 @@ export default function DatePicker({
                 <div
                     onClick={() => setIsOpen(!isOpen)}
                     className={`
-            w-full bg-[#3b2d59] border ${isOpen ? 'border-indigo-400' : 'border-white/20'} 
-            rounded-xl px-4 py-3 text-white cursor-pointer hover:bg-[#4a3a70] 
+            w-full bg-[#3b2d59] border ${isOpen ? 'border-indigo-400' : 'border-white/20'}
+            rounded-xl px-4 py-3 text-white cursor-pointer hover:bg-[#4a3a70]
             transition-colors flex items-center justify-between shadow-inner
           `}
                 >

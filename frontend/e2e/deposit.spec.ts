@@ -63,10 +63,9 @@ test.describe('Deposit E2E Flow', () => {
     const fulfillResponse = await fulfillPromise;
     console.log(`fulfill response status: ${fulfillResponse.status()}`);
     expect(fulfillResponse.status()).toBe(200);
-    // expect(confirmResponse.status()).toBe(200); 
+    // expect(confirmResponse.status()).toBe(200);
 
     // In mock mode we just close the modal, so check it's gone
     await expect(page.locator('text="Deposit $10 to Main Account"')).not.toBeVisible();
   });
 });
-

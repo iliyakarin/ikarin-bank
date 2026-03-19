@@ -499,7 +499,7 @@ export default function UserManagement({ token }: UserManagementProps) {
                                         {deleteStep === 1 ? "Confirm Action" : "Critical Verification"}
                                     </h3>
                                     <p className="text-white/40 text-sm leading-relaxed">
-                                        {deleteStep === 1 
+                                        {deleteStep === 1
                                             ? `You are about to initiate the purge sequence for ${foundUser?.email}. This will delete all associated data.`
                                             : `LAST WARNING: This is IRREVERSIBLE. Purging ${foundUser?.email} will erase all ledger records and transaction history.`
                                         }

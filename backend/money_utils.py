@@ -25,7 +25,7 @@ def from_cents(cents: int) -> str:
     """
     if cents is None:
         return '0.00'
-    
+
     # Ensure it's an integer
     cents = int(cents)
     is_negative = cents < 0
@@ -57,7 +57,7 @@ def to_cents(amount: str | int) -> int:
     """
     if amount is None or amount == '':
         return 0
-    
+
     if isinstance(amount, float):
         raise ValueError("Float amount not allowed in to_cents. Use string or integer cents.")
 

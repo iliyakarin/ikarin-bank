@@ -15,7 +15,7 @@ async def add_funds(target_email: str, amount_to_add: Decimal):
         # 1. Find the user
         result = await db.execute(select(User).filter(User.email == target_email))
         user = result.scalars().first()
-        
+
         if not user:
             print(f"Error: User {target_email} not found.")
             return
@@ -25,7 +25,7 @@ async def add_funds(target_email: str, amount_to_add: Decimal):
             select(Account).filter(Account.user_id == user.id, Account.is_main == True)
         )
         account = result.scalars().first()
-        
+
         if not account:
             print(f"No main account for {target_email}. Creating one...")
             account_number = "".join([str(random.randint(0, 9)) for _ in range(10)])
@@ -45,7 +45,7 @@ async def add_funds(target_email: str, amount_to_add: Decimal):
 
         # 3. Update account balance
         account.balance += amount_to_add
-        
+
         # 4. Create a transaction record
         tx_id = str(uuid.uuid4())
         transaction = Transaction(
@@ -61,7 +61,7 @@ async def add_funds(target_email: str, amount_to_add: Decimal):
         )
         # Fix created_at to use datetime with timezone
         transaction.created_at = datetime.datetime.now(datetime.timezone.utc)
-        
+
         db.add(transaction)
 
         # 5. Create an outbox event
@@ -88,7 +88,7 @@ async def add_funds(target_email: str, amount_to_add: Decimal):
 
         # Commit all changes
         await db.commit()
-        
+
         print(f"Successfully added {amount_to_add} to {target_email}.")
         print(f"New balance: {account.balance}")
         print(f"Transaction ID: {tx_id}")

@@ -40,10 +40,10 @@ export const getStatusLabel = (status: string) => {
  */
 export const toCents = (amount: string | number): number => {
     if (amount === undefined || amount === null || amount === '') return 0;
-    
+
     // Ensure we have a string, remove commas (if any) and whitespace
     const s = amount.toString().replace(/,/g, '').trim();
-    
+
     if (!s || s === '.') return 0;
 
     const parts = s.split('.');
@@ -68,13 +68,13 @@ export const toCents = (amount: string | number): number => {
  */
 export const fromCents = (cents: number): string => {
     if (cents === undefined || cents === null) return '0.00';
-    
+
     const isNegative = cents < 0;
     const absCents = Math.abs(cents);
-    
+
     const dollars = Math.floor(absCents / 100);
     const remainingCents = absCents % 100;
-    
+
     const result = `${dollars}.${remainingCents.toString().padStart(2, '0')}`;
     return isNegative ? `-${result}` : result;
 };
@@ -87,7 +87,7 @@ export const formatCurrency = (cents: number | null | undefined, showSymbol: boo
     if (cents === null || cents === undefined) return showSymbol ? '$0.00' : '0.00';
     const formatted = fromCents(cents);
     if (!showSymbol) return formatted;
-    
+
     // Add symbol and handle negative sign placement
     if (formatted.startsWith('-')) {
         return `-$${formatted.substring(1)}`;

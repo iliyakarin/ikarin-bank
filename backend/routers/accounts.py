@@ -60,10 +60,10 @@ async def create_sub_account(
     """
     name = request.name.strip()
     new_sub = await create_user_sub_account(
-        db, current_user.id, name, current_request.client.host, 
+        db, current_user.id, name, current_request.client.host,
         current_request.headers.get("user-agent")
     )
-    
+
     return {"id": new_sub.id, "name": new_sub.name, "balance": int(new_sub.balance)}
 
 @router.patch("/{account_id}")
@@ -84,11 +84,11 @@ async def rename_account(
     account.name = name
 
     emit_activity(
-        db, 
-        current_user.id, 
-        "sub_account", 
-        "renamed", 
-        f"Renamed sub-account '{old_name}' → '{name}'", 
+        db,
+        current_user.id,
+        "sub_account",
+        "renamed",
+        f"Renamed sub-account '{old_name}' → '{name}'",
         {
             "account_id": account.id,
             "old_name": old_name,
@@ -119,9 +119,9 @@ async def internal_transfer(
         user_agent=current_request.headers.get("user-agent"),
         user_email=current_user.email
     )
-    
+
     return {
-        "status": "success", 
+        "status": "success",
         "message": "Internal transfer completed",
         "sender_balance": int(sender.balance),
         "receiver_balance": int(receiver.balance)
@@ -145,7 +145,7 @@ async def get_account_credentials(
         raise HTTPException(status_code=400, detail="Credentials not assigned to this account")
 
     full_account_number = decrypt_account_number(account.account_number_encrypted)
-    
+
     return {
         "routing_number": account.routing_number,
         "account_number": full_account_number,
@@ -161,10 +161,10 @@ async def get_account_balance(
 ):
     if current_user.id != user_id and current_user.role not in ["admin", "support"]:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to access these accounts"
         )
-    
+
     result = await db.execute(select(Account).filter(Account.user_id == user_id))
     accounts = result.scalars().all()
     if not accounts:
@@ -172,7 +172,7 @@ async def get_account_balance(
 
     total_balance_cents = sum(acc.balance for acc in accounts)
     total_reserved_cents = sum(acc.reserved_balance or 0 for acc in accounts)
-    
+
     sub_accounts = [{
         "id": acc.id,
         "name": acc.name,
@@ -184,7 +184,7 @@ async def get_account_balance(
     } for acc in accounts]
 
     return {
-        "balance": int(total_balance_cents), 
+        "balance": int(total_balance_cents),
         "reserved_balance": int(total_reserved_cents),
         "user_id": user_id,
         "accounts": sub_accounts

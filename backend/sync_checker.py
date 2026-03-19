@@ -21,13 +21,13 @@ async def run_sync_check():
 
     # Connect to PostgreSQL
     async with SessionLocal() as db:
-    
+
         try:
             # Connect to ClickHouse
             ch_client = clickhouse_connect.get_client(
-                host=settings.CLICKHOUSE_HOST, 
-                port=settings.CLICKHOUSE_PORT, 
-                username=settings.CLICKHOUSE_USER, 
+                host=settings.CLICKHOUSE_HOST,
+                port=settings.CLICKHOUSE_PORT,
+                username=settings.CLICKHOUSE_USER,
                 password=settings.CLICKHOUSE_PASSWORD
             )
 
@@ -52,7 +52,7 @@ async def run_sync_check():
                 chunk = pg_ids[i:i + chunk_size]
                 query = f"""
                     SELECT toString(transaction_id) as id, status
-                    FROM {settings.CLICKHOUSE_DB}.transactions 
+                    FROM {settings.CLICKHOUSE_DB}.transactions
                     WHERE transaction_id IN {{ids:Array(String)}}
                     ORDER BY event_time DESC
                 """
@@ -69,7 +69,7 @@ async def run_sync_check():
                     to_sync.append((pg_tx, "missing"))
                 elif pg_tx.status != ch_status_map[tid]:
                     to_sync.append((pg_tx, "status_mismatch"))
-            
+
             if not to_sync:
                 logger.info(f"Sync check complete. All {len(pg_ids)} recent transactions are consistent in ClickHouse.")
                 return
@@ -79,7 +79,7 @@ async def run_sync_check():
             # 4. Create Outbox entries for syncing
             for tx, reason in to_sync:
                 event_type = "transaction.created" if reason == "missing" else "transaction.status_update"
-                
+
                 payload = {
                     "transaction_id": str(tx.id),
                     "parent_id": str(tx.parent_id) if tx.parent_id else None,
@@ -95,14 +95,14 @@ async def run_sync_check():
                     "sender_email": tx.merchant.replace("Received from ", "") if tx.transaction_type == "transfer" and tx.amount > 0 else None,
                     "recipient_email": tx.merchant.replace("Transfer to ", "") if tx.transaction_type == "transfer" and tx.amount < 0 else None
                 }
-                
+
                 outbox_entry = Outbox(
                     event_type=event_type,
                     payload=payload,
                     status="pending"
                 )
                 db.add(outbox_entry)
-                
+
             await db.commit()
             logger.info(f"Successfully queued {len(to_sync)} transactions to the outbox.")
 

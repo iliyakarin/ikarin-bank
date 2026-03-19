@@ -221,5 +221,3 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
 
     return { balance, reservedBalance, accounts, loading, error, refresh: () => fetchBalance(true), userId: user ? user.id : null, refetching };
 }
-
-

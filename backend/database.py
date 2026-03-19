@@ -10,8 +10,8 @@ from config import settings
 DATABASE_URL = settings.DATABASE_URL
 
 engine = create_async_engine(
-    DATABASE_URL, 
-    echo=False, 
+    DATABASE_URL,
+    echo=False,
     future=True,
     pool_size=20,
     max_overflow=10
@@ -49,7 +49,7 @@ class Account(Base):
     name = Column(String(100), default="Main Account", server_default="Main Account", nullable=False)
     balance = Column(BigInteger, default=0)
     reserved_balance = Column(BigInteger, default=0)
-    
+
     # Account Credentials
     routing_number = Column(String(9), nullable=True)
     account_number_encrypted = Column(String(255), nullable=True)
@@ -63,17 +63,17 @@ class PaymentMethod(Base):
     id = Column(Integer, primary_key=True, index=True)
     gateway_pm_id = Column(String(100), unique=True, index=True, nullable=True)
     account_id = Column(Integer, ForeignKey("accounts.id"), index=True, nullable=False)
-    
+
     # Encrypted sensitive data
     card_number_encrypted = Column(String(255), nullable=False)
     expiry_date_encrypted = Column(String(255), nullable=False)
     cvc_encrypted = Column(String(255), nullable=False)
     cardholder_name_encrypted = Column(String(255), nullable=False)
-    
+
     # Safe display data
     card_last_4 = Column(String(4), nullable=False)
     card_brand = Column(String(20), default="unknown")
-    
+
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 class ScheduledPayment(Base):

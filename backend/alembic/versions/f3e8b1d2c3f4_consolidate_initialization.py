@@ -37,7 +37,7 @@ def upgrade() -> None:
 
     # 1. PostgreSQL Structural Migrations (Idempotent)
     logger.info("🐘 Starting PostgreSQL migrations...")
-    
+
     # 1.1 Users table
     if "users" in existing_tables:
         columns = [c["name"] for c in inspector.get_columns("users")]
@@ -47,7 +47,7 @@ def upgrade() -> None:
             op.add_column('users', sa.Column('date_format', sa.String(length=10), server_default='US', nullable=False))
         if "is_black" not in columns:
             op.add_column('users', sa.Column('is_black', sa.Boolean(), server_default='false', nullable=False))
-    
+
     # 1.2 Contacts table
     if "contacts" in existing_tables:
         columns = [c["name"] for c in inspector.get_columns("contacts")]
@@ -104,13 +104,13 @@ def upgrade() -> None:
     logger.info("🚀 Starting ClickHouse migrations...")
     try:
         ch_client = clickhouse_connect.get_client(
-            host=settings.CLICKHOUSE_HOST, 
-            port=settings.CLICKHOUSE_PORT, 
-            username=settings.CLICKHOUSE_USER, 
+            host=settings.CLICKHOUSE_HOST,
+            port=settings.CLICKHOUSE_PORT,
+            username=settings.CLICKHOUSE_USER,
             password=settings.CLICKHOUSE_PASSWORD
         )
         ch_client.command(f"CREATE DATABASE IF NOT EXISTS {settings.CLICKHOUSE_DB}")
-        
+
         # Activity Events Table
         ch_client.command(f"""
             CREATE TABLE IF NOT EXISTS {settings.CLICKHOUSE_DB}.activity_events (
@@ -125,7 +125,7 @@ def upgrade() -> None:
             PARTITION BY toYYYYMM(event_time)
             ORDER BY (user_id, event_time, event_id);
         """)
-        
+
         # Transactions Table
         ch_client.command(f"""
             CREATE TABLE IF NOT EXISTS {settings.CLICKHOUSE_DB}.transactions (
@@ -162,13 +162,13 @@ def upgrade() -> None:
         res = conn.execute(sa.text("SELECT id FROM users WHERE email = :email"), {"email": admin_email}).fetchone()
         if res:
             logger.info("Admin user exists. Updating role and password.")
-            conn.execute(sa.text("UPDATE users SET role = 'admin', password_hash = :hash WHERE email = :email"), 
+            conn.execute(sa.text("UPDATE users SET role = 'admin', password_hash = :hash WHERE email = :email"),
                          {"hash": password_hash, "email": admin_email})
         else:
             logger.info("Creating new admin user.")
             conn.execute(sa.text("INSERT INTO users (first_name, last_name, email, password_hash, role) VALUES ('Admin', 'System', :email, :hash, 'admin')"),
                          {"email": admin_email, "hash": password_hash})
-    
+
     logger.info("✅ Consolidation complete.")
 
 

@@ -114,7 +114,7 @@ export default function DepositPage() {
         fetchTransactions();
         fetchSubscription();
     }, [token]);
- 
+
     const refreshData = () => {
         const fetchTransactions = async () => {
             if (!token) return;
@@ -143,7 +143,7 @@ export default function DepositPage() {
                 setTxLoading(false);
             }
         };
- 
+
         const fetchSubscription = async () => {
             if (!token) return;
             try {
@@ -158,7 +158,7 @@ export default function DepositPage() {
                 console.error("Failed to load subscription", error);
             }
         };
- 
+
         fetchTransactions();
         fetchSubscription();
     };
@@ -212,11 +212,11 @@ export default function DepositPage() {
         // Also fire a custom event to update balance in other components if needed
         window.dispatchEvent(new Event('balanceUpdate'));
     };
- 
+
     const handlePaymentError = (msg: string) => {
         showToast(msg, "error");
     };
- 
+
     const showToast = (message: string, type: 'success' | 'error') => {
         console.log("DEBUG: showToast EXECUTING", { message, type });
         setToast({ show: true, message, type });
@@ -268,7 +268,7 @@ export default function DepositPage() {
                     <div className="flex-1 font-bold text-center">
                         {toast.message}
                     </div>
-                    <button 
+                    <button
                         onClick={() => setToast(prev => ({ ...prev, show: false }))}
                         className="p-1 hover:bg-white/10 rounded"
                     >

@@ -167,10 +167,10 @@ class ErrorLogger {
 
     // Console logging
     if (this.config.enableConsoleLogging) {
-      const consoleMethod = severity === 'critical' ? 'error' : 
+      const consoleMethod = severity === 'critical' ? 'error' :
                            severity === 'high' ? 'error' :
                            severity === 'medium' ? 'warn' : 'info';
-      
+
       console[consoleMethod](`[${severity.toUpperCase()}] ${errorId}:`, {
         error: error.message,
         stack: error.stack,

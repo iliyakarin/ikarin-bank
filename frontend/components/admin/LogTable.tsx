@@ -93,4 +93,3 @@ export default function MultiSourceLogTable({ logs }: { logs: LogEntry[] }) {
         </Card>
     );
 }
-

@@ -91,7 +91,7 @@ async def get_stats(
     # 5. System Volume (24h)
     today = datetime.now(timezone.utc)
     yesterday = today - timedelta(days=1)
-    
+
     result = await db.execute(
         select(func.sum(Transaction.amount))
         .filter(Transaction.category == "P2P", Transaction.created_at >= yesterday)
@@ -152,7 +152,7 @@ async def delete_user(
     success = await compliance_delete_user(db, current_user.id, user_id)
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     return None
 
 
@@ -314,7 +314,7 @@ def manual_sync_clickhouse(
 @router.get("/admin/config")
 async def get_admin_config(current_user: User = Depends(admin_only)):
     """Returns full configuration for database connectivity (admin-only)."""
-    
+
     return {
         "env": settings.ENV,
         "clickhouse": {
@@ -352,10 +352,10 @@ def _execute_clickhouse_query(request: QueryRequest) -> Tuple[List, List]:
     """Executes a predefined query against ClickHouse."""
     query_name = request.query  # Now we expect the name of the predefined query
     source_queries = PREDEFINED_QUERIES.get("clickhouse", {})
-    
+
     if query_name not in source_queries:
         raise HTTPException(status_code=400, detail=f"Invalid ClickHouse query name: {query_name}")
-    
+
     query_template = source_queries[query_name]
 
     ch_client = clickhouse_connect.get_client(
@@ -373,10 +373,10 @@ async def _execute_postgres_query(request: QueryRequest, db: AsyncSession) -> Tu
     """Executes a predefined query against PostgreSQL."""
     query_name = request.query
     source_queries = PREDEFINED_QUERIES.get("postgres", {})
-    
+
     if query_name not in source_queries:
         raise HTTPException(status_code=400, detail=f"Invalid Postgres query name: {query_name}")
-    
+
     query_template = source_queries[query_name]
 
     # Execute PostgreSQL query with parameter binding to prevent SQL injection
@@ -565,11 +565,11 @@ async def get_banking_metrics(
 
         # 24h transaction metrics
         volume_query = """
-        SELECT 
+        SELECT
             SUM(amount) as total_volume,
             COUNT(*) as transaction_count,
             AVG(amount) as avg_transaction_size
-        FROM {CH_DB}.transactions 
+        FROM {CH_DB}.transactions
         WHERE event_time >= now() - INTERVAL 1 DAY
         """
 
@@ -583,9 +583,9 @@ async def get_banking_metrics(
         # Top transactions in last 24h
         top_transactions_query = """
         SELECT merchant, amount, account_id, event_time as created_at
-        FROM {CH_DB}.transactions 
+        FROM {CH_DB}.transactions
         WHERE event_time >= now() - INTERVAL 1 DAY
-        ORDER BY amount DESC 
+        ORDER BY amount DESC
         LIMIT 10
         """
 
@@ -603,13 +603,13 @@ async def get_banking_metrics(
 
         # Hourly volume for last 24h
         hourly_query = """
-        SELECT 
+        SELECT
             toHour(event_time) as hour,
             COUNT(*) as count,
             SUM(amount) as total
-        FROM {CH_DB}.transactions 
+        FROM {CH_DB}.transactions
         WHERE event_time >= now() - INTERVAL 1 DAY
-        GROUP BY hour 
+        GROUP BY hour
         ORDER BY hour
         """
 
@@ -625,15 +625,15 @@ async def get_banking_metrics(
 
         # Top merchants by volume (7 days)
         merchant_query = """
-        SELECT 
+        SELECT
             merchant,
             COUNT(*) as transaction_count,
             SUM(amount) as total_amount
-        FROM {CH_DB}.transactions 
+        FROM {CH_DB}.transactions
         WHERE event_time >= now() - INTERVAL 7 DAY
             AND merchant != ''
-        GROUP BY merchant 
-        ORDER BY total_amount DESC 
+        GROUP BY merchant
+        ORDER BY total_amount DESC
         LIMIT 10
         """
 
@@ -649,12 +649,12 @@ async def get_banking_metrics(
 
         # User registration trends (30 days)
         user_growth_query = """
-        SELECT 
+        SELECT
             DATE(created_at) as date,
             COUNT(*) as count
-        FROM users 
+        FROM users
         WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
-        GROUP BY DATE(created_at) 
+        GROUP BY DATE(created_at)
         ORDER BY date DESC
         """
 
@@ -687,4 +687,3 @@ async def get_banking_metrics(
 
         logger.exception("An exception occurred")
         raise HTTPException(status_code=500, detail="Failed to fetch banking metrics")
-

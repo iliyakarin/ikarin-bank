@@ -18,7 +18,7 @@ async def get_user_contacts(db: AsyncSession, user_id: int):
 async def create_user_contact(db: AsyncSession, user_id: int, contact_data: ContactCreate):
     if not contact_data.contact_name.strip():
         raise HTTPException(status_code=400, detail="Name is required")
-        
+
     # Validation per type
     if contact_data.contact_type == "karin":
         if not contact_data.contact_email or not contact_data.contact_email.strip():
@@ -33,7 +33,7 @@ async def create_user_contact(db: AsyncSession, user_id: int, contact_data: Cont
     # Check for duplicates
     if contact_data.contact_type == "karin":
         result = await db.execute(select(Contact).filter(
-            Contact.user_id == user_id, 
+            Contact.user_id == user_id,
             Contact.contact_email == contact_data.contact_email,
             Contact.contact_type == "karin"
         ))
@@ -49,7 +49,7 @@ async def create_user_contact(db: AsyncSession, user_id: int, contact_data: Cont
             Contact.routing_number == contact_data.routing_number,
             Contact.account_number == contact_data.account_number
         ))
-        
+
     existing = result.scalars().first()
     if existing:
         raise HTTPException(status_code=400, detail="Contact already exists")
@@ -65,7 +65,7 @@ async def create_user_contact(db: AsyncSession, user_id: int, contact_data: Cont
         routing_number=contact_data.routing_number,
         account_number=contact_data.account_number
     )
-    
+
     db.add(new_contact)
     await db.commit()
     await db.refresh(new_contact)
@@ -73,17 +73,17 @@ async def create_user_contact(db: AsyncSession, user_id: int, contact_data: Cont
 
 async def update_user_contact(db: AsyncSession, user_id: int, contact_id: int, contact_data: ContactUpdate):
     result = await db.execute(select(Contact).filter(
-        Contact.id == contact_id, 
+        Contact.id == contact_id,
         Contact.user_id == user_id
     ))
     contact = result.scalars().first()
-    
+
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
-        
+
     if not contact_data.contact_name.strip():
         raise HTTPException(status_code=400, detail="Name is required")
-        
+
     contact.contact_name = contact_data.contact_name
     contact.contact_email = contact_data.contact_email
     contact.merchant_id = contact_data.merchant_id
@@ -91,21 +91,21 @@ async def update_user_contact(db: AsyncSession, user_id: int, contact_id: int, c
     contact.bank_name = contact_data.bank_name
     contact.routing_number = contact_data.routing_number
     contact.account_number = contact_data.account_number
-    
+
     await db.commit()
     await db.refresh(contact)
     return contact
 
 async def delete_user_contact(db: AsyncSession, user_id: int, contact_id: int):
     result = await db.execute(select(Contact).filter(
-        Contact.id == contact_id, 
+        Contact.id == contact_id,
         Contact.user_id == user_id
     ))
     contact = result.scalars().first()
-    
+
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
-        
+
     await db.delete(contact)
     await db.commit()
     return True

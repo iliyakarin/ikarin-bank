@@ -26,7 +26,7 @@ def calculate_aba_checksum(routing_number: str) -> int:
     """
     if len(routing_number) != 9 or not routing_number.isdigit():
         raise ValueError("ABA routing number must be exactly 9 digits.")
-    
+
     d = [int(digit) for digit in routing_number]
     checksum = (
         3 * (d[0] + d[3] + d[6]) +
@@ -40,7 +40,7 @@ def generate_aba() -> str:
     # Prefix is 4 digits, we need 4 more random digits + 1 checksum digit
     random_part = "".join([str(secrets.randbelow(10)) for _ in range(4)])
     partial_aba = ABA_PREFIX + random_part
-    
+
     # We need to find the checksum digit 'x' such that (current_checksum + weight * x) % 10 == 0
     # For the 9th digit (d9), the weight is 1.
     d = [int(digit) for digit in partial_aba]
@@ -49,7 +49,7 @@ def generate_aba() -> str:
         7 * (d[1] + d[4] + d[7]) +
         1 * (d[2] + d[5])
     )
-    
+
     # 9th digit weight is 1. So (current_val + 1 * d9) % 10 == 0
     d9 = (10 - (current_val % 10)) % 10
     return partial_aba + str(d9)
@@ -83,18 +83,18 @@ async def assign_account_credentials(db: AsyncSession, account: Account):
     """
     # 1. Generate Routing Number (consistent prefix for Karin-Bank)
     account.routing_number = generate_aba()
-    
+
     # 2. Generate UUID-based account number
     new_uuid = str(uuid.uuid4())
     account.account_uuid = new_uuid
-    
+
     acc_num = "".join(filter(str.isdigit, new_uuid))[:12]
     if len(acc_num) < 10:
         acc_num = str(uuid.uuid4().int)[:12]
-        
+
     account.account_number_encrypted = encrypt_account_number(acc_num)
     account.account_number_last_4 = acc_num[-4:]
-            
+
     # 3. Generate Internal Reference ID
     while True:
         ref_id = generate_internal_reference()
@@ -106,7 +106,7 @@ async def assign_account_credentials(db: AsyncSession, account: Account):
 async def create_user_sub_account(db: AsyncSession, user_id: int, name: str, client_ip: str, user_agent: str):
     """Handles sub-account creation logic and activity emission."""
     from sqlalchemy import func
-    
+
     # Check constraint: max 10 sub-accounts
     result = await db.execute(select(func.count(Account.id)).filter(
         Account.user_id == user_id,
@@ -148,7 +148,7 @@ async def create_user_sub_account(db: AsyncSession, user_id: int, name: str, cli
     return new_sub
 
 async def execute_internal_transfer(
-    db: AsyncSession, user_id: int, from_account_id: int, to_account_id: int, 
+    db: AsyncSession, user_id: int, from_account_id: int, to_account_id: int,
     amount: int, commentary: Optional[str], client_ip: str, user_agent: str, user_email: str
 ):
     """Handles internal transfer between a user's own accounts."""
@@ -182,7 +182,7 @@ async def execute_internal_transfer(
     receiver.balance += amount
 
     tx_id_parent = str(uuid.uuid4())
-    
+
     sender_tx = Transaction(
         id=str(uuid.uuid4()), parent_id=tx_id_parent, account_id=sender.id,
         amount=-amount, category="Internal Transfer", merchant=f"Transfer to {receiver.name}",
@@ -190,7 +190,7 @@ async def execute_internal_transfer(
         commentary=commentary, internal_account_last_4=sender.account_number_last_4,
         sender_email=user_email, recipient_email=user_email
     )
-    
+
     receiver_tx = Transaction(
         id=str(uuid.uuid4()), parent_id=tx_id_parent, account_id=receiver.id,
         amount=amount, category="Internal Transfer", merchant=f"Transfer from {sender.name}",
@@ -203,11 +203,11 @@ async def execute_internal_transfer(
     db.add(receiver_tx)
 
     emit_activity(
-        db, user_id, "sub_account", "transfer", 
-        f"Transferred {amount / 100:.2f} from {sender.name} to {receiver.name}", 
+        db, user_id, "sub_account", "transfer",
+        f"Transferred {amount / 100:.2f} from {sender.name} to {receiver.name}",
         {"from_account": sender.name, "to_account": receiver.name, "amount": amount, "transaction_id": tx_id_parent},
         ip=client_ip, user_agent=user_agent
     )
-    
+
     await db.commit()
     return sender, receiver

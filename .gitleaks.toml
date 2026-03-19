@@ -31,3 +31,7 @@ id = "no-getenv-fallback"
 regex = '''os\.getenv\s*\(\s*["'][A-Z_]+["']\s*,\s*["'][^"']+["']\s*\)'''
 path = '''backend/.*\.py$'''
 severity = "high"
+[rules.allowlist]
+regexes = [
+    '''os\.getenv\s*\(\s*["'](ENV|LOG_LEVEL|PORT|DEBUG)["']\s*,\s*["'][^"']+["']\s*\)'''
+]

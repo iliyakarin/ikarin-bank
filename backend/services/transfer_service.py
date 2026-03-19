@@ -58,14 +58,14 @@ async def process_p2p_transfer(
     subscriber_id: Optional[str] = None
 ):
     """
-    Orchestrates the entire P2P transfer process including validation, 
+    Orchestrates the entire P2P transfer process including validation,
     balance updates, transaction recording, and outbox emission.
     """
-    
+
     # 1. Recipient Lookup
     result = await db.execute(select(User).filter(User.email == recipient_email))
     recipient = result.scalars().first()
-    
+
     if not recipient:
         # Check if it's a vendor
         vendors_resp = await get_vendors()
@@ -99,7 +99,7 @@ async def process_p2p_transfer(
         sender_account_query = sender_account_query.filter(Account.id == source_account_id)
     else:
         sender_account_query = sender_account_query.filter(Account.is_main == True)
-    
+
     result = await db.execute(sender_account_query)
     resolved_sender_account = result.scalars().first()
     if not resolved_sender_account:
@@ -150,7 +150,7 @@ async def process_p2p_transfer(
     return {"status": "success", "transaction_id": tx_id_parent}
 
 async def _handle_vendor_payment(
-    db: AsyncSession, current_user: User, vendor: dict, amount: int, 
+    db: AsyncSession, current_user: User, vendor: dict, amount: int,
     source_account_id: Optional[int], commentary: Optional[str],
     idempotency_key: Optional[str], client_ip: str, user_agent: str,
     subscriber_id: Optional[str]
@@ -160,7 +160,7 @@ async def _handle_vendor_payment(
         sender_account_query = sender_account_query.filter(Account.id == source_account_id)
     else:
         sender_account_query = sender_account_query.filter(Account.is_main == True)
-        
+
     result = await db.execute(sender_account_query.with_for_update())
     sender_account = result.scalars().first()
     if not sender_account:
@@ -222,28 +222,28 @@ def _calculate_next_run_at(reference_date: datetime.datetime, frequency: str, in
     """Calculates the next execution date based on frequency and reference date."""
     if frequency == "One-time":
         return None
-    
+
     if frequency == "Daily":
         return reference_date + datetime.timedelta(days=1)
-    
+
     if frequency == "Weekly":
         return reference_date + datetime.timedelta(weeks=1)
-    
+
     if frequency == "Bi-weekly":
         return reference_date + datetime.timedelta(weeks=2)
-    
+
     if frequency == "Monthly":
         # Advance by exactly one month
         month = reference_date.month
         year = reference_date.year + (month // 12)
         month = (month % 12) + 1
-        
+
         # Max days in the new month
         if month == 2:
             max_day = 29 if (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)) else 28
         else:
             max_day = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month]
-            
+
         day = min(reference_date.day, max_day)
         return reference_date.replace(year=year, month=month, day=day)
 
@@ -257,7 +257,7 @@ def _calculate_next_run_at(reference_date: datetime.datetime, frequency: str, in
         days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         if not interval or interval not in days_of_week:
             return reference_date + datetime.timedelta(weeks=1)
-        
+
         target_weekday = days_of_week.index(interval)
         current_weekday = reference_date.weekday()
         days_ahead = target_weekday - current_weekday
@@ -270,17 +270,17 @@ def _calculate_next_run_at(reference_date: datetime.datetime, frequency: str, in
             target_day = int(interval)
         except (TypeError, ValueError):
             return reference_date + datetime.timedelta(days=30)
-            
+
         # Move to next month and try to set the requested day
         month = reference_date.month
         year = reference_date.year + (month // 12)
         month = (month % 12) + 1
-        
+
         if month == 2:
             max_day = 29 if (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)) else 28
         else:
             max_day = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month]
-            
+
         actual_day = min(target_day, max_day)
         return reference_date.replace(year=year, month=month, day=actual_day)
 
@@ -321,7 +321,7 @@ async def _execute_p2p_balances(
 
     if not sender_account:
         raise HTTPException(status_code=404, detail="Sender account not found")
-        
+
     if sender_account.balance < amount:
         raise HTTPException(
             status_code=400, detail="Insufficient funds for this transfer."
@@ -362,7 +362,7 @@ def _create_p2p_transactions(
         amount=-amount,
         category="Transfer",
         merchant=f"Transfer to {recipient_email}",
-        status="cleared", 
+        status="cleared",
         transaction_type="transfer",
         transaction_side="DEBIT",
         idempotency_key=idempotency_key,

@@ -23,7 +23,7 @@ def test_calculate_next_run_at_monthly():
     start = datetime.datetime(2026, 1, 15, 10, 0)
     result = _calculate_next_run_at(start, "Monthly")
     assert result == datetime.datetime(2026, 2, 15, 10, 0)
-    
+
     # Month end boundary
     start = datetime.datetime(2026, 1, 31, 10, 0)
     result = _calculate_next_run_at(start, "Monthly")
@@ -32,22 +32,22 @@ def test_calculate_next_run_at_monthly():
 def test_calculate_next_run_at_specific_day():
     # 2026-03-06 is a Friday
     start = datetime.datetime(2026, 3, 6, 10, 0)
-    
+
     # Next Monday should be 2026-03-09
     result = _calculate_next_run_at(start, "Specific Day of Week", "Monday")
     assert result == datetime.datetime(2026, 3, 9, 10, 0)
-    
+
     # Next Friday (since today is Friday, it should be next week)
     result = _calculate_next_run_at(start, "Specific Day of Week", "Friday")
     assert result == datetime.datetime(2026, 3, 13, 10, 0)
 
 def test_calculate_next_run_at_specific_date():
     start = datetime.datetime(2026, 1, 15, 10, 0)
-    
+
     # Next 25th of the month
     result = _calculate_next_run_at(start, "Specific Date of Month", "25")
     assert result == datetime.datetime(2026, 2, 25, 10, 0)
-    
+
     # Next 31st of the month (Feb only has 28 in 2026)
     result = _calculate_next_run_at(start, "Specific Date of Month", "31")
     assert result == datetime.datetime(2026, 2, 28, 10, 0)
@@ -71,9 +71,9 @@ def test_pydantic_schema_validation_valid():
         "target_payments": 12,
         "reserve_amount": True
     }
-    
+
     schema = ScheduledTransferCreate(**data)
-    
+
     assert schema.recipient_email == "vendor@test.com"
     assert schema.amount == Decimal("500.00")
     assert schema.frequency == "Specific Date of Month"
@@ -94,9 +94,9 @@ def test_pydantic_schema_validation_minimal():
         "start_date": "2026-01-01T00:00:00Z",
         "end_condition": "Until Cancelled"
     }
-    
+
     schema = ScheduledTransferCreate(**data)
-    
+
     assert schema.recipient_email == "user@test.com"
     assert schema.reserve_amount is False
     assert schema.target_payments is None

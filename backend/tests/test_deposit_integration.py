@@ -78,7 +78,7 @@ def test_webhook_signature_verification_failure(mock_deposit_router):
 @patch("routers.deposit.WEBHOOK_SECRET", "whsec_test")
 def test_webhook_checkout_completed(mock_deposit_router, mock_deposit_service):
     mock_checkout, _ = mock_deposit_service
-    
+
     # Mock event
     event = {
         "type": "checkout.session.completed",

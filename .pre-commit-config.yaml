@@ -1,5 +1,5 @@
 # .pre-commit-config.yaml
-# Purpose: Automatically intercept and block hardcoded secrets, PII, and 
+# Purpose: Automatically intercept and block hardcoded secrets, PII, and
 # un-parameterized configs before they leave your laptop (KarinBank project).
 
 repos:

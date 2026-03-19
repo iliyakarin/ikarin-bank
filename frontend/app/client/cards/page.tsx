@@ -47,7 +47,7 @@ export default function MyCardsPage() {
                     <div className="h-full bg-gradient-to-br from-slate-400 via-slate-500 to-slate-700 p-6 flex flex-col justify-between relative overflow-hidden">
                         {/* Background decoration */}
                         <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
-                        
+
                         {/* Chip */}
                         <div className="relative z-10 w-12 h-10 bg-gradient-to-br from-yellow-300 to-yellow-600 rounded-lg shadow-lg"></div>
 
@@ -55,7 +55,7 @@ export default function MyCardsPage() {
                         <div className="relative z-10 space-y-4">
                             <p className="text-white/80 text-sm font-semibold tracking-wider">DEBIT CARD</p>
                             <p className="text-white text-2xl font-mono tracking-wider">{debitCard.number}</p>
-                            
+
                             <div className="flex justify-between items-end">
                                 <div>
                                     <p className="text-white/60 text-xs">CARDHOLDER</p>
@@ -80,7 +80,7 @@ export default function MyCardsPage() {
                     <div className="h-full bg-gradient-to-br from-amber-400 via-amber-500 to-amber-700 p-6 flex flex-col justify-between relative overflow-hidden">
                         {/* Background decoration */}
                         <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
-                        
+
                         {/* Chip */}
                         <div className="relative z-10 w-12 h-10 bg-gradient-to-br from-yellow-300 to-yellow-600 rounded-lg shadow-lg"></div>
 
@@ -88,7 +88,7 @@ export default function MyCardsPage() {
                         <div className="relative z-10 space-y-4">
                             <p className="text-white/80 text-sm font-semibold tracking-wider">CREDIT CARD • PREMIUM</p>
                             <p className="text-white text-2xl font-mono tracking-wider">{creditCard.number}</p>
-                            
+
                             <div className="flex justify-between items-end">
                                 <div>
                                     <p className="text-white/60 text-xs">CARDHOLDER</p>

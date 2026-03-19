@@ -49,7 +49,7 @@ def main():
                 if any(file.endswith(ext) for ext in FILE_EXTENSIONS):
                     if sanitize_file(os.path.join(root, file)):
                         modified_count += 1
-    
+
     print(f"\nSanitization complete. {modified_count} files modified.")
 
 if __name__ == "__main__":

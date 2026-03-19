@@ -1,7 +1,7 @@
 """initial_baseline
 
 Revision ID: aa6c5010c512
-Revises: 
+Revises:
 Create Date: 2026-03-14 19:35:11.759841
 
 """

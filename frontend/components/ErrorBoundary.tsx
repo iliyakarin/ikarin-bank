@@ -45,7 +45,7 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
 
     // Log error for monitoring
     this.logError(error, errorInfo);
-    
+
     // Call custom error handler if provided
     this.props.onError?.(error, errorInfo);
   }
@@ -176,7 +176,7 @@ function DefaultErrorFallback({ error, errorInfo, onReset }: DefaultErrorFallbac
 
         {/* Message */}
         <p className="text-white/60 text-center mb-8 leading-relaxed">
-          We encountered an unexpected error. Don't worry, your data is safe. 
+          We encountered an unexpected error. Don't worry, your data is safe.
           Try refreshing the page or go back to the dashboard.
         </p>
 
@@ -189,7 +189,7 @@ function DefaultErrorFallback({ error, errorInfo, onReset }: DefaultErrorFallbac
             <RefreshCw className="w-4 h-4" />
             Try Again
           </button>
-          
+
           <button
             onClick={() => window.location.reload()}
             className="flex-1 h-12 px-6 rounded-2xl bg-white/5 border border-white/10 text-white font-semibold hover:bg-white/10 transition-all active:scale-95"
@@ -216,7 +216,7 @@ function DefaultErrorFallback({ error, errorInfo, onReset }: DefaultErrorFallbac
             >
               {showDetails ? 'Hide' : 'Show'} Error Details
             </button>
-            
+
             <AnimatePresence>
               {showDetails && (
                 <motion.div

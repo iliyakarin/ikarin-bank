@@ -118,8 +118,8 @@ export default function SendMoneyPage() {
   useEffect(() => {
     // Auto-fill subscriber ID if the recipient matches a known merchant contact
     if (recipient && !subscriberId) {
-      const contact = contacts.find(c => 
-        c.contact_type === "merchant" && 
+      const contact = contacts.find(c =>
+        c.contact_type === "merchant" &&
         (c.email === recipient || (c.merchant_id && vendors.find(v => v.id === c.merchant_id)?.email === recipient))
       );
       if (contact?.subscriber_id) {
@@ -1437,7 +1437,7 @@ export default function SendMoneyPage() {
                               let d = new Date(dateStr);
                               if (isNaN(d.getTime())) d = new Date(dateStr.replace(" ", "T"));
                               if (isNaN(d.getTime())) d = new Date(dateStr + "Z");
-                              
+
                               return isNaN(d.getTime()) ? "N/A" : d.toLocaleString(settings.useEUDates ? 'en-GB' : 'en-US', {
                                 month: 'short',
                                 day: 'numeric',

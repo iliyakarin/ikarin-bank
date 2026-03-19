@@ -19,7 +19,7 @@ router = APIRouter(tags=["Transfers"])
 
 @router.post("/transfer")
 async def create_transfer(
-    transfer: TransferRequest, 
+    transfer: TransferRequest,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -46,7 +46,7 @@ async def create_transfer(
             recipient_email="external@gateway.com" # Generic external recipient
         )
         db.add(new_tx)
-        
+
         # Add to Outbox instead of direct Kafka send
         payload = {
             "transaction_id": tx_id,
@@ -60,14 +60,14 @@ async def create_transfer(
             "status": "cleared", # legacy /transfer is cleared immediately
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
-        
+
         outbox_entry = Outbox(
             event_type="transaction.created",
             payload=payload
         )
 
         db.add(outbox_entry)
-        
+
         await db.commit()
         return {"status": "success", "transaction_id": tx_id}
     except SQLAlchemyError as e:
@@ -148,10 +148,10 @@ async def create_payment_request(
 ):
     if request_data.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be greater than 0")
-    
+
     if request_data.target_email == current_user.email:
         raise HTTPException(status_code=400, detail="Cannot request money from yourself")
-        
+
     result = await db.execute(select(User).filter(User.email == request_data.target_email))
     target_user = result.scalars().first()
     if not target_user:
@@ -164,7 +164,7 @@ async def create_payment_request(
         purpose=request_data.purpose,
         status="pending_target"
     )
-    
+
     db.add(new_request)
 
     emit_activity(db, current_user.id, "p2p", "requested", f"Requested {request_data.amount / 100:.2f} from {request_data.target_email}", {
@@ -174,7 +174,7 @@ async def create_payment_request(
     })
     await db.commit()
     await db.refresh(new_request)
-    
+
     return {"status": "success", "request_id": new_request.id}
 
 
@@ -185,11 +185,11 @@ async def get_payment_requests(
 ):
     # Fetch requests where user is requester or target
     result = await db.execute(select(PaymentRequest).filter(
-        (PaymentRequest.requester_id == current_user.id) | 
+        (PaymentRequest.requester_id == current_user.id) |
         (PaymentRequest.target_email == current_user.email)
     ).order_by(PaymentRequest.updated_at.desc()))
     requests = result.scalars().all()
-    
+
     # Enrich with requester info
     result = []
     for req in requests:
@@ -207,7 +207,7 @@ async def get_payment_requests(
             "created_at": req.created_at.isoformat(),
             "updated_at": req.updated_at.isoformat()
         })
-        
+
     return result
 
 
@@ -228,10 +228,10 @@ async def counter_payment_request(
 
     is_requester = req.requester_id == current_user.id
     is_target = req.target_email == current_user.email
-    
+
     if not is_requester and not is_target:
         raise HTTPException(status_code=403, detail="Not authorized to modify this request")
-        
+
     if req.status not in ["pending_target", "pending_requester"]:
         raise HTTPException(status_code=400, detail=f"Request cannot be modified in state: {req.status}")
 
@@ -245,7 +245,7 @@ async def counter_payment_request(
     # Flip the status depending on who just countered
     req.status = "pending_requester" if is_target else "pending_target"
     req.updated_at = datetime.datetime.now(datetime.timezone.utc)
-    
+
     await db.commit()
     return {"status": "success", "request_id": req.id, "new_amount": int(req.amount), "new_status": req.status}
 
@@ -263,13 +263,13 @@ async def decline_payment_request(
 
     if req.requester_id != current_user.id and req.target_email != current_user.email:
         raise HTTPException(status_code=403, detail="Not authorized to modify this request")
-        
+
     if req.status not in ["pending_target", "pending_requester"]:
         raise HTTPException(status_code=400, detail=f"Request cannot be modified in state: {req.status}")
 
     req.status = "declined"
     req.updated_at = datetime.datetime.now(datetime.timezone.utc)
-    
+
     emit_activity(db, current_user.id, "p2p", "request_declined", f"Declined payment request #{req.id}", {
         "request_id": req.id,
         "amount": req.amount,
@@ -314,7 +314,7 @@ async def create_scheduled_transfer(
     start_date = transfer.start_date
     if start_date.tzinfo is not None:
         start_date = start_date.astimezone(datetime.timezone.utc).replace(tzinfo=None)
-    
+
     # Validation: allow today in user's timezone even if UTC is tomorrow
     if start_date.date() < (now_utc.date() - datetime.timedelta(days=1)):
         raise HTTPException(status_code=400, detail="Start date must be today or in the future.")
@@ -345,7 +345,7 @@ async def create_scheduled_transfer(
             if not sender_account:
                 result = await db.execute(select(Account).filter(Account.user_id == current_user.id).with_for_update())
                 sender_account = result.scalars().first()
-                
+
         if not sender_account:
             raise HTTPException(status_code=404, detail="Account not found")
 
@@ -358,7 +358,7 @@ async def create_scheduled_transfer(
 
         # The first run should happen at the start_date provided by user
         next_run = start_date
-        
+
         end_date = transfer.end_date
         if end_date and end_date.tzinfo is not None:
             end_date = end_date.astimezone(datetime.timezone.utc).replace(tzinfo=None)
@@ -381,7 +381,7 @@ async def create_scheduled_transfer(
             subscriber_id=transfer.subscriber_id
         )
         db.add(new_scheduled_payment)
-        
+
         response_body = {"status": "success", "message": "Transfer scheduled successfully."}
         db.add(IdempotencyKey(
             key=ik,
@@ -389,16 +389,16 @@ async def create_scheduled_transfer(
             response_code=200,
             response_body=response_body
         ))
-        
+
         await db.commit()
         await db.refresh(new_scheduled_payment)
 
         emit_activity(
-            db, 
-            current_user.id, 
-            "scheduled", 
-            "setup", 
-            f"Scheduled {transfer.amount / 100:.2f} {transfer.frequency} to {transfer.recipient_email}", 
+            db,
+            current_user.id,
+            "scheduled",
+            "setup",
+            f"Scheduled {transfer.amount / 100:.2f} {transfer.frequency} to {transfer.recipient_email}",
             {
                 "scheduled_payment_id": new_scheduled_payment.id,
                 "recipient_email": transfer.recipient_email,
@@ -410,7 +410,7 @@ async def create_scheduled_transfer(
             user_agent=request.headers.get("user-agent")
         )
         await db.commit()
-        
+
         return {"status": "success", "scheduled_payment_id": new_scheduled_payment.id}
 
     except HTTPException:
@@ -432,7 +432,7 @@ async def get_scheduled_payments(
         ScheduledPayment.user_id == current_user.id
     ).order_by(ScheduledPayment.id.desc()))
     payments = result.scalars().all()
-    
+
     return payments
 
 @router.post("/transfers/scheduled/{payment_id}/cancel")
@@ -447,13 +447,13 @@ async def cancel_scheduled_payment(
         ScheduledPayment.user_id == current_user.id
     ))
     payment = result.scalars().first()
-    
+
     if not payment:
         raise HTTPException(status_code=404, detail="Scheduled payment not found")
-        
+
     if payment.status != "Active":
         raise HTTPException(status_code=400, detail=f"Payment is already {payment.status}")
-        
+
     payment.status = "Cancelled"
 
     emit_activity(db, current_user.id, "scheduled", "cancelled", f"Cancelled scheduled payment #{payment.id}", {
@@ -462,7 +462,7 @@ async def cancel_scheduled_payment(
         "amount": payment.amount,
     })
     await db.commit()
-    
+
     return {"status": "success", "message": "Scheduled payment cancelled"}
 
 

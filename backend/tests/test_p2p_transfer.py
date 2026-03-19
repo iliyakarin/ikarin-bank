@@ -45,11 +45,11 @@ async def test_p2p_transfer_success(mock_fastapi_dependency):
 
     account_iterator = iter([sender_account, recipient_account] * 10)
     call_idx_p2p = [0]
-    
+
     def execute_side_effect(stmt, *args, **kwargs):
         idx = call_idx_p2p[0]
         call_idx_p2p[0] += 1
-        
+
         mock_result = MagicMock()
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = [101, 102]
@@ -173,7 +173,7 @@ async def test_p2p_transfer_success(mock_fastapi_dependency):
     amounts = sorted([call.kwargs['amount'] for call in tx_calls])
     assert amounts[0] == Decimal("-10.00")
     assert amounts[1] == Decimal("10.00")
-    
+
     # Check new fields safely (they should be in both transactions)
     for call in tx_calls:
         assert call.kwargs['internal_account_last_4'] == "1234"
@@ -199,7 +199,7 @@ async def test_p2p_transfer_insufficient_funds(mock_fastapi_dependency):
     recipient.id = 2
     recipient.email = "recipient@example.com"
 
-    sender_account = MockAccount(101, 1, Decimal("5.00")) 
+    sender_account = MockAccount(101, 1, Decimal("5.00"))
     recipient_account = MockAccount(102, 2, Decimal("50.00"))
 
     from unittest.mock import AsyncMock
@@ -210,11 +210,11 @@ async def test_p2p_transfer_insufficient_funds(mock_fastapi_dependency):
 
     account_iterator = iter([sender_account, recipient_account] * 10)
     call_idx_p2p = [0]
-    
+
     def execute_side_effect(stmt, *args, **kwargs):
         idx = call_idx_p2p[0]
         call_idx_p2p[0] += 1
-        
+
         mock_result = MagicMock()
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = [101, 102]

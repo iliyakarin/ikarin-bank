@@ -16,7 +16,7 @@ fi
 
 # 2. Backend Tests (Pytest)
 echo "🐍 Running Backend Tests..."
-# Assuming we run them inside the api container if it's already up, 
+# Assuming we run them inside the api container if it's already up,
 # or we run them locally if dependencies are installed.
 # To be robust, we'll try to run them via docker-compose if containers are running.
 if docker compose --env-file .env.dev ps | grep -q "Up"; then

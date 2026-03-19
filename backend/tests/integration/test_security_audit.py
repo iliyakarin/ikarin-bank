@@ -29,7 +29,7 @@ async def session_factory():
 @pytest.fixture(autouse=True)
 def mock_startup():
     with patch("main.AIOKafkaProducer") as m_kafka:
-        
+
         instance = m_kafka.return_value
         instance.start = AsyncMock()
         instance.stop = AsyncMock()
@@ -46,7 +46,7 @@ async def client(session_factory):
     async def override_get_db():
         async with session_factory() as session:
             yield session
-    
+
     app.dependency_overrides[get_db] = override_get_db
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -62,7 +62,7 @@ async def create_test_user(db: AsyncSession, email: str, balance: int = 10000):
     )
     db.add(user)
     await db.flush()
-    
+
     account = Account(
         user_id=user.id,
         is_main=True,
@@ -84,10 +84,10 @@ async def test_idor_account_access(client: httpx.AsyncClient, db_session: AsyncS
     """Verify that a user cannot access another user's account details."""
     user_a, acc_a = await create_test_user(db_session, f"a_{uuid.uuid4()}@idor.com")
     user_b, acc_b = await create_test_user(db_session, f"b_{uuid.uuid4()}@idor.com")
-    
+
     token_a = create_access_token({"sub": user_a.email})
     headers = {"Authorization": f"Bearer {token_a}"}
-    
+
     response = await client.get(f"/v1/accounts/{acc_b.id}/credentials", headers=headers)
     assert response.status_code == 404
     assert "access denied" in response.json().get("detail", "").lower()
@@ -97,10 +97,10 @@ async def test_p2p_idempotency_router(client: httpx.AsyncClient, db_session: Asy
     """Verify that multiple requests with the same idempotency key only result in one transfer."""
     user_a, acc_a = await create_test_user(db_session, f"source_{uuid.uuid4()}@test.com", 10000)
     user_b, acc_b = await create_test_user(db_session, f"dest_{uuid.uuid4()}@test.com", 1000)
-    
+
     token_a = create_access_token({"sub": user_a.email})
     headers = {"Authorization": f"Bearer {token_a}"}
-    
+
     id_key = f"key-{uuid.uuid4()}"
     payload = {
         "recipient_email": user_b.email,
@@ -109,19 +109,19 @@ async def test_p2p_idempotency_router(client: httpx.AsyncClient, db_session: Asy
         "idempotency_key": id_key,
         "commentary": "Idempotency test"
     }
-    
+
     with patch("services.transfer_service.emit_activity"), \
          patch("services.transfer_service.get_vendors", return_value=[]), \
          patch("routers.transfers.emit_activity"):
         # First request
         resp1 = await client.post("/v1/p2p-transfer", json=payload, headers=headers)
         assert resp1.status_code == 200
-        
+
         # Second request (same key)
         resp2 = await client.post("/v1/p2p-transfer", json=payload, headers=headers)
         assert resp2.status_code == 200
         assert resp2.json()["transaction_id"] == resp1.json()["transaction_id"]
-        
+
         # Verify balance only decreased ONCE
         async with session_factory() as fresh_db:
              from sqlalchemy import select

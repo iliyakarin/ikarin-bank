@@ -15,7 +15,7 @@ async def ensure_user_exists():
         # Check if user already exists
         result = await db.execute(select(User).filter(User.email == ADMIN_EMAIL))
         user = result.scalars().first()
-        
+
         if not user:
             print(f"Creating new test user: {ADMIN_EMAIL}")
             user = User(
@@ -27,7 +27,7 @@ async def ensure_user_exists():
             )
             db.add(user)
             await db.flush() # Get user ID
-            
+
             # Create main account
             account = Account(
                 user_id=user.id,
@@ -50,7 +50,7 @@ async def ensure_user_exists():
                 )
                 db.add(account)
                 print(f"Main account created for existing user {ADMIN_EMAIL}.")
-        
+
         await db.commit()
 
 if __name__ == "__main__":

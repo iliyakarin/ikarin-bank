@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configuration
-# Load .env.dev for the webhook secret if it exists locally, 
+# Load .env.dev for the webhook secret if it exists locally,
 # but gateway listen will provide its own temporary secret.
 API_URL="http://localhost:8000/api/v1/gateway/webhook"
 

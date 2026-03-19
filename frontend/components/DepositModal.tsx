@@ -230,7 +230,7 @@ export default function DepositModal({
 
   // Handle SSR - only render portal on client side
   const [isClient, setIsClient] = useState(false);
-  
+
   useEffect(() => {
     setIsClient(true);
   }, []);
@@ -251,8 +251,8 @@ export default function DepositModal({
            className="absolute inset-0 bg-black/80 backdrop-blur-md"
            onClick={onClose}
         />
-        
-        <motion.div 
+
+        <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -260,7 +260,7 @@ export default function DepositModal({
           className="relative bg-zinc-950 border border-zinc-800 w-full max-w-lg rounded-[2.5rem] p-10 shadow-2xl overflow-hidden overflow-x-hidden flex flex-col glass-morphism"
         >
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-50" />
-          
+
           <button
             onClick={onClose}
             className="absolute top-8 right-8 text-zinc-500 hover:text-white transition-colors z-10"
@@ -287,7 +287,7 @@ export default function DepositModal({
                 </div>
                 <h3 className="text-lg font-bold text-white">Initialization Failed</h3>
                 <p className="text-zinc-400 text-center text-sm">{initError}</p>
-                <button 
+                <button
                   onClick={onClose}
                   className="mt-4 px-6 py-2 rounded-xl bg-zinc-800 text-white font-medium hover:bg-zinc-700 transition-colors"
                 >
@@ -307,7 +307,7 @@ export default function DepositModal({
                    </div>
                    <p className="text-zinc-400 text-sm leading-relaxed">System is in testing environment. Simulated deposit flow is active.</p>
                 </div>
-                
+
                 <div className="space-y-5">
                   <div className="space-y-2.5">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold tracking-tighter">Cardholder Name</label>
@@ -360,9 +360,9 @@ export default function DepositModal({
                         },
                         body: JSON.stringify({ id: intentId })
                       });
-                      
+
                       if (!res.ok) throw new Error("Fulfillment failed");
-                      
+
                       setStatus("success");
                       console.log("DEBUG: Modal calling onSuccess");
                       setTimeout(() => {
@@ -449,7 +449,7 @@ export default function DepositModal({
                 />
               </Elements>
             )}
-            
+
             <div className="mt-10 flex items-center justify-center gap-2.5 text-[10px] text-zinc-600 tracking-widest font-bold uppercase opacity-60 pb-2">
               <ShieldCheck size={14} className="text-zinc-700" />
               <span>PCI-DSS COMPLIANT | BANK-GRADE SECURITY</span>
@@ -464,15 +464,15 @@ export default function DepositModal({
 
 function ShieldCheck({ size, className }: { size?: number; className?: string }) {
   return (
-    <svg 
-      width={size} 
-      height={size} 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
       className={className}
     >
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />

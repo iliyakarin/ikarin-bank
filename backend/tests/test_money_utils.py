@@ -9,7 +9,7 @@ def test_to_cents():
     assert to_cents("0") == 0
     assert to_cents("-10.00") == -1000
     assert to_cents("-0.01") == -1
-    
+
     # Test invalid inputs
     with pytest.raises(ValueError):
         to_cents(10.05)  # Can't pass float directly anymore

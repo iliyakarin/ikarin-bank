@@ -88,7 +88,7 @@ async def _atomic_topup_balance(
         "commentary": f"Gateway Session: {gateway_session_id}"
     }
     db.add(Outbox(event_type="deposit.success", payload=outbox_payload))
-    
+
     # 6. Emit Activity
     emit_activity(
         db=db,
@@ -111,7 +111,7 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
     metadata = session.get("metadata", {})
     user_id = metadata.get("user_id")
     mode = metadata.get("mode", "payment")
-    
+
     if not user_id:
         logger.error(f"No user ID in metadata for session/intent {session_id}")
         return
@@ -124,11 +124,11 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
 
     # For PaymentIntent, amount is 'amount', for Checkout Session it's 'amount_total'
     amount_total = session.get("amount_total") or session.get("amount")
-    
+
     if mode == "payment":
         amount_cents = int(amount_total)
         idempotency_key = f"deposit_mock_{session_id}"
- 
+
         try:
             await _atomic_topup_balance(
                 db=db,
@@ -146,7 +146,7 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
         # Handle subscription creation
         deposit_sub_id = session.get("subscription")
         idempotency_key = f"deposit_sub_{deposit_sub_id}"
-        
+
         # Check idempotency
         res = await db.execute(select(IdempotencyKey).filter(IdempotencyKey.key == idempotency_key))
         if res.scalars().first():
@@ -154,13 +154,13 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
             return
 
         db.add(IdempotencyKey(key=idempotency_key, user_id=user_id))
-        
+
         # Update User
         res = await db.execute(select(User).filter(User.id == user_id))
         user = res.scalars().first()
         if user:
             user.is_black = True
-            
+
             # Create Subscription record
             new_sub = Subscription(
                 user_id=user_id,
@@ -170,7 +170,7 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
                 current_period_end=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)
             )
             db.add(new_sub)
-            
+
             emit_activity(
                 db=db,
                 user_id=user_id,
@@ -190,21 +190,21 @@ async def handle_subscription_deleted(deposit_subscription: dict, db: AsyncSessi
     # Finding user by searching for active subscription with this ID would be ideal
     # For now, we'll search by user_id if present in metadata or just find the user's active sub
     customer_id = deposit_subscription.get("customer")
-    
+
     # Normally we'd look up user by deposit_customer_id
     # But for simplicity in this mock-to-real transition, let's find the user's most recent active sub
     # In production, you MUST store deposit_customer_id and deposit_subscription_id.
-    
+
     # For this exercise, we'll try to find the User via metadata if available
     metadata = deposit_subscription.get("metadata", {})
     user_id = metadata.get("user_id")
-    
+
     if user_id:
         res = await db.execute(select(User).filter(User.id == int(user_id)))
         user = res.scalars().first()
         if user:
             user.is_black = False
-            
+
             # Deactivate all active subs for this user
             res = await db.execute(
                 select(Subscription).filter(
@@ -215,7 +215,7 @@ async def handle_subscription_deleted(deposit_subscription: dict, db: AsyncSessi
             active_subs = res.scalars().all()
             for sub in active_subs:
                 sub.status = "cancelled"
-            
+
             emit_activity(
                 db=db,
                 user_id=user.id,

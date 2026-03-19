@@ -38,7 +38,7 @@ async def test_get_ch_logs_requires_admin(mock_fastapi_dependency):
     main = mock_fastapi_dependency
     get_ch_logs = main.get_ch_logs
     main.status.HTTP_403_FORBIDDEN = 403
-    
+
     admin_user = MagicMock()
     admin_user.role = "admin"
 
@@ -60,17 +60,17 @@ async def test_get_ch_logs_requires_admin(mock_fastapi_dependency):
 async def test_get_kafka_status_requires_admin(mock_fastapi_dependency):
     main = mock_fastapi_dependency
     get_kafka_status = main.get_kafka_status
-    
+
     admin_user = MagicMock()
     admin_user.role = "admin"
 
     mock_metadata = MagicMock()
     mock_metadata.topics = {"topic1": {}, "topic2": {}}
-    
+
     with patch('routers.admin.AdminClient') as mock_admin_cls:
         mock_admin_instance = mock_admin_cls.return_value
         mock_admin_instance.list_topics.return_value = mock_metadata
-        
+
         result = get_kafka_status(current_user=admin_user)
         assert result == {"topics": ["topic1", "topic2"]}
 
@@ -78,10 +78,10 @@ async def test_get_kafka_status_requires_admin(mock_fastapi_dependency):
 async def test_simulate_traffic_api(mock_fastapi_dependency):
     main = mock_fastapi_dependency
     simulate_traffic = main.simulate_traffic
-    
+
     admin_user = MagicMock()
     admin_user.role = "admin"
-    
+
     # Use real Pydantic model if available, else mock
     try:
         req = main.SimulationRequest(batch_size=10, tps=10, count=100)
@@ -89,10 +89,10 @@ async def test_simulate_traffic_api(mock_fastapi_dependency):
         req = MagicMock()
         req.batch_size = 10
         req.count = 1
-        
-    
+
+
     mock_bg = MagicMock()
-    
+
     if asyncio.iscoroutinefunction(simulate_traffic):
         result = await simulate_traffic(req, background_tasks=mock_bg, current_user=admin_user)
     else:

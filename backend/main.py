@@ -78,9 +78,9 @@ async def lifespan(app: FastAPI):
                 logger.warning(f"Failed to connect to Kafka after {max_retries} attempts. Continuing without Kafka...")
                 producer = None
                 break
-    
+
     yield
-    
+
     if producer:
         await producer.stop()
         logger.info("Kafka producer stopped")
@@ -99,9 +99,9 @@ async def log_requests(request: Request, call_next):
     logger.info(f"Incoming request: {request.method} {request.url.path}")
     response = await call_next(request)
     logger.info(f"Response status: {response.status_code}")
-    
+
     if request.url.path == "/v1/transactions" and response.status_code == 200:
-        # We can't easily read the body here without exhausting it, 
+        # We can't easily read the body here without exhausting it,
         # but we can log that we are returning transactions.
         pass
     return response
@@ -116,8 +116,8 @@ app.add_middleware(
 
 # Auth Configuration
 from auth_utils import (
-    SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, 
-    pwd_context, oauth2_scheme, verify_password, get_password_hash, 
+    SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES,
+    pwd_context, oauth2_scheme, verify_password, get_password_hash,
     create_access_token, get_db, get_current_user, RoleChecker
 )
 
@@ -163,7 +163,7 @@ async def verify_turnstile(token: str, ip: Optional[str] = None):
     # Skip verification in development
     if settings.ENV != "production":
         return True
-    
+
     if not token:
         return False
     async with httpx.AsyncClient() as client:

@@ -18,16 +18,16 @@ test.describe('Transaction Integrity Flows', () => {
         await page.fill('input[type="password"]', password);
         await page.click('button:has-text("Sign In")');
         await expect(page).toHaveURL(/\/client/);
-        
+
         // Initial Deposit to ensure funds
         await page.click('a[href="/client/deposit"]');
         await page.click('button:has-text("Popular")'); // More specific button select
-        
+
         // Modal interaction - more flexible locator
         const depositModalBtn = page.locator('button:has-text("Deposit")').filter({ hasText: "Main Account" });
         await depositModalBtn.waitFor({ state: 'visible', timeout: 20000 });
         await depositModalBtn.click();
-        
+
         await expect(page.locator('text=Deposit successful')).toBeVisible({ timeout: 20000 });
         console.log(`Deposited $100.00 for ${email} successfully.`);
     }
@@ -54,22 +54,22 @@ test.describe('Transaction Integrity Flows', () => {
         // 4. Perform Transfer
         await page.click('a[href="/client/send"]');
         await page.click('button:has-text("Instant")'); // Explicit tab select
-        
+
         await page.fill('input[placeholder="user@example.com"]', emailB);
-        
+
         // Wait for dropdown and select
         const contactOption = page.locator(`div:has-text("${emailB}")`).last();
         await contactOption.waitFor({ state: 'visible' });
-        await contactOption.click({ force: true }); 
-        
+        await contactOption.click({ force: true });
+
         await page.fill('input[placeholder="0.00"]', '50.00');
         await page.fill('textarea[placeholder="What is this for?"]', 'Lunch money');
-        
+
         await page.waitForTimeout(2000); // Wait for form settlement
         const sendBtn = page.locator('button:has-text("Send Instantly")');
         await expect(sendBtn).toBeEnabled();
         await sendBtn.click();
-        
+
         // Modal Confirm
         const modalTitle = page.locator('h3:has-text("Confirm Instant Transfer")');
         await expect(modalTitle).toBeVisible({ timeout: 15000 });
@@ -77,14 +77,14 @@ test.describe('Transaction Integrity Flows', () => {
 
         // Verify Success or Error using a more robust wait
         console.log("Waiting for transaction result toast...");
-        
+
         // Wait for ANY toast to appear
         const anyToast = page.locator('div[class*="z-[200]"] > div');
         await anyToast.first().waitFor({ state: 'visible', timeout: 30000 });
-        
+
         const successToast = page.locator('text=Transaction ID:');
         const errorToast = page.locator('h4:has-text("Error"), .text-red-200'); // Check for Error header or red text
-        
+
         if (await successToast.isVisible()) {
             const txText = await successToast.textContent();
             console.log(`P2P Transaction successful: ${txText}`);
@@ -117,23 +117,23 @@ test.describe('Transaction Integrity Flows', () => {
 
         // 1. Add Merchant Contact (Austin Energy)
         await page.click('a[href="/client/contacts"]');
-        
+
         // Wait for metadata to load
         await page.waitForResponse(resp => resp.url().includes('/api/v1/vendors') && resp.status() === 200);
-        
+
         await page.click('button:has-text("MERCHANT")');
-        
+
         // Fix: Force click and wait for state to settle
         const merchantSelect = page.locator('select');
         await merchantSelect.waitFor();
         await merchantSelect.selectOption({ label: 'Austin Energy (Utilities)' });
-        
+
         await page.fill('input[placeholder="e.g. 1002345"]', 'SUB-999');
         await page.fill('input[placeholder="e.g. My Electric Bill"]', 'Austin Energy');
-        
+
         // Wait a beat for React state
         await page.waitForTimeout(1000);
-        
+
         const saveMerchantBtn = page.locator('button:has-text("Save Merchant")');
         // Aggressively click even if Playwright thinks it's disabled, as a fallback
         await saveMerchantBtn.click({ force: true });
@@ -146,29 +146,29 @@ test.describe('Transaction Integrity Flows', () => {
         const merchantOption = page.locator('.group:has-text("Austin Energy")').first();
         await merchantOption.waitFor({ state: 'visible' });
         await merchantOption.click({ force: true });
-        
+
         // Wait for subscriber ID to appear and be filled (handled by our new effect or the click handler)
         const subIdInput = page.locator('input[placeholder="Enter your subscriber ID"]');
         await subIdInput.waitFor({ state: 'visible' });
         await expect(subIdInput).toHaveValue('SUB-999', { timeout: 10000 });
-        
+
         await page.fill('input[placeholder="0.00"]', '20.50');
-        
+
         const merchantSendBtn = page.locator('button:has-text("Send Instantly")');
         // Wait for dropdown to close or force it (clicking the amount input should have closed it, but let's be safe)
         if (await page.locator('.group:has-text("Austin Energy")').first().isVisible()) {
           await page.keyboard.press('Escape');
           await page.waitForTimeout(500);
         }
-        
+
         await expect(merchantSendBtn).toBeEnabled();
         await merchantSendBtn.click({ force: true });
-        
+
         // Confirm
         const merchantModalTitle = page.locator('h3:has-text("Confirm Instant Transfer")');
         await expect(merchantModalTitle).toBeVisible({ timeout: 10000 });
         await page.click('button:has-text("Send Now")');
-        
+
         // Wait for the success toast.
         await expect(page.locator('[data-testid="success-toast"]')).toBeVisible({ timeout: 20000 });
         await expect(page.locator('text=/Transaction ID:/')).toBeVisible({ timeout: 5000 });
@@ -178,26 +178,26 @@ test.describe('Transaction Integrity Flows', () => {
         await registerAndLogin(page, `bank_test_${Math.floor(Math.random() * 10000)}@test.com`);
 
         await page.click('a[href="/client/contacts"]');
-        
+
         // Wait for metadata
         await page.waitForResponse(resp => resp.url().includes('/api/v1/banks') && resp.status() === 200);
-        
+
         await page.click('button:has-text("BANK")');
-        
+
         // Fix: Force click
         const bankSelect = page.locator('select');
         await bankSelect.waitFor();
         await bankSelect.selectOption({ label: 'Chase' });
-        
+
         await page.fill('input[placeholder="Ending in..."]', '987654321');
         await page.fill('input[placeholder="e.g. Alice P. Smith"]', 'My Bank Account');
-        
+
         await page.waitForTimeout(1000);
-        
+
         const saveAccountBtn = page.locator('button:has-text("Save Account")');
         await saveAccountBtn.click({ force: true });
         await expect(page.locator('text=Contact added successfully')).toBeVisible({ timeout: 10000 });
-        
+
         // Verify it appears in the list
         await expect(page.locator('text=RTN: 021000021')).toBeVisible();
         await expect(page.locator('text=****4321')).toBeVisible();

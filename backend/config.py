@@ -15,7 +15,7 @@ print(f"DEBUG: File exists={os.path.exists(env_file_path)}")
 class Settings(BaseSettings):
     # Environment
     ENV: str
-    
+
     # Database
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str

@@ -14,12 +14,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 def mock_consumer_deps():
     mock_ch_client = MagicMock()
     mock_kafka = MagicMock()
-    
+
     modules_to_patch = {
         'confluent_kafka': mock_kafka,
         'clickhouse_connect': MagicMock()
     }
-    
+
     with patch.dict(sys.modules, modules_to_patch):
         import consumer
         # Force the mocks into the consumer module
@@ -46,13 +46,13 @@ async def test_flush_to_clickhouse_async_success(mock_consumer_deps):
 
     mock_loop = MagicMock()
     mock_loop.run_in_executor = AsyncMock(side_effect=lambda exec, f, *a: f(*a))
-    
+
     with patch('consumer.asyncio.get_event_loop', return_value=mock_loop):
         result = await consumer.flush_to_clickhouse_async(batch)
 
     assert result is True
     assert mock_ch_client.insert.call_count == 1
-    
+
     # Verify correct table and columns
     args, kwargs = mock_ch_client.insert.call_args
     assert args[0].endswith(".transactions")
@@ -66,7 +66,7 @@ async def test_flush_to_clickhouse_async_failure_fallback(mock_consumer_deps):
 
     # Make async call fail (first call is in executor)
     mock_ch_client.insert.side_effect = [Exception("Async fail"), None]
-    
+
     mock_loop = MagicMock()
     mock_loop.run_in_executor = AsyncMock(side_effect=lambda exec, f, *a: f(*a))
 

@@ -16,7 +16,7 @@ async def create_payment_intent(request: Request):
     amount = form_data.get("amount")
     currency = form_data.get("currency", "usd")
     metadata = {}
-    
+
     # Parse metadata from form data if present (deposit client sends metadata[key])
     for key, value in form_data.items():
         if key.startswith("metadata[") and key.endswith("]"):
@@ -24,7 +24,7 @@ async def create_payment_intent(request: Request):
             metadata[meta_key] = value
     intent_id = f"pi_{uuid.uuid4().hex}"
     client_secret = f"{intent_id}_secret_{uuid.uuid4().hex}"
-    
+
     intent = {
         "id": intent_id,
         "object": "payment_intent",
@@ -34,7 +34,7 @@ async def create_payment_intent(request: Request):
         "client_secret": client_secret,
         "metadata": metadata
     }
-    
+
     payment_intents[intent_id] = intent
     return JSONResponse(intent)
 
@@ -55,7 +55,7 @@ async def create_checkout_session(request: Request):
     form_data = await request.form()
     success_url = form_data.get("success_url", "http://localhost:3000/dashboard/deposit/success")
     session_id = f"cs_test_{uuid.uuid4().hex}"
-    
+
     return JSONResponse({
         "id": session_id,
         "object": "checkout.session",

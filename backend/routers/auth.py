@@ -63,11 +63,11 @@ async def register(request: Request, user: UserCreate, db: AsyncSession = Depend
     await db.commit()
 
     emit_activity(
-        db, 
-        new_user.id, 
-        "security", 
-        "register", 
-        "Account registered", 
+        db,
+        new_user.id,
+        "security",
+        "register",
+        "Account registered",
         {"email": new_user.email},
         ip=None, # No request object here yet, but we could pass it if register had it
         user_agent=None
@@ -86,7 +86,7 @@ async def login(
     # For OAuth2PasswordRequestForm, we check for a custom field or form parameter
     form = await request.form()
     captcha_token = form.get("captcha_token") or form.get("cf-turnstile-response")
-    
+
     if not await verify_turnstile(captcha_token, request.client.host):
         raise HTTPException(status_code=400, detail="Invalid captcha")
 
@@ -95,11 +95,11 @@ async def login(
     if not user or not verify_password(form_data.password, user.password_hash):
         if user:
             emit_activity(
-                db, 
-                user.id, 
-                "security", 
-                "login_failed", 
-                "Failed login attempt", 
+                db,
+                user.id,
+                "security",
+                "login_failed",
+                "Failed login attempt",
                 {"email": form_data.username},
                 ip=request.client.host,
                 user_agent=request.headers.get("user-agent")
@@ -110,11 +110,11 @@ async def login(
     access_token = create_access_token(data={"sub": user.email, "role": user.role})
 
     emit_activity(
-        db, 
-        user.id, 
-        "security", 
-        "login", 
-        "User logged in", 
+        db,
+        user.id,
+        "security",
+        "login",
+        "User logged in",
         {"email": user.email},
         ip=request.client.host,
         user_agent=request.headers.get("user-agent")
@@ -137,22 +137,22 @@ async def update_backup_email(
 ):
     # Check if this email is already used by someone else
     result = await db.execute(select(User).filter(
-        (User.email == update_data.backup_email) | 
+        (User.email == update_data.backup_email) |
         (User.backup_email == update_data.backup_email)
     ))
     existing = result.scalars().first()
-    
+
     if existing and existing.id != current_user.id:
         raise HTTPException(status_code=400, detail="This email is already in use by another user")
-        
+
     current_user.backup_email = update_data.backup_email
 
     emit_activity(
-        db, 
-        current_user.id, 
-        "security", 
-        "email_change", 
-        "Backup email updated", 
+        db,
+        current_user.id,
+        "security",
+        "email_change",
+        "Backup email updated",
         {
             "new_backup_email": update_data.backup_email[:3] + "***"
         },
@@ -161,7 +161,7 @@ async def update_backup_email(
     )
     await db.commit()
     await db.refresh(current_user)
-    
+
     return current_user
 
 @router.post("/users/me/password")
@@ -174,25 +174,25 @@ async def update_password(
     # Verify current password
     if not verify_password(password_data.current_password, current_user.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect current password")
-        
+
     if len(password_data.new_password) < 8:
          raise HTTPException(status_code=400, detail="New password must be at least 8 characters long")
-         
+
     # Hash new password and save
     new_hashed_password = get_password_hash(password_data.new_password)
     current_user.password_hash = new_hashed_password
 
     emit_activity(
-        db, 
-        current_user.id, 
-        "security", 
-        "password_change", 
+        db,
+        current_user.id,
+        "security",
+        "password_change",
         "Password changed",
         ip=request.client.host,
         user_agent=request.headers.get("user-agent")
     )
     await db.commit()
-    
+
     return {"status": "success"}
 
 @router.patch("/users/me/preferences", response_model=UserResponse)
@@ -205,7 +205,7 @@ async def update_preferences(
         current_user.time_format = pref_data.time_format
     if pref_data.date_format:
         current_user.date_format = pref_data.date_format
-    
+
     await db.commit()
     await db.refresh(current_user)
     return current_user
@@ -222,11 +222,11 @@ async def logout(
     client_ip = request.client.host
 
     emit_activity(
-        db, 
-        current_user.id, 
-        "security", 
-        "logout", 
-        "User logged out", 
+        db,
+        current_user.id,
+        "security",
+        "logout",
+        "User logged out",
         {
             "ip": client_ip,
             "user_agent": user_agent,
@@ -248,7 +248,7 @@ async def get_notifications(
 ):
     """Get the latest 10 notifications (transactions & payment requests)."""
     notifications = []
-    
+
     # 1. Transactions
     result = await db.execute(select(Account).filter(Account.user_id == current_user.id))
     account_ids = [acc.id for acc in result.scalars().all()]
@@ -260,7 +260,7 @@ async def get_notifications(
             ).order_by(Transaction.created_at.desc()).limit(10)
         )
         transactions = result.scalars().all()
-        
+
         for tx in transactions:
             if tx.status == "failed":
                 title = "Payment Failed"
@@ -268,7 +268,7 @@ async def get_notifications(
             else:
                 is_income = tx.amount > 0 and tx.transaction_side == "CREDIT"
                 title = "Payment Received" if is_income else "Payment Sent"
-                
+
                 if tx.transaction_type == "transfer":
                     if is_income:
                         msg = f"from {tx.merchant.replace('Received from ', '')}" if tx.merchant else "Transfer received"
@@ -276,7 +276,7 @@ async def get_notifications(
                         msg = f"to {tx.merchant.replace('Transfer to ', '')}" if tx.merchant else "Transfer sent"
                 else:
                     msg = f"Merchant: {tx.merchant}" if tx.merchant else "Transaction processed"
-                
+
             notifications.append({
                 "id": f"tx_{tx.id}",
                 "type": "transaction",
@@ -286,7 +286,7 @@ async def get_notifications(
                 "created_at": tx.created_at,
                 "link": "/client/transactions"
             })
-            
+
     # 2. Payment Requests
     result = await db.execute(
         select(PaymentRequest).filter(
@@ -297,7 +297,7 @@ async def get_notifications(
         ).order_by(PaymentRequest.created_at.desc()).limit(10)
     )
     requests = result.scalars().all()
-    
+
     for req in requests:
         is_requester = req.requester_id == current_user.id
         if is_requester:
@@ -306,7 +306,7 @@ async def get_notifications(
         else:
             title = "Request Received"
             msg = f"Someone requested {from_cents(req.amount)} from you"
-            
+
         notifications.append({
             "id": f"pr_{req.id}",
             "type": "payment_request",
@@ -316,10 +316,8 @@ async def get_notifications(
             "created_at": req.created_at,
             "link": "/client/send?tab=request"
         })
-        
+
     # Sort by created_at desc
     notifications.sort(key=lambda x: x["created_at"], reverse=True)
-    
+
     return notifications[:10]
-
-

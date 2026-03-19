@@ -11,14 +11,14 @@ interface ComponentErrorBoundaryProps {
 }
 
 // Specialized error boundary for forms
-export function FormErrorBoundary({ 
-  children, 
-  componentName = 'Form' 
+export function FormErrorBoundary({
+  children,
+  componentName = 'Form'
 }: ComponentErrorBoundaryProps) {
   const handleFormError = (error: Error, errorInfo: React.ErrorInfo) => {
     // Log form-specific errors
     console.error(`Form Error in ${componentName}:`, error);
-    
+
     // You could also track form abandonment, validation errors, etc.
   };
 
@@ -59,9 +59,9 @@ export function FormErrorBoundary({
 }
 
 // Specialized error boundary for data fetching components
-export function DataErrorBoundary({ 
-  children, 
-  componentName = 'DataComponent' 
+export function DataErrorBoundary({
+  children,
+  componentName = 'DataComponent'
 }: ComponentErrorBoundaryProps) {
   const handleDataError = (error: Error, errorInfo: React.ErrorInfo) => {
     // Log data-specific errors
@@ -95,8 +95,8 @@ export function DataErrorBoundary({
 }
 
 // Specialized error boundary for navigation
-export function NavigationErrorBoundary({ 
-  children 
+export function NavigationErrorBoundary({
+  children
 }: ComponentErrorBoundaryProps) {
   return (
     <ErrorBoundary
@@ -127,8 +127,8 @@ export function NavigationErrorBoundary({
 }
 
 // Specialized error boundary for charts/visualizations
-export function ChartErrorBoundary({ 
-  children 
+export function ChartErrorBoundary({
+  children
 }: ComponentErrorBoundaryProps) {
   return (
     <ErrorBoundary

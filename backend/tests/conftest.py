@@ -70,10 +70,10 @@ def mock_db_dependency():
 
     # Make mocks support comparisons for SQLAlchemy filter building
     def mock_comp(*args, **kwargs): return MagicMock()
-    
-    # We can't easily add methods to single instances of MagicMock 
+
+    # We can't easily add methods to single instances of MagicMock
     # if they are already created, but we can configure the return values of special methods.
-    
+
     # Actually, the best way is to do this for the specific models
     for model in [mock_database.Transaction, mock_database.Account, mock_database.User, mock_database.IdempotencyKey]:
         for attr in ['created_at', 'id', 'user_id', 'account_id', 'transaction_side', 'email', 'balance']:
@@ -116,14 +116,14 @@ def mock_fastapi_dependency():
     mock_app_instance.add_middleware = MagicMock()
 
     mock_fastapi.FastAPI.return_value = mock_app_instance
-    
+
     mock_router_instance = MagicMock()
     mock_router_instance.get.side_effect = passthrough_decorator
     mock_router_instance.post.side_effect = passthrough_decorator
     mock_router_instance.put.side_effect = passthrough_decorator
     mock_router_instance.delete.side_effect = passthrough_decorator
     mock_router_instance.patch.side_effect = passthrough_decorator
-    
+
     mock_fastapi.APIRouter.return_value = mock_router_instance
 
     mock_fastapi.Depends = MagicMock()
@@ -205,10 +205,10 @@ def mock_fastapi_dependency():
 
     # Make mocks support comparisons for SQLAlchemy filter building
     def mock_comp(*args, **kwargs): return MagicMock()
-    
-    # We can't easily add methods to single instances of MagicMock 
+
+    # We can't easily add methods to single instances of MagicMock
     # if they are already created, but we can configure the return values of special methods.
-    
+
     # Actually, the best way is to do this for the specific models
     for model in [mock_database.Transaction, mock_database.Account, mock_database.User, mock_database.IdempotencyKey]:
         for attr in ['created_at', 'id', 'user_id', 'account_id', 'transaction_side', 'email', 'balance']:
@@ -233,4 +233,3 @@ def mock_fastapi_dependency():
     for m in list(sys.modules.keys()):
         if m.startswith("backend.routers") or m.startswith("routers.") or m.startswith("backend.services") or m.startswith("services."):
             del sys.modules[m]
-
