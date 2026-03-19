@@ -150,24 +150,7 @@ app.include_router(deposit.router, prefix="/v1")
 admin_only = RoleChecker(["admin"])
 support_only = RoleChecker(["admin", "support"])
 
-async def verify_turnstile(token: str, ip: Optional[str] = None):
-    # Skip verification in development
-    if settings.ENV != "production":
-        return True
-
-    if not token:
-        return False
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-            data={
-                "secret": settings.TURNSTILE_SECRET_KEY,
-                "response": token,
-                "remoteip": ip
-            }
-        )
-        data = response.json()
-        return data.get("success", False)
+from turnstile import verify_turnstile
 
 
 # --- Auth Endpoints ---

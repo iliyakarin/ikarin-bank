@@ -22,17 +22,7 @@ router = APIRouter(tags=["Auth"])
 
 from config import settings
 
-async def verify_turnstile(token: str, ip: str = None):
-    if settings.ENV != "production": return True
-    if not token: return False
-    async with httpx.AsyncClient() as client:
-        # Siteverify with Turnstile
-        response = await client.post(
-            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-            data={"secret": settings.TURNSTILE_SECRET_KEY, "response": token, "remoteip": ip}
-        )
-        data = response.json()
-        return data.get("success", False)
+from turnstile import verify_turnstile
 
 @router.post("/register", response_model=UserResponse)
 async def register(request: Request, user: UserCreate, db: AsyncSession = Depends(get_db)):

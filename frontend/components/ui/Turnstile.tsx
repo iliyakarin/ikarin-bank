@@ -15,10 +15,16 @@ declare global {
 
 const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '[REDACTED]';
+    // Access NEXT_PUBLIC_TURNSTILE_SITE_KEY from window if injected at runtime, 
+    // otherwise fallback to the build-time env var.
+    const runtimeSiteKey = typeof window !== 'undefined' ? (window as any).NEXT_PUBLIC_TURNSTILE_SITE_KEY : null;
+    const siteKey = runtimeSiteKey || process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '[REDACTED]';
 
     useEffect(() => {
         const isSiteKeyValid = siteKey && siteKey.length > 5 && !siteKey.includes('REDACTED');
+        
+        // In production, we MUST have a valid site key.
+        // If it's missing or still redacted/dummy, we might be in development or have a config error.
         const isProduction =
             (process.env.NODE_ENV === 'production' || process.env.NEXT_PUBLIC_ENV === 'production') &&
             isSiteKeyValid &&

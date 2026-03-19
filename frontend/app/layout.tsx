@@ -25,6 +25,13 @@ export default function RootLayout({
                     src="https://challenges.cloudflare.com/turnstile/v0/api.js"
                     strategy="afterInteractive"
                 />
+                <Script
+                    id="turnstile-site-key-injection"
+                    strategy="beforeInteractive"
+                    dangerouslySetInnerHTML={{
+                        __html: `window.NEXT_PUBLIC_TURNSTILE_SITE_KEY = "${process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || ''}";`
+                    }}
+                />
                 <ErrorBoundary>
                     <AuthProvider>
                         {children}
