@@ -1,46 +1,53 @@
+"""Service for handling fund deposits and subscriptions.
+
+This module processes webhooks from payment gateways, manages balance
+top-ups, and handles subscription lifecycle events.
+"""
 import datetime
 import uuid
 import logging
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 
-from database import Account, Transaction, Outbox, User, IdempotencyKey, Subscription
+from database import SessionLocal
+from models.user import User, Subscription
+from models.account import Account, PaymentMethod
 from activity import emit_activity
 from money_utils import from_cents
+
+from idempotency import check_idempotency
+from services.event_emitter import emit_transactional_event
 
 logger = logging.getLogger(__name__)
 
 async def _atomic_topup_balance(
-    db: AsyncSession,
-    user_id: int,
-    amount_cents: int,
-    idempotency_key: str,
-    gateway_session_id: str
+    db: AsyncSession, user_id: int, amount_cents: int, idempotency_key: str, gateway_session_id: str
 ):
-    # 1. Get User & Primary Account
-    result = await db.execute(select(User).filter(User.id == user_id))
-    user = result.scalars().first()
+    """Atomically credits user balance and records a transaction.
+
+    This function performs an idempotency check, locks the user's main account,
+    updates the balance, and emits a transactional event for record-keeping.
+
+    Args:
+        db (AsyncSession): The database session.
+        user_id (int): The ID of the user to credit.
+        amount_cents (int): The amount to credit in cents.
+        idempotency_key (str): Unique key to prevent duplicate processing.
+        gateway_session_id (str): The ID of the session from the payment gateway.
+    """
+    # 1. User & Account Lookup with Lock
+    user = (await db.execute(select(User).where(User.id == user_id))).scalars().first()
     if not user:
         logger.error(f"User not found for topup ID: {user_id}")
         return
 
     # 2. Idempotency Check
-    result = await db.execute(
-        select(IdempotencyKey).filter(IdempotencyKey.key == idempotency_key).with_for_update()
-    )
-    existing_key = result.scalars().first()
-    if existing_key:
-        logger.info(f"TopUp inherently skipped -> idempotency key found: {idempotency_key}")
+    if await check_idempotency(db, idempotency_key, user.id):
         return
 
-    db.add(IdempotencyKey(key=idempotency_key, user_id=user.id))
-
-    result = await db.execute(
-        select(Account).filter(Account.user_id == user.id, Account.is_main == True).with_for_update()
-    )
-    account = result.scalars().first()
+    account = (await db.execute(select(Account).where(Account.user_id == user.id, Account.is_main == True).with_for_update())).scalars().first()
     if not account:
         logger.error(f"Main account not found for user ID: {user_id}")
         return
@@ -48,181 +55,97 @@ async def _atomic_topup_balance(
     # 3. Update Balance
     account.balance += amount_cents
 
-    # 4. Create Transaction
-    tx_id = str(uuid.uuid4())
-    tx = Transaction(
-        id=tx_id,
-        parent_id=tx_id,
-        account_id=account.id,
-        amount=amount_cents,
-        category="Top-up",
-        merchant="Simulated Gateway",
-        status="cleared",
-        transaction_type="deposit",
-        transaction_side="CREDIT",
-        idempotency_key=idempotency_key,
-        ip_address="gateway_webhook",
-        user_agent="gateway",
-        sender_email="gateway@karinbank.com",
-        recipient_email=user.email,
+    # 4. Use unified event emitter for Top-up
+    await emit_transactional_event(
+        db=db, user_id=user.id, account_id=account.id, amount=amount_cents,
+        category="Top-up", merchant="Simulated Gateway", transaction_type="deposit",
+        transaction_side="CREDIT", sender_email="gateway@karinbank.com",
+        recipient_email=user.email, internal_account_last_4=account.account_number_last_4,
+        event_type="deposit.success", idempotency_key=idempotency_key,
         commentary=f"Gateway Session: {gateway_session_id}",
-        internal_account_last_4=account.account_number_last_4
-    )
-    db.add(tx)
-
-    # 5. Create Outbox Event
-    outbox_payload = {
-        "transaction_id": tx_id,
-        "parent_id": tx_id,
-        "account_id": account.id,
-        "internal_account_last_4": account.account_number_last_4,
-        "sender_email": "gateway@karinbank.com",
-        "recipient_email": user.email,
-        "amount": amount_cents,
-        "category": "Top-up",
-        "merchant": "Simulated Gateway",
-        "transaction_type": "deposit",
-        "transaction_side": "CREDIT",
-        "status": "cleared",
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "commentary": f"Gateway Session: {gateway_session_id}"
-    }
-    db.add(Outbox(event_type="deposit.success", payload=outbox_payload))
-
-    # 6. Emit Activity
-    emit_activity(
-        db=db,
-        user_id=user.id,
-        category="p2p",
-        action="deposit_success",
-        title=f"Deposited ${from_cents(amount_cents)} via Gateway",
-        details={"transaction_id": tx_id, "amount": amount_cents}
+        ip_address="gateway_webhook", user_agent="gateway"
     )
 
     await db.commit()
 
-
 async def handle_checkout_completed(session: dict, db: AsyncSession):
-    """
-    Handles a successful checkout session completion or PaymentIntent success.
-    Supports both one-time payments and subscriptions.
-    """
-    session_id = session.get("id")
-    metadata = session.get("metadata", {})
-    user_id = metadata.get("user_id")
-    mode = metadata.get("mode", "payment")
+    """Processes a completed checkout session from the payment gateway.
 
-    if not user_id:
-        logger.error(f"No user ID in metadata for session/intent {session_id}")
+    Handles both direct one-time deposits (payments) and subscription starts.
+    Uses metadata in the session to identify the user and operation mode.
+
+    Args:
+        session (dict): The checkout session data from the gateway.
+        db (AsyncSession): The database session.
+    """
+    s_id = session.get("id")
+    meta = session.get("metadata", {})
+    u_id_str = meta.get("user_id")
+    mode = meta.get("mode", "payment")
+
+    if not u_id_str:
+        logger.error(f"Missing user_id in metadata for session {s_id}")
         return
 
     try:
-        user_id = int(user_id)
+        u_id = int(u_id_str)
     except ValueError:
-        logger.error(f"Invalid user ID in metadata: {user_id}")
+        logger.error(f"Invalid user_id {u_id_str}")
         return
 
-    # For PaymentIntent, amount is 'amount', for Checkout Session it's 'amount_total'
-    amount_total = session.get("amount_total") or session.get("amount")
-
+    total = session.get("amount_total") or session.get("amount")
     if mode == "payment":
-        amount_cents = int(amount_total)
-        idempotency_key = f"deposit_mock_{session_id}"
-
         try:
-            await _atomic_topup_balance(
-                db=db,
-                user_id=user_id,
-                amount_cents=amount_cents,
-                idempotency_key=idempotency_key,
-                gateway_session_id=session_id
-            )
-            logger.info(f"Deposit successful for user {user_id}: {amount_cents}")
+            await _atomic_topup_balance(db, u_id, int(total), f"deposit_mock_{s_id}", s_id)
+            logger.info(f"Deposit success for user {u_id}")
         except Exception as e:
             await db.rollback()
-            logger.error(f"Deposit failed for user {user_id}: {e}")
-
+            logger.error(f"Deposit fail for user {u_id}: {e}")
     elif mode == "subscription":
-        # Handle subscription creation
-        deposit_sub_id = session.get("subscription")
-        idempotency_key = f"deposit_sub_{deposit_sub_id}"
-
-        # Check idempotency
-        res = await db.execute(select(IdempotencyKey).filter(IdempotencyKey.key == idempotency_key))
-        if res.scalars().first():
-            logger.info(f"Subscription fulfillment skipped (idempotent): {idempotency_key}")
+        ik = f"deposit_sub_{session.get('subscription')}"
+        if await check_idempotency(db, ik, u_id):
             return
-
-        db.add(IdempotencyKey(key=idempotency_key, user_id=user_id))
-
-        # Update User
-        res = await db.execute(select(User).filter(User.id == user_id))
-        user = res.scalars().first()
+        user = (await db.execute(select(User).where(User.id == u_id))).scalars().first()
         if user:
             user.is_black = True
-
-            # Create Subscription record
-            new_sub = Subscription(
-                user_id=user_id,
-                plan_name="Karin Black",
-                amount=4900,
-                status="active",
+            # Deduct subscription fee from main account
+            account = (await db.execute(select(Account).where(Account.user_id == user.id, Account.is_main == True).with_for_update())).scalars().first()
+            if account:
+                account.balance -= 4900
+            
+            db.add(Subscription(
+                user_id=u_id, plan_name="Karin Black", amount=4900, status="active",
                 current_period_end=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)
-            )
-            db.add(new_sub)
-
+            ))
             emit_activity(
-                db=db,
-                user_id=user_id,
-                category="settings",
-                action="subscription_started",
-                title="Upgraded to Karin Black",
-                details={"deposit_subscription_id": deposit_sub_id}
+                db, u_id, "settings", "subscription_started", "Upgraded to Karin Black",
+                {"deposit_subscription_id": session.get("subscription")}
             )
             await db.commit()
-            logger.info(f"Subscription activated for user {user_id}")
 
 async def handle_subscription_deleted(deposit_subscription: dict, db: AsyncSession):
+    """Handles deletion/cancellation of a subscription.
+
+    Resets the user's premium status and marks all active subscriptions as cancelled
+    in the database.
+
+    Args:
+        deposit_subscription (dict): The subscription data from the gateway.
+        db (AsyncSession): The database session.
     """
-    Handles subscription cancellation from Deposit Mock.
-    """
-    deposit_sub_id = deposit_subscription.get("id")
-    # Finding user by searching for active subscription with this ID would be ideal
-    # For now, we'll search by user_id if present in metadata or just find the user's active sub
-    customer_id = deposit_subscription.get("customer")
+    sub_id = deposit_subscription.get("id")
+    meta = deposit_subscription.get("metadata", {})
+    u_id_str = meta.get("user_id")
 
-    # Normally we'd look up user by deposit_customer_id
-    # But for simplicity in this mock-to-real transition, let's find the user's most recent active sub
-    # In production, you MUST store deposit_customer_id and deposit_subscription_id.
-
-    # For this exercise, we'll try to find the User via metadata if available
-    metadata = deposit_subscription.get("metadata", {})
-    user_id = metadata.get("user_id")
-
-    if user_id:
-        res = await db.execute(select(User).filter(User.id == int(user_id)))
-        user = res.scalars().first()
+    if u_id_str:
+        user = (await db.execute(select(User).where(User.id == int(u_id_str)))).scalars().first()
         if user:
             user.is_black = False
-
-            # Deactivate all active subs for this user
-            res = await db.execute(
-                select(Subscription).filter(
-                    Subscription.user_id == user.id,
-                    Subscription.status == "active"
-                )
-            )
-            active_subs = res.scalars().all()
-            for sub in active_subs:
-                sub.status = "cancelled"
-
+            subs = (await db.execute(select(Subscription).where(Subscription.user_id == user.id, Subscription.status == "active"))).scalars().all()
+            for s in subs:
+                s.status = "cancelled"
             emit_activity(
-                db=db,
-                user_id=user.id,
-                category="settings",
-                action="subscription_cancelled",
-                title="Karin Black Subscription Ended",
-                details={"deposit_subscription_id": deposit_sub_id}
+                db, user.id, "settings", "subscription_cancelled", "Karin Black Subscription Ended",
+                {"deposit_subscription_id": sub_id}
             )
             await db.commit()
-            logger.info(f"Subscription deactivated for user {user.id}")

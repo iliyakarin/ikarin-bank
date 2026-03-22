@@ -1,10 +1,15 @@
-import os
+"""Database connection and session management.
+
+This module initializes the SQLAlchemy async engine and provides the
+SessionLocal factory for creating database sessions.
+"""
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import Column, Integer, String, BigInteger, DateTime, ForeignKey, Boolean
-from sqlalchemy.orm import declarative_base
-import datetime
-from datetime import timezone, timedelta
 from config import settings
+from models.base import Base
+from models.user import User, Subscription
+from models.account import Account, PaymentMethod
+from models.transaction import Transaction, PaymentRequest, IdempotencyKey
+from models.management import Contact, ScheduledPayment, Outbox
 
 # Database Configuration
 DATABASE_URL = settings.DATABASE_URL
@@ -16,6 +21,7 @@ engine = create_async_engine(
     pool_size=20,
     max_overflow=10
 )
+
 SessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
@@ -23,157 +29,11 @@ SessionLocal = async_sessionmaker(
     autoflush=False,
     expire_on_commit=False
 )
-Base = declarative_base()
 
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    first_name = Column(String(50), nullable=False)
-    last_name = Column(String(50), nullable=False)
-    email = Column(String(100), unique=True, index=True, nullable=False)
-    backup_email = Column(String(100), unique=True, index=True, nullable=True)
-    password_hash = Column(String(255), nullable=False)
-    # Use server_default to ensure existing rows get a value during migration
-    role = Column(String(20), default="user", server_default="user", nullable=False)
-    time_format = Column(String(10), default="12h", server_default="12h", nullable=False)
-    date_format = Column(String(10), default="US", server_default="US", nullable=False)
-    is_black = Column(Boolean, default=False, server_default="false", nullable=False)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
-
-class Account(Base):
-    __tablename__ = "accounts"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    is_main = Column(Boolean, default=True, server_default="true", nullable=False)
-    parent_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
-    name = Column(String(100), default="Main Account", server_default="Main Account", nullable=False)
-    balance = Column(BigInteger, default=0)
-    reserved_balance = Column(BigInteger, default=0)
-
-    # Account Credentials
-    routing_number = Column(String(9), nullable=True)
-    account_number_encrypted = Column(String(255), nullable=True)
-    account_number_last_4 = Column(String(4), nullable=True)
-    internal_reference_id = Column(String(100), unique=True, index=True, nullable=True)
-    # New UUID based account identifier
-    account_uuid = Column(String(36), unique=True, index=True, nullable=True)
-
-class PaymentMethod(Base):
-    __tablename__ = "payment_methods"
-    id = Column(Integer, primary_key=True, index=True)
-    gateway_pm_id = Column(String(100), unique=True, index=True, nullable=True)
-    account_id = Column(Integer, ForeignKey("accounts.id"), index=True, nullable=False)
-
-    # Encrypted sensitive data
-    card_number_encrypted = Column(String(255), nullable=False)
-    expiry_date_encrypted = Column(String(255), nullable=False)
-    cvc_encrypted = Column(String(255), nullable=False)
-    cardholder_name_encrypted = Column(String(255), nullable=False)
-
-    # Safe display data
-    card_last_4 = Column(String(4), nullable=False)
-    card_brand = Column(String(20), default="unknown")
-
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
-
-class ScheduledPayment(Base):
-    __tablename__ = "scheduled_payments"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
-    funding_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True) # Allows targeting sub-accounts
-    recipient_email = Column(String(100), nullable=False)
-    amount = Column(BigInteger, nullable=False)
-    frequency = Column(String(50), nullable=False)
-    frequency_interval = Column(String(50), nullable=True)
-    start_date = Column(DateTime(timezone=True), nullable=False)
-    end_condition = Column(String(50), nullable=False)
-    end_date = Column(DateTime(timezone=True), nullable=True)
-    target_payments = Column(Integer, nullable=True)
-    payments_made = Column(Integer, default=0, nullable=False)
-    next_run_at = Column(DateTime(timezone=True), index=True, nullable=True)
-    status = Column(String(20), default="Active", nullable=False)
-    retry_count = Column(Integer, default=0, nullable=False)
-    idempotency_key = Column(String(100), unique=True, index=True, nullable=False)
-    reserve_amount = Column(Boolean, default=False, nullable=False)
-    subscriber_id = Column(String(100), nullable=True) # For Vendor Payments
-
-class PaymentRequest(Base):
-    __tablename__ = "payment_requests"
-    id = Column(Integer, primary_key=True, index=True)
-    requester_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
-    target_email = Column(String(100), index=True, nullable=False)
-    amount = Column(BigInteger, nullable=False)
-    purpose = Column(String, nullable=True)
-    status = Column(String(50), default="pending_target", nullable=False) # pending_target, pending_requester, paid, declined, cancelled
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
-
-class Contact(Base):
-    __tablename__ = "contacts"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
-    contact_name = Column(String(100), nullable=False)
-    contact_email = Column(String(100), nullable=True)  # Required for karin, optional for others
-    contact_type = Column(String(20), default="karin", server_default="karin", nullable=False)  # karin, merchant, bank
-    # Merchant-specific fields
-    merchant_id = Column(String(50), nullable=True)
-    subscriber_id = Column(String(100), nullable=True)
-    # External bank-specific fields
-    bank_name = Column(String(255), nullable=True)
-    routing_number = Column(String(9), nullable=True)
-    account_number = Column(String(50), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
-
-from sqlalchemy.dialects.postgresql import JSONB, UUID
-
-class Transaction(Base):
-    __tablename__ = "transactions"
-    id = Column(UUID(as_uuid=False), primary_key=True) # UUID generated by API
-    parent_id = Column(UUID(as_uuid=False), index=True, nullable=True) # Links Debit/Credit pairs
-    account_id = Column(Integer, ForeignKey("accounts.id"), index=True)
-    amount = Column(BigInteger)
-    category = Column(String)
-    merchant = Column(String)
-    status = Column(String, default="pending") # pending, sent_to_kafka, cleared
-    transaction_type = Column(String, default="expense") # expense, income, transfer
-    transaction_side = Column(String(10)) # DEBIT or CREDIT
-    idempotency_key = Column(String(100), index=True)
-    ip_address = Column(String(45))
-    user_agent = Column(String(255))
-    failure_reason = Column(String(255))
-    commentary = Column(String, nullable=True)
-    recipient_email = Column(String(100), nullable=True)
-    sender_email = Column(String(100), nullable=True)
-    internal_account_last_4 = Column(String(4), nullable=True)
-    subscriber_id = Column(String(100), nullable=True) # For Vendor Payments
-    payment_request_id = Column(Integer, ForeignKey("payment_requests.id"), index=True, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
-
-class Subscription(Base):
-    __tablename__ = "subscriptions"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
-    plan_name = Column(String(100), default="Karin Black", nullable=False)
-    amount = Column(BigInteger, nullable=False)
-    status = Column(String(20), default="active", nullable=False) # active, cancelled, expired
-    current_period_end = Column(DateTime(timezone=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
-
-class IdempotencyKey(Base):
-    __tablename__ = "idempotency_keys"
-    id = Column(Integer, primary_key=True)
-    key = Column(String(100), unique=True, index=True, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    response_code = Column(Integer)
-    response_body = Column(JSONB)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
-
-class Outbox(Base):
-    __tablename__ = "outbox"
-    id = Column(Integer, primary_key=True)
-    event_type = Column(String(50), nullable=False)
-    payload = Column(JSONB, nullable=False)
-
-    status = Column(String(20), default="pending")
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
-    processed_at = Column(DateTime(timezone=True), nullable=True)
+# Re-exporting for backward compatibility during transition
+__all__ = [
+    "Base", "User", "Subscription", "Account", "PaymentMethod",
+    "Transaction", "PaymentRequest", "IdempotencyKey", 
+    "Contact", "ScheduledPayment", "Outbox",
+    "engine", "SessionLocal"
+]

@@ -1,8 +1,8 @@
 "use client";
-
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Transaction } from '@/lib/types';
 import { useAuth } from '@/lib/AuthContext';
+import { getRecentTransactions, getAccountSummary, Transaction, Account } from '@/lib/api/accounts';
+export type { Transaction, Account };
 
 interface UseTransactionsResult {
     transactions: Transaction[];
@@ -13,65 +13,22 @@ interface UseTransactionsResult {
 }
 
 export function useTransactions(hours: number = 24, autoRefresh: boolean = true): UseTransactionsResult {
-    const { token } = useAuth();
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [loading, setLoading] = useState(true);
     const [refetching, setRefetching] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const mountedRef = useRef(true);
-    const abortControllerRef = useRef<AbortController | null>(null);
 
     const fetchTransactions = useCallback(async (isRefresh: boolean = false) => {
         if (!mountedRef.current) return;
-
-        if (isRefresh) {
-            setRefetching(true);
-        } else {
-            setLoading(true);
-        }
-
+        if (isRefresh) setRefetching(true); else setLoading(true);
         setError(null);
 
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-        }
-
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-
         try {
-            const authToken = token || localStorage.getItem('bank_token');
-            if (!authToken) {
-                throw new Error('No authentication token found');
-            }
-
-            const response = await fetch(
-                `/api/v1/recent-transactions?hours=${hours}`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                    },
-                    signal: controller.signal,
-                }
-            );
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || `HTTP ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            if (mountedRef.current) {
-                setTransactions(data.transactions || []);
-            }
+            const data = await getRecentTransactions(hours);
+            if (mountedRef.current) setTransactions(data);
         } catch (err: any) {
-            if (err.name === 'AbortError') {
-                return;
-            }
-
             if (mountedRef.current) {
-                console.error('Failed to fetch transactions:', err);
                 setError(err.message || 'Failed to load transactions');
             }
         } finally {
@@ -80,47 +37,28 @@ export function useTransactions(hours: number = 24, autoRefresh: boolean = true)
                 setRefetching(false);
             }
         }
-    }, [hours, token]);
+    }, [hours]);
 
     useEffect(() => {
         fetchTransactions(false);
-
         if (autoRefresh) {
-            const interval = setInterval(() => {
-                fetchTransactions(true);
-            }, 30000); // Refresh every 30 seconds
-
+            const interval = setInterval(() => fetchTransactions(true), 30000);
             return () => clearInterval(interval);
         }
     }, [fetchTransactions, autoRefresh]);
 
     useEffect(() => {
         mountedRef.current = true;
-        return () => {
-            mountedRef.current = false;
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort();
-            }
-        };
+        return () => { mountedRef.current = false; };
     }, []);
 
     return { transactions, loading, error, refresh: () => fetchTransactions(true), refetching };
 }
 
-export interface AccountData {
-    id: number;
-    name: string;
-    balance: number;
-    reserved_balance: number;
-    is_main: boolean;
-    routing_number?: string;
-    masked_account_number?: string;
-}
-
 interface UseBalanceResult {
     balance: number | null;
     reservedBalance: number | null;
-    accounts: AccountData[];
+    accounts: Account[];
     loading: boolean;
     error: string | null;
     refresh: () => Promise<void>;
@@ -129,65 +67,30 @@ interface UseBalanceResult {
 }
 
 export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
-    const { token, user } = useAuth();
+    const { user } = useAuth();
     const [balance, setBalance] = useState<number | null>(null);
     const [reservedBalance, setReservedBalance] = useState<number | null>(null);
-    const [accounts, setAccounts] = useState<AccountData[]>([]);
+    const [accounts, setAccounts] = useState<Account[]>([]);
     const [loading, setLoading] = useState(true);
     const [refetching, setRefetching] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const mountedRef = useRef(true);
-    const abortControllerRef = useRef<AbortController | null>(null);
 
     const fetchBalance = useCallback(async (isRefresh: boolean = false) => {
-        if (!mountedRef.current) return;
-
-        if (isRefresh) {
-            setRefetching(true);
-        } else {
-            setLoading(true);
-        }
+        if (!mountedRef.current || !user) return;
+        if (isRefresh) setRefetching(true); else setLoading(true);
         setError(null);
 
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-        }
-
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-
         try {
-            const authToken = token || localStorage.getItem('bank_token');
-            if (!authToken) {
-                throw new Error('No authentication token found');
-            }
-
-            if (mountedRef.current && user) {
-                const balanceResponse = await fetch(
-                    `/api/v1/accounts/${user.id}`,
-                    {
-                        headers: { 'Authorization': `Bearer ${authToken}` },
-                        signal: controller.signal,
-                    }
-                );
-
-                if (!balanceResponse.ok) {
-                    throw new Error('Failed to fetch balance');
-                }
-
-                const balanceData = await balanceResponse.json();
-                setBalance(balanceData.balance);
-                setReservedBalance(balanceData.reserved_balance);
-                setAccounts(balanceData.accounts || []);
+            const data = await getAccountSummary(user.id);
+            if (mountedRef.current) {
+                setBalance(data.balance);
+                setReservedBalance(data.reserved_balance);
+                setAccounts(data.accounts);
             }
         } catch (err: any) {
-            if (err.name === 'AbortError') {
-                return;
-            }
-
             if (mountedRef.current) {
-                console.error('Failed to fetch balance:', err);
-                setError(err.message || 'Failed to load balance');
+                setError(err.message || 'Failed to load account summary');
             }
         } finally {
             if (mountedRef.current) {
@@ -195,28 +98,19 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
                 setRefetching(false);
             }
         }
-    }, [token, user]);
+    }, [user]);
 
     useEffect(() => {
         fetchBalance(false);
-
         if (autoRefresh) {
-            const interval = setInterval(() => {
-                fetchBalance(true);
-            }, 60000); // Refresh every minute
-
+            const interval = setInterval(() => fetchBalance(true), 60000);
             return () => clearInterval(interval);
         }
     }, [fetchBalance, autoRefresh]);
 
     useEffect(() => {
         mountedRef.current = true;
-        return () => {
-            mountedRef.current = false;
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort();
-            }
-        };
+        return () => { mountedRef.current = false; };
     }, []);
 
     return { balance, reservedBalance, accounts, loading, error, refresh: () => fetchBalance(true), userId: user ? user.id : null, refetching };

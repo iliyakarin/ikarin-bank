@@ -1,20 +1,34 @@
+"""Configuration management for the KarinBank application.
+
+This module uses Pydantic Settings to load and validate environment variables
+from .env files, providing a centralized settings object for the application.
+"""
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from cryptography.fernet import Fernet
 from typing import Optional
 import os
 
+# Environment detection
 current_env = os.getenv("ENV", "development")
 env_file_path = (
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env.prod"))
     if current_env == "production"
     else os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env.dev"))
 )
-print(f"DEBUG: ENV={current_env}")
-print(f"DEBUG: Config env_file={env_file_path}")
-print(f"DEBUG: File exists={os.path.exists(env_file_path)}")
 
 class Settings(BaseSettings):
+    """Application settings and configuration.
+
+    Defines all environment variables required by the application, including
+    database connections, Kafka configuration, and security keys.
+    """
     # Environment
     ENV: str
+
+    # Initial Admin Setup (Loaded from .env.dev, used by migrations)
+    ADMIN_EMAIL: Optional[str] = None
+    ADMIN_PASSWORD: Optional[str] = None
 
     # Database
     POSTGRES_USER: str
@@ -32,36 +46,70 @@ class Settings(BaseSettings):
     CLICKHOUSE_PASSWORD: str
     CLICKHOUSE_READONLY_PASSWORD: Optional[str] = None
 
-    # Kafka
+    # Kafka - Core settings
     KAFKA_BOOTSTRAP_SERVERS: str
     KAFKA_TOPIC: str
     KAFKA_ACTIVITY_TOPIC: str
+
+    # Kafka security (optional for SASL/SSL)
     KAFKA_USER: Optional[str] = None
     KAFKA_PASSWORD: Optional[str] = None
+    KAFKA_SSL_CA_PATH: Optional[str] = None
+    KAFKA_SSL_CERT_PATH: Optional[str] = None
+    KAFKA_SSL_KEY_PATH: Optional[str] = None
 
-    # Security
+    # Kafka consumer group configuration
+    KAFKA_CONSUMER_GROUP: str
+
+    # Kafka producer settings
+    KAFKA_REQUEST_TIMEOUT_MS: int
+    KAFKA_ACKS: str
+    KAFKA_RETRY_MAX_RETRIES: int
+    KAFKA_RETRY_BACKOFF_MS: int
+    KAFKA_RETRY_MAX_DELAY_MS: Optional[int] = None
+
+    # Kafka DLQ (Dead Letter Queue) topic
+    KAFKA_DLQ_TOPIC: str
+
+    # Security & Encryption
+    ACCOUNT_ENCRYPTION_KEY: str
+    KAFKA_MESSAGE_ENCRYPTION_KEY: str
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
-    ACCOUNT_ENCRYPTION_KEY: str
-
-    # Internal Services
-    SIMULATOR_URL: str
-    GATEWAY_API_KEY: str
-    SIMULATOR_API_KEY: str
-    TURNSTILE_SECRET_KEY: Optional[str] = None
     CORS_ORIGINS: str
-    ADMIN_EMAIL: str
-    ADMIN_PASSWORD: str
-    DEPOSIT_MOCK_API_KEY: Optional[str] = None
-    DEPOSIT_MOCK_WEBHOOK_SECRET: Optional[str] = None
+    ABA_PREFIX: str
+    
+    # Cloudflare Turnstile
+    TURNSTILE_SECRET_KEY: Optional[str] = None
+
+    # Deposit Mock / Gateway Settings
+    DEPOSIT_MOCK_API_KEY: str
+    DEPOSIT_MOCK_WEBHOOK_SECRET: str
     DEPOSIT_MOCK_URL: Optional[str] = None
+    
+    # Vendor Simulator & Fed Gateway
+    SIMULATOR_URL: str
+    SIMULATOR_API_KEY: str
+    GATEWAY_API_KEY: str
 
     model_config = SettingsConfigDict(
         env_file=env_file_path if os.path.exists(env_file_path) else None,
         env_file_encoding='utf-8',
         extra="ignore"
     )
+
+    @field_validator("KAFKA_MESSAGE_ENCRYPTION_KEY")
+    @classmethod
+    def validate_kafka_key(cls, v: str) -> str:
+        if v == "<GENERATE_FERNET_KEY_HERE>":
+            raise ValueError("KAFKA_MESSAGE_ENCRYPTION_KEY must be a valid Fernet key, not the placeholder.")
+        try:
+            # Ensure it's a valid Fernet key
+            Fernet(v.encode())
+        except Exception as e:
+            raise ValueError(f"Invalid Fernet key for KAFKA_MESSAGE_ENCRYPTION_KEY: {e}")
+        return v
 
     def __init__(self, **values):
         super().__init__(**values)

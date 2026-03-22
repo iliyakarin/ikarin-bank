@@ -2,16 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-interface User {
-    id: number;
-    first_name: string;
-    last_name: string;
-    email: string;
-    backup_email?: string;
-    role: string;
-    time_format: string;
-    date_format: string;
-}
+import { User, getCurrentUser, logout as logoutApi, updatePreferences } from './api/auth';
 
 interface Settings {
     use24Hour: boolean;
@@ -41,30 +32,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const savedToken = localStorage.getItem('bank_token');
         if (savedToken) {
             setToken(savedToken);
-            fetchUser(savedToken);
+            fetchUser();
         } else {
             setIsLoading(false);
         }
     }, []);
 
-    const fetchUser = async (authToken: string) => {
+    const fetchUser = async () => {
         try {
-            const res = await fetch('/api/v1/me', {
-                headers: {
-                    'Authorization': `Bearer ${authToken}`
-                }
+            const userData = await getCurrentUser();
+            setUser(userData);
+            // Sync settings from db
+            setSettings({
+                use24Hour: userData.time_format === '24h',
+                useEUDates: userData.date_format === 'EU'
             });
-            if (res.ok) {
-                const userData = await res.json();
-                setUser(userData);
-                // Sync settings from db
-                setSettings({
-                    use24Hour: userData.time_format === '24h',
-                    useEUDates: userData.date_format === 'EU'
-                });
-            } else {
-                logout();
-            }
         } catch (err) {
             console.error("Failed to fetch user", err);
             logout();
@@ -76,19 +58,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const login = async (newToken: string) => {
         localStorage.setItem('bank_token', newToken);
         setToken(newToken);
-        await fetchUser(newToken);
+        await fetchUser();
         router.push('/client');
     };
 
     const logout = async () => {
         // Call server-side logout to record the event
         try {
-            if (token) {
-                await fetch('/api/v1/logout', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` },
-                });
-            }
+            await logoutApi();
         } catch (err) {
             console.error("Server logout call failed", err);
         }
@@ -106,16 +83,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Persist to DB if logged in
         if (token) {
             try {
-                await fetch('/api/v1/users/me/preferences', {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        time_format: updated.use24Hour ? '24h' : '12h',
-                        date_format: updated.useEUDates ? 'EU' : 'US'
-                    })
+                await updatePreferences({
+                    time_format: updated.use24Hour ? '24h' : '12h',
+                    date_format: updated.useEUDates ? 'EU' : 'US'
                 });
             } catch (err) {
                 console.error("Failed to persist settings", err);

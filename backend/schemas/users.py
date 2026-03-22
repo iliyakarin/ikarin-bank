@@ -1,4 +1,9 @@
-from pydantic import BaseModel, ConfigDict
+"""User and Authentication Schemas.
+
+This module defines P2P (Pydantic) models for user registration, login,
+and profile updates.
+"""
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional
 import datetime
 

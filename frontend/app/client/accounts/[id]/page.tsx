@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
-import { useBalance, useTransactions, AccountData } from "@/hooks/useDashboard";
+import { useBalance, useTransactions, Account } from "@/hooks/useDashboard";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowDownRight, ArrowUpRight, Wallet, AlertCircle, Eye, EyeOff } from "lucide-react";
 import TransactionList from "@/components/TransactionList";
@@ -18,7 +18,7 @@ export default function SubAccountDetailPage() {
 
     const { accounts, refresh: refreshBalance, loading: balanceLoading } = useBalance(true);
 
-    const [account, setAccount] = useState<AccountData | null>(null);
+    const [account, setAccount] = useState<Account | null>(null);
     const [transactions, setTransactions] = useState([]);
     const [txLoading, setTxLoading] = useState(true);
 

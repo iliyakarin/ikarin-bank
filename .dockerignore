@@ -1,0 +1,31 @@
+# Testing
+tests/
+playwright/
+performance_tests/
+test-results/
+.pytest_cache/
+.ruff_cache/
+
+# Environment
+.env*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db

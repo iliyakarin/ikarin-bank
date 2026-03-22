@@ -27,6 +27,8 @@ class PaymentIntentResponse(BaseModel):
     client_secret: str
     id: str
     status: Optional[str] = "requires_payment_method"
+    amount: Optional[int] = None
+    currency: Optional[str] = "usd"
 
 class PaymentIntentFulfill(BaseModel):
     id: str

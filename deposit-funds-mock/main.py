@@ -1,5 +1,16 @@
-from fastapi import FastAPI, Request
+"""Third-Party Vendor Simulator.
+
+This service simulates external vendors and banks for P2P transfers
+and vendor discovery.
+"""
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+"""Mock Payment Gateway Service.
+
+This service simulates a payment processor (like Stripe) for testing
+deposits and subscriptions.
+"""
+import asyncio
 import uuid
 
 app = FastAPI(title="Deposit Funds Mock Service")
@@ -62,6 +73,35 @@ async def create_checkout_session(request: Request):
         "url": success_url.replace("{CHECKOUT_SESSION_ID}", session_id),
         "payment_status": "unpaid",
         "status": "open"
+    })
+
+@app.get("/v1/customers")
+async def list_customers(email: str = None):
+    """
+    Mock Stripe Customer listing.
+    """
+    return JSONResponse({
+        "object": "list",
+        "data": [
+            {
+                "id": f"cus_{uuid.uuid4().hex[:12]}",
+                "object": "customer",
+                "email": email or "customer@example.com"
+            }
+        ] if email else []
+    })
+
+@app.post("/v1/billing_portal/sessions")
+async def create_portal_session(request: Request):
+    """
+    Mock Stripe Billing Portal Session creation.
+    """
+    form_data = await request.form()
+    return_url = form_data.get("return_url", "http://localhost:3000/dashboard")
+    return JSONResponse({
+        "id": f"bps_{uuid.uuid4().hex[:12]}",
+        "object": "billing_portal.session",
+        "url": return_url
     })
 
 @app.post("/_mock/trigger_webhook")

@@ -1,11 +1,12 @@
 from pydantic import BaseModel, root_validator
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Dict, Any
 
 class PaymentIntentCreate(BaseModel):
-    amount: Decimal
+    amount: int  # integer cents
     currency: str = "usd"
     description: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 class PaymentMethodCreate(BaseModel):
     card_number: str
@@ -30,7 +31,7 @@ class PaymentMethodResponse(BaseModel):
 class PaymentIntentResponse(BaseModel):
     id: str
     object: str = "payment_intent"
-    amount: Decimal
+    amount: int
     currency: str
     status: str
     client_secret: str

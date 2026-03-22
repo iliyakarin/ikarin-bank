@@ -3,13 +3,13 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, ChevronDown, ChevronUp, Wallet, Settings, Send } from "lucide-react";
-import { AccountData } from "@/hooks/useDashboard";
+import { Account } from "@/hooks/useDashboard";
 import { useAuth } from "@/lib/AuthContext";
 import { formatCurrency } from "@/lib/transactionUtils";
 import Link from "next/link";
 
 interface SubAccountManagerProps {
-    accounts: AccountData[];
+    accounts: Account[];
     refresh: () => Promise<void>;
 }
 

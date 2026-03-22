@@ -8,6 +8,15 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
     title: "Karin Bank | Premium Fintech",
     description: "Experience the future of personal finance with high-end glassmorphism design.",
+    icons: {
+        icon: [
+            { url: "/icon.png", type: "image/png" },
+        ],
+        shortcut: ["/icon.png"],
+        apple: [
+            { url: "/icon.png", sizes: "180x180", type: "image/png" },
+        ],
+    },
 };
 
 export const dynamic = 'force-dynamic';

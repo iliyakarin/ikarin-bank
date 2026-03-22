@@ -1,9 +1,16 @@
+"""Contacts Management Router.
+
+This module handled user contacts, allowing users to add, list, and remove
+frequently used transfer recipients.
+"""
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_
 from typing import List, Optional
-from database import User, Contact
+from database import SessionLocal
+from models.user import User
+from models.management import Contact
 from schemas.contacts import ContactCreate, ContactUpdate, ContactResponse
 from auth_utils import get_db, get_current_user
 import uuid

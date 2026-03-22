@@ -9,3 +9,4 @@ class SimulationRequest(BaseModel):
 class QueryRequest(BaseModel):
     operation: str
     query: str
+    params: dict = {}

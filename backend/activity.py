@@ -8,10 +8,17 @@ import datetime
 from datetime import timezone, timedelta
 import json
 import asyncio
+import re
 from typing import Dict, Set
 from fastapi import WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
-from database import Outbox
+from database import SessionLocal
+from models.management import Outbox
+from constants import (
+    ACTIVITY_DETAILS_EMPTY,
+    TRANSACTION_TYPE_TRANSFER,
+    TRANSACTION_SIDE_DEBIT
+)
 
 # ─── WebSocket Connection Registry ──────────────────────────────────
 # Maps user_id → set of connected WebSocket instances
@@ -47,7 +54,37 @@ async def broadcast_to_user(user_id: int, payload: dict):
         ws_unregister(user_id, ws)
 
 
-# ─── Activity Event Emitter ─────────────────────────────────────────
+# ─── PII Scrubbing Helpers ──────────────────────────────────────────
+
+def _mask_email(match):
+    """Regex callback to mask an email."""
+    email = match.group(0)
+    user, domain = email.split("@")
+    if len(user) <= 1:
+        return f"*@{domain}"
+    return f"{user[0]}***@{domain}"
+
+def _mask_pii(text: str) -> str:
+    """Masks emails and potential names in a string."""
+    if not text:
+        return text
+    # Mask emails
+    email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+    text = re.sub(email_pattern, _mask_email, text)
+    return text
+
+def _scrub_details(details: dict | None) -> dict:
+    """Scrub PII from a details dictionary."""
+    if not details:
+        return json.loads(ACTIVITY_DETAILS_EMPTY)
+    scrubbed = details.copy()
+    for key in ["email", "recipient_email", "sender_email", "target_email", "first_name", "last_name", "full_name"]:
+        if key in scrubbed and scrubbed[key] and isinstance(scrubbed[key], str):
+            if "@" in scrubbed[key]:
+                scrubbed[key] = f"{scrubbed[key][0]}***@{scrubbed[key].split('@')[1]}"
+            else:
+                scrubbed[key] = f"{scrubbed[key][0]}***"
+    return scrubbed
 
 def emit_activity(
     db: AsyncSession,
@@ -68,6 +105,10 @@ def emit_activity(
     """
     event_id = str(uuid.uuid4())
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    
+    # Scrub PII from title and details
+    scrubbed_title = _mask_pii(title)
+    scrubbed_details = _scrub_details(details)
 
     payload = {
         "event_id": event_id,
@@ -75,8 +116,8 @@ def emit_activity(
         "category": category,
         "action": action,
         "event_time": now,
-        "title": title,
-        "details": json.dumps(details or {}),
+        "title": scrubbed_title,
+        "details": json.dumps(scrubbed_details),
         "ip": ip,
         "user_agent": user_agent,
     }
@@ -106,8 +147,8 @@ def emit_transaction_status_update(
     amount: int, # Amount in cents
     category: str,
     merchant: str,
-    transaction_type: str = "transfer",
-    transaction_side: str = "DEBIT",
+    transaction_type: str = TRANSACTION_TYPE_TRANSFER,
+    transaction_side: str = TRANSACTION_SIDE_DEBIT,
     sender_email: str | None = None,
     recipient_email: str | None = None,
     internal_account_last_4: str | None = None,

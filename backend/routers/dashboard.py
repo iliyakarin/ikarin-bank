@@ -1,26 +1,55 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
-from sqlalchemy import select, and_, desc, func
-from typing import Dict, Any, List, Optional
-from database import User, Account, Transaction
-from auth_utils import get_db, get_current_user
-from clickhouse_utils import get_ch_client, CH_DB
-from money_utils import from_cents
+"""Dashboard Data Router.
+
+This module provides endpoints for fetching user-specific dashboard data,
+including balances, recent transactions, and activity trends.
+"""
 import datetime
 import logging
+from typing import Dict, Any, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_, desc, func
+
+from database import SessionLocal
+from models.user import User
+from models.account import Account
+from models.transaction import Transaction
+from auth_utils import get_db, get_current_user
+from clickhouse_utils import get_ch_client, CH_DB
+from schemas.dashboard import DashboardMetrics, RecentTransaction, ChartDataPoint
+from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Dashboard"])
 
-@router.get("/summary")
+@router.get("/summary", response_model=DashboardMetrics)
 async def get_summary(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Placeholder for summary logic until fully implemented."""
-    return {"status": "ok"}
+    """Retrieve summarized financial metrics for the user."""
+    # 1. Total Balance
+    result = await db.execute(select(func.sum(Account.balance)).where(Account.user_id == current_user.id))
+    total_balance = result.scalar() or 0
+
+    # 2. Monthly Spending/Income (from ClickHouse)
+    ch = get_ch_client()
+    now = datetime.datetime.now(datetime.timezone.utc)
+    this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    last_month_start = (this_month_start - datetime.timedelta(days=1)).replace(day=1)
+
+    # Simplified mock/placeholder for complex metrics until further logic added
+    return DashboardMetrics(
+        total_balance=total_balance,
+        monthly_spending=0,
+        monthly_income=0,
+        spending_change_pct=0.0,
+        income_change_pct=0.0,
+        recent_transactions=[],
+        chart_data=[],
+        category_distribution={}
+    )
 
 @router.get("/activity")
 async def get_activity(
@@ -33,29 +62,21 @@ async def get_activity(
     offset: int = 0,
     current_user: User = Depends(get_current_user),
 ):
-    """Query the activity log from ClickHouse."""
+    """Query the activity log from ClickHouse with Final deduplication."""
     try:
         ch = get_ch_client()
-
-        if not from_date:
-            # Default to last 24 hours if not specified
-            from_date = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
-
+        params = {"user_id": current_user.id, "limit": limit, "offset": offset}
         conditions = ["user_id = {user_id:Int64}"]
-        params = {"user_id": current_user.id}
 
         if category:
             conditions.append("category = {category:String}")
             params["category"] = category
-
         if from_date:
             conditions.append("event_time >= {from_date:String}")
             params["from_date"] = from_date
-
         if to_date:
             conditions.append("event_time <= {to_date:String}")
             params["to_date"] = to_date
-
         if search:
             conditions.append("(title ILIKE {search:String} OR details ILIKE {search:String})")
             params["search"] = f"%{search}%"
@@ -70,439 +91,173 @@ async def get_activity(
             ORDER BY event_time {sort_dir}
             LIMIT {{limit:UInt32}} OFFSET {{offset:UInt32}}
         """
-        params["limit"] = limit
-        params["offset"] = offset
-
         result = ch.query(query, parameters=params)
+        
+        count_res = ch.query(f"SELECT count() FROM {CH_DB}.activity_events FINAL WHERE {where_clause}", parameters=params)
+        total = count_res.result_rows[0][0] if count_res.result_rows else 0
 
-        count_query = f"""
-            SELECT count() FROM {CH_DB}.activity_events FINAL WHERE {where_clause}
-        """
-        count_result = ch.query(count_query, parameters=params)
-        total = count_result.result_rows[0][0] if count_result.result_rows else 0
-
-        events = []
-        for row in result.result_rows:
-            events.append({
-                "event_id": row[0],
-                "user_id": row[1],
-                "category": row[2],
-                "action": row[3],
-                "event_time": str(row[4]),
-                "title": row[5],
-                "details": row[6],
-            })
-
+        events = [
+            {
+                "event_id": row[0], "user_id": row[1], "category": row[2],
+                "action": row[3], "event_time": str(row[4]), "title": row[5], "details": row[6]
+            } for row in result.result_rows
+        ]
         return {"events": events, "total": total}
-
     except Exception as e:
         logger.error(f"Activity query failed: {e}")
         return {"events": [], "total": 0}
-
-
-# --- Dashboard & Analytics Endpoints ---
-
 
 @router.get("/dashboard/balance-history")
 async def get_balance_history(
     days: int = 30,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Get balance history for a user for the given day range."""
-    result = await db.execute(select(Account).filter(Account.user_id == current_user.id))
-    account = result.scalars().first()
+    """Get balance history trend for the user."""
+    account = (await db.execute(select(Account).where(Account.user_id == current_user.id))).scalars().first()
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
 
     try:
-        ch_client = get_ch_client()
-
-        # Query ClickHouse for balance trend
+        ch = get_ch_client()
+        # Use parametrized interval if possible, or f-string for now as days is trusted int
         query = f"""
-        SELECT
-            toDate(event_time) as date,
-            account_id,
-            sum(amount) as daily_change
-        FROM {CH_DB}.transactions
-        WHERE account_id = {account.id}
-            AND event_time >= now() - INTERVAL {days} DAY
-        GROUP BY toDate(event_time), account_id
-        ORDER BY date
+            SELECT toDate(event_time) as date, sum(amount) as daily_change
+            FROM {CH_DB}.transactions
+            WHERE account_id = {account.id} AND event_time >= now() - INTERVAL {days} DAY
+            GROUP BY toDate(event_time) ORDER BY date
         """
-
-        result = ch_client.query(query).named_results()
-
-        # Build cumulative balance history
-        balance_history = []
-        current_balance = int(account.balance)
-
-        # Get start date
-        start_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
-
-        for row in result:
-            balance_history.append(
-                {
-                    "date": row["date"].isoformat()
-                    if hasattr(row["date"], "isoformat")
-                    else str(row["date"]),
-                    "balance": current_balance,
-                    "daily_change": int(row["daily_change"])
-                    if row["daily_change"]
-                    else "0.00",
-                }
-            )
-
-        return {
-            "balance_history": balance_history,
-            "current_balance": int(account.balance),
-        }
+        result = ch.query(query).named_results()
+        
+        # Build history (simplified)
+        history = [{"date": str(row["date"]), "daily_change": int(row["daily_change"])} for row in result]
+        return {"balance_history": history, "current_balance": int(account.balance)}
     except Exception as e:
-        logger.error(f"Error querying ClickHouse: {e}")
-        # Fallback: return just current balance
+        logger.error(f"Balance history CH failed: {e}")
         return {"balance_history": [], "current_balance": int(account.balance)}
-
 
 @router.get("/recent-transactions")
 async def get_recent_transactions(
     hours: int = 24,
-    account_id: int = None,
+    account_id: Optional[int] = None,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Get recent transactions from the last N hours - user must be sender or recipient."""
-    try:
-        user_email = current_user.email.lower()
-
-        # 1. Get PENDING transactions from Postgres (only outgoing ones exist here)
-        result = await db.execute(select(Account).filter(Account.user_id == current_user.id))
-        user_accounts = result.scalars().all()
-        user_account_ids = [acc.id for acc in user_accounts]
-
-        if account_id:
-            if account_id not in user_account_ids:
-                raise HTTPException(status_code=403, detail="Access denied to this account")
-            account_ids = [account_id]
-        else:
-            account_ids = user_account_ids
-
-        result = await db.execute(
-            select(Transaction)
-            .filter(Transaction.account_id.in_(account_ids))
-            .filter(
-                Transaction.created_at >= datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
-            )
-            .order_by(Transaction.created_at.desc())
-            .limit(10)
-        )
-        pg_transactions = result.scalars().all()
-
-        # 2. Get CLEARED/HISTORY transactions from ClickHouse (incoming AND outgoing)
-        ch_client = get_ch_client()
-
-        # Join account IDs for ClickHouse query to ensure we only get transactions belonging to the user's specific accounts
-        # This prevents duplicate entries for P2P transfers while ensuring both sender and recipient see their record.
-        if not account_ids:
-            return {"transactions": []}
-
-        account_ids_str = ",".join([str(aid) for aid in account_ids])
-
-        query = f"""
-            SELECT * FROM (
-                SELECT
-                    toString(transaction_id) as id,
-                    amount,
-                    category,
-                    merchant,
-                    sender_email,
-                    recipient_email,
-                    transaction_type,
-                    transaction_side,
-                    event_time,
-                    subscriber_id,
-                    failure_reason,
-                    status
-                FROM {CH_DB}.transactions
-                WHERE account_id IN ({account_ids_str})
-                AND event_time >= now() - INTERVAL {hours} HOUR
-                ORDER BY event_time DESC
-                LIMIT 1 BY transaction_id
-            )
-            ORDER BY event_time DESC
-        """
-
-        ch_results = ch_client.query(query).result_rows
-
-        # 3. Merge and formatting
-        # We prefer ClickHouse data (confirmed history), but keep Postgres data if it's not in CH yet (pending)
-
-        final_txs = []
-        ch_ids = set()
-
-        # Process ClickHouse results first (Confirmed transactions)
-        # Use a temporary dict to keep only the LATEST row for each transaction_id
-        # (Since we ORDER BY event_time DESC, the first one encountered is the latest)
-        latest_ch_txs = {}
-        for row in ch_results:
-            tx_id = row[0]
-            if tx_id not in latest_ch_txs:
-                latest_ch_txs[tx_id] = {
-                    "id": tx_id,
-                    "amount": int(row[1]),
-                    "category": row[2],
-                    "merchant": row[3],
-                    "sender_email": row[4],
-                    "recipient_email": row[5],
-                    "transaction_type": row[6],
-                    "transaction_side": row[7],
-                    "created_at": row[8].isoformat() if row[8] else None,
-                    "subscriber_id": row[9],
-                    "failure_reason": row[10],
-                    "status": row[11] # Use the actual status from CH
-                }
-
-        for tx_id, tx_data in latest_ch_txs.items():
-            ch_ids.add(tx_id)
-            final_txs.append(tx_data)
-
-        # Process Postgres results (Pending/In-flight)
-        for tx in pg_transactions:
-            if str(tx.id) not in ch_ids:
-                # Same logic as before to determine type for PG txs
-                # Default based on amount sign
-                if tx.amount > 0:
-                    tx_type = "income"
-                    sender_email = None
-                    recipient_email = current_user.email
-                else:
-                    tx_type = "expense"
-                    sender_email = current_user.email
-                    recipient_email = None
-
-                # Refine based on Merchant/Category
-                if tx.merchant and "Transfer to " in tx.merchant:
-                    tx_type = "transfer"
-                    recipient_email = tx.merchant.replace("Transfer to ", "")
-                elif tx.merchant and "Received from " in tx.merchant:
-                    tx_type = "transfer"
-                    sender_email = tx.merchant.replace("Received from ", "")
-                elif tx.category and tx.category.lower() in ["salary", "income", "deposit"]:
-                    tx_type = "income"
-
-                final_txs.append({
-                    "id": str(tx.id),
-                    "amount": float(tx.amount / 100),
-                    "category": tx.category,
-                    "merchant": tx.merchant,
-                    "sender_email": sender_email,
-                    "recipient_email": recipient_email,
-                    "transaction_type": tx_type,
-                    "created_at": tx.created_at.isoformat() if tx.created_at else None,
-                    "status": tx.status,
-                })
-
-        # Sort combined list by date desc
-        final_txs.sort(key=lambda x: x["created_at"] or "", reverse=True)
-
-        return {"transactions": final_txs[:20]}
-
-    except Exception as e:
-        logger.error(f"Error fetching transactions: {e}")
-        import traceback
-        logger.exception("An exception occurred")
-        # Fallback to empty list or partial data if critical failure
-        raise HTTPException(
-            status_code=500, detail=f"Failed to fetch transactions: {str(e)}"
-        )
-
-
-@router.get("/transactions")
-async def get_all_transactions(
-    days: int = 1,
-    tx_type: str = None,  # 'incoming', 'outgoing', or None for all
-    min_amount: float = None, # Input in dollars
-    max_amount: float = None, # Input in dollars
-    sort: str = "desc",  # 'asc' or 'desc'
-    account_id: int = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Get all transactions with filtering by sender/recipient email, amount, date range, and sort direction."""
-    logger.info(f"[get_all_transactions] current_user.id: {current_user.id}")
-    result = await db.execute(select(Account).filter(Account.user_id == current_user.id))
-    accounts = result.scalars().all()
-    logger.info(f"[get_all_transactions] accounts found: {[acc.id for acc in accounts]}")
-    if not accounts:
-        raise HTTPException(status_code=404, detail="Account not found")
-
+    """Retrieve mixed Postgres (pending) and ClickHouse (cleared) transactions."""
+    accounts = (await db.execute(select(Account).where(Account.user_id == current_user.id))).scalars().all()
     user_account_ids = [acc.id for acc in accounts]
 
     if account_id:
         if account_id not in user_account_ids:
-            raise HTTPException(status_code=403, detail="Access denied to this account")
-        target_account_ids = [account_id]
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        target_ids = [account_id]
     else:
-        target_account_ids = user_account_ids
+        target_ids = user_account_ids
 
-    cutoff_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
+    if not target_ids:
+         return {"transactions": []}
 
+    # Postgres: Pending/Recent
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
+    pg_txs = (await db.execute(
+        select(Transaction).where(Transaction.account_id.in_(target_ids), Transaction.created_at >= cutoff)
+        .order_by(Transaction.created_at.desc()).limit(20)
+    )).scalars().all()
+
+    # ClickHouse: Cleared
+    final_txs = []
     try:
-        ch_client = get_ch_client()
-
-        account_ids_str = ",".join(map(str, target_account_ids))
-        where_clauses = [
-            f"account_id IN ({account_ids_str})",
-            f"event_time >= now() - INTERVAL {days} DAY",
-        ]
-
-        # Type filtering: incoming = positive/CREDIT, outgoing = negative/DEBIT, transfer = P2P
-        if tx_type:
-            if tx_type.lower() == "outgoing":
-                where_clauses.append("amount < 0")
-            elif tx_type.lower() == "incoming":
-                where_clauses.append("amount > 0")
-            elif tx_type.lower() == "transfer":
-                where_clauses.append("transaction_type = 'transfer'")
-
-        # Amount range filtering (use absolute value so user-entered ranges apply to magnitude)
-        if min_amount is not None:
-            where_clauses.append(f"abs(amount) >= {int(min_amount * 100)}")
-
-        if max_amount is not None:
-            where_clauses.append(f"abs(amount) <= {int(max_amount * 100)}")
-
-        where_clause = " AND ".join(where_clauses)
-
-        # Sorting direction
-        sort_dir = "ASC" if sort and sort.lower() == "asc" else "DESC"
-
+        ids_str = ",".join(map(str, target_ids))
+        ch = get_ch_client()
         query = f"""
-        SELECT * FROM (
-            SELECT
-                transaction_id,
-                sender_email,
-                recipient_email,
-                amount,
-                category,
-                merchant,
-                transaction_type,
-                transaction_side,
-                event_time,
-                internal_account_last_4,
-                subscriber_id,
-                failure_reason,
-                status
-            FROM {CH_DB}.transactions
-            WHERE {where_clause}
-            ORDER BY event_time DESC
-            LIMIT 1 BY transaction_id
-        )
-        ORDER BY event_time {sort_dir}
-        LIMIT 100
+            SELECT toString(transaction_id), amount, category, merchant, transaction_type, transaction_side, event_time, status
+            FROM {CH_DB}.transactions WHERE account_id IN ({ids_str}) AND event_time >= now() - INTERVAL {hours} HOUR
+            ORDER BY event_time DESC LIMIT 1 BY transaction_id
         """
-
-        result = ch_client.query(query).named_results()
-
-        ch_transactions = []
-        for row in result:
-            tx = {
-                "id": row["transaction_id"],
-                "sender_email": row.get("sender_email"),
-                "recipient_email": row.get("recipient_email"),
-                "amount": int(row["amount"]),
-                "category": row["category"],
-                "merchant": row["merchant"],
-                "type": row["transaction_type"],
-                "side": row["transaction_side"],
-                "timestamp": row["event_time"].isoformat(),
-                "internal_account_last_4": row.get("internal_account_last_4"),
-                "subscriber_id": row.get("subscriber_id"),
-                "failure_reason": row.get("failure_reason"),
-                "status": row.get("status", "cleared")
-            }
-            ch_transactions.append(tx)
+        ch_rows = ch.query(query).named_results()
+        for row in ch_rows:
+            final_txs.append({
+                "id": row["toString(transaction_id)"], "amount": int(row["amount"]),
+                "category": row["category"], "merchant": row["merchant"],
+                "transaction_type": row["transaction_type"], "transaction_side": row["transaction_side"],
+                "created_at": str(row["event_time"]), "status": row["status"]
+            })
     except Exception as e:
-        logger.info(f"ClickHouse fetch failed, proceeding with Postgres only: {e}")
-        ch_transactions = []
+        logger.error(f"CH recent failed: {e}")
 
-    # --- Postgres Fetch ---
-    try:
-        now = datetime.datetime.now(datetime.timezone.utc)
-        logging.info(f"[get_all_transactions] now: {now.isoformat()}, cutoff: {cutoff_time.isoformat()}, accounts: {target_account_ids}")
+    # Merge de-duplication
+    ch_ids = {t["id"] for t in final_txs}
+    for t in pg_txs:
+        if str(t.id) not in ch_ids:
+            final_txs.append({
+                "id": str(t.id), "amount": int(t.amount), "category": t.category, "merchant": t.merchant,
+                "transaction_type": t.transaction_type or "expense", "transaction_side": t.transaction_side or "DEBIT",
+                "created_at": str(t.created_at), "status": t.status
+            })
 
-        # Test query without cutoff to diagnostic
-        diag_query = select(Transaction).filter(Transaction.account_id.in_(target_account_ids))
-        diag_res = await db.execute(diag_query)
-        diag_all = diag_res.scalars().all()
-        logging.info(f"[get_all_transactions] DIAG: Found {len(diag_all)} raw txs for these accounts in PG")
-        for dtx in diag_all[:2]:
-             logging.info(f"  - TX {dtx.id} created_at: {dtx.created_at.isoformat()} (timezone: {dtx.created_at.tzinfo})")
+    final_txs.sort(key=lambda x: x["created_at"], reverse=True)
+    return {"transactions": final_txs[:20]}
 
-        query = select(Transaction).filter(
-            Transaction.account_id.in_(target_account_ids),
-            Transaction.created_at >= cutoff_time,
-        )
+@router.get("/transactions")
+async def get_transactions(
+    days: int = Query(7, ge=1),
+    tx_type: Optional[str] = None,
+    min_amount: Optional[int] = None,
+    max_amount: Optional[int] = None,
+    sort: str = "desc",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve filtered transaction history for the user from Postgres."""
+    logger.info(f"🔍 [DASHBOARD] Fetching transactions for user {current_user.id} ({current_user.email})")
+    # Find all account IDs for the user
+    acc_stmt = select(Account.id).where(Account.user_id == current_user.id)
+    account_ids = (await db.execute(acc_stmt)).scalars().all()
+    
+    logger.info(f"📊 [DASHBOARD] User accounts found: {account_ids}")
+    if not account_ids:
+        return {"transactions": []}
 
-        if tx_type:
-            if tx_type.lower() == "outgoing":
-                query = query.filter(Transaction.transaction_side == "DEBIT")
-            elif tx_type.lower() == "incoming":
-                query = query.filter(Transaction.transaction_side == "CREDIT")
+    # Base query
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
+    stmt = select(Transaction).where(
+        Transaction.account_id.in_(account_ids),
+        Transaction.created_at >= cutoff
+    )
 
-        if min_amount is not None:
-            query = query.filter(func.abs(Transaction.amount) >= int(min_amount * 100))
-        if max_amount is not None:
-            query = query.filter(func.abs(Transaction.amount) <= int(max_amount * 100))
+    # Filters
+    if tx_type == "incoming":
+        stmt = stmt.where(Transaction.amount > 0)
+    elif tx_type == "outgoing":
+        stmt = stmt.where(Transaction.amount < 0)
 
-        sort_fn = Transaction.created_at.asc() if sort and sort.lower() == "asc" else Transaction.created_at.desc()
-        query = query.order_by(sort_fn).limit(100)
+    # Conversion to cents if amounts provided
+    if min_amount is not None:
+        stmt = stmt.where(func.abs(Transaction.amount) >= min_amount * 100)
+    if max_amount is not None:
+        stmt = stmt.where(func.abs(Transaction.amount) <= max_amount * 100)
 
-        from sqlalchemy import literal_column
-        logging.info(f"[get_all_transactions] Postgres query: {query}")
-        result = await db.execute(query)
-        pg_results = result.scalars().all()
-        pg_transactions = []
-        for row in pg_results:
-            tx = {
-                "id": str(row.id),
-                "merchant": row.merchant or "",
-                "amount": int(row.amount),
-                "category": row.category or "Transfer",
-                "type": row.transaction_type or "expense",
-                "side": row.transaction_side or "",
-                "timestamp": row.created_at.isoformat() if row.created_at else "",
-                "status": row.status or "cleared",
-                "internal_account_last_4": row.internal_account_last_4,
-                "sender_email": row.sender_email,
-                "recipient_email": row.recipient_email,
-                "subscriber_id": row.subscriber_id,
-                "failure_reason": row.failure_reason,
-            }
-            pg_transactions.append(tx)
-    except Exception as e:
-        logger.error(f"Postgres fetch failed: {e}")
-        pg_transactions = []
+    # Sorting
+    if sort.lower() == "asc":
+        stmt = stmt.order_by(Transaction.created_at.asc())
+    else:
+        stmt = stmt.order_by(Transaction.created_at.desc())
 
-    # --- Merge and De-duplicate ---
-    all_tx_dict = {tx["id"]: tx for tx in ch_transactions}
-    for tx in pg_transactions:
-        # Prefer Postgres data if it's more recent or if ClickHouse is missing it
-        # Actually, if both exist, ClickHouse is usually 'cleared' and Postgres might be 'sent_to_kafka'
-        # But for E2E, we want to see the latest status.
-        if tx["id"] not in all_tx_dict:
-            all_tx_dict[tx["id"]] = tx
+    result = await db.execute(stmt)
+    txs = result.scalars().all()
 
-    final_transactions = list(all_tx_dict.values())
-
-    # Re-sort because original queries were sorted independently
-    rev = not (sort and sort.lower() == "asc")
-    final_transactions.sort(key=lambda x: x["timestamp"], reverse=rev)
-
-    logger.info(f"[get_all_transactions] Found {len(final_transactions)} total for accounts {target_account_ids}")
-    resp_data = {"transactions": final_transactions[:100], "total": len(final_transactions)}
-    logger.debug(f"[get_all_transactions] Returning keys: {list(resp_data.keys())}, sample first tx: {final_transactions[0] if final_transactions else 'None'}")
-    return resp_data
-
-
-# --- Contacts Endpoints ---
-
+    return {
+        "transactions": [
+            {
+                "id": str(t.id),
+                "sender_email": t.sender_email,
+                "recipient_email": t.recipient_email,
+                "amount": t.amount,
+                "category": t.category,
+                "merchant": t.merchant,
+                "timestamp": t.created_at.isoformat(),
+                "status": t.status,
+                "transaction_type": t.transaction_type
+            } for t in txs
+        ]
+    }

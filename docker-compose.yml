@@ -295,11 +295,11 @@ services:
     env_file: .env.dev
     security_opt:
       - no-new-privileges:true
-    working_dir: /app/frontend
+    working_dir: /app/tests/e2e
     volumes:
       - .:/app
     environment:
       - PLAYWRIGHT_BASE_URL=http://frontend:3000
     depends_on:
       - frontend
-    command: npx playwright test --project=chromium
+    command: npx playwright test --config=playwright.config.ts --project=chromium
