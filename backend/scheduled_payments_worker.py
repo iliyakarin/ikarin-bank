@@ -13,7 +13,8 @@ from models.user import User
 from models.account import Account
 from models.transaction import Transaction
 from models.management import ScheduledPayment, Outbox
-from services.transfer_service import _create_p2p_transactions, _calculate_next_run_at, _create_p2p_outbox_entries
+from date_utils import calculate_next_run_at
+from services.event_emitter import emit_transactional_event
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -75,12 +76,15 @@ async def process_single_payment(db: AsyncSession, p: ScheduledPayment, now: dat
                 return
             sim = await execute_vendor_payment(v["id"], p.subscriber_id or "UNK", p.amount)
             f_acc.balance -= p.amount
-            db.add(Transaction(
-                id=str(uuid.uuid4()), account_id=f_acc.id, amount=-p.amount, category="Bill Pay", merchant=v["name"],
-                status="cleared" if sim.get("status") == "CLEARED" else "failed", transaction_type="expense",
-                transaction_side="DEBIT", failure_reason=sim.get("failure_reason"), internal_account_last_4=f_acc.account_number_last_4,
-                sender_email=user.email, recipient_email=v["email"]
-            ))
+            await emit_transactional_event(
+                db=db, user_id=user.id, account_id=f_acc.id, amount=-p.amount, category="Bill Pay",
+                merchant=v["name"], transaction_type="expense", transaction_side="DEBIT",
+                sender_email=user.email, recipient_email=v["email"],
+                internal_account_last_4=f_acc.account_number_last_4,
+                event_type="vendor.payment", idempotency_key=str(uuid.uuid4()),
+                status="cleared" if sim.get("status") == "CLEARED" else "failed",
+                payload_extra={"subscriber_id": p.subscriber_id or "UNK", "failure_reason": sim.get("failure_reason")}
+            )
             p.payments_made += 1
             _update_schedule(p, now)
             return
@@ -98,8 +102,23 @@ async def process_single_payment(db: AsyncSession, p: ScheduledPayment, now: dat
 
     f_acc.balance -= p.amount
     r_acc.balance += p.amount
-    p_id, s_id, rec_id = await _create_p2p_transactions(db, f_acc.id, r_acc.id, p.amount, rec.email, user.email, None, "127.0.0.1", "system", f_acc.account_number_last_4, r_acc.account_number_last_4, "Scheduled")
-    await _create_p2p_outbox_entries(db, f_acc, r_acc, p.amount, user.email, rec.email, p_id, s_id, rec_id, "Scheduled")
+    parent_id = str(uuid.uuid4())
+    # Sender
+    await emit_transactional_event(
+        db=db, user_id=user.id, account_id=f_acc.id, amount=-p.amount, category="P2P",
+        merchant=f"To {rec.email}", transaction_type="transfer", transaction_side="DEBIT",
+        sender_email=user.email, recipient_email=rec.email,
+        internal_account_last_4=f_acc.account_number_last_4,
+        event_type="p2p.sender", idempotency_key=str(uuid.uuid4()), parent_id=parent_id
+    )
+    # Recipient
+    await emit_transactional_event(
+        db=db, user_id=rec.id, account_id=r_acc.id, amount=p.amount, category="P2P",
+        merchant=f"From {user.email}", transaction_type="transfer", transaction_side="CREDIT",
+        sender_email=user.email, recipient_email=rec.email,
+        internal_account_last_4=r_acc.account_number_last_4,
+        event_type="p2p.recipient", idempotency_key=str(uuid.uuid4()), parent_id=parent_id
+    )
     p.payments_made += 1
     _update_schedule(p, now)
 
@@ -107,17 +126,20 @@ def _update_schedule(p: ScheduledPayment, now: datetime.datetime):
     if p.frequency == "One-time" or (p.end_condition == "target" and p.payments_made >= (p.target_payments or 0)):
         p.status, p.next_run_at = "Completed", None
     else:
-        p.next_run_at = _calculate_next_run_at(now, p.frequency)
+        p.next_run_at = calculate_next_run_at(now, p.frequency)
         if p.end_condition == "date" and p.end_date and p.next_run_at > p.end_date:
             p.status, p.next_run_at = "Completed", None
 
 async def handle_fail(db, p, acc, s_email, r_email, merchant):
     p.retry_count += 1
-    db.add(Transaction(
-        id=str(uuid.uuid4()), account_id=acc.id, amount=-p.amount, category="Transfer", merchant=merchant,
-        status="failed", transaction_type="transfer", transaction_side="DEBIT", failure_reason="Insufficient funds",
-        internal_account_last_4=acc.account_number_last_4, sender_email=s_email, recipient_email=r_email
-    ))
+    await emit_transactional_event(
+        db=db, user_id=p.user_id, account_id=acc.id, amount=-p.amount, category="Transfer",
+        merchant=merchant, transaction_type="transfer", transaction_side="DEBIT",
+        sender_email=s_email, recipient_email=r_email,
+        internal_account_last_4=acc.account_number_last_4,
+        event_type="transfer.failed", idempotency_key=str(uuid.uuid4()),
+        status="failed"
+    )
     if p.retry_count >= 3: p.status, p.next_run_at = "Failed", None
     else: p.status, p.next_run_at = "Retrying", datetime.datetime.now(timezone.utc) + timedelta(days=1)
 
