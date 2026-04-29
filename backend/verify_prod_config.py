@@ -7,10 +7,22 @@ from turnstile import verify_turnstile
 
 async def test_verification():
     print(f"DEBUG: ENV={settings.ENV}")
-    print(f"Testing Turnstile with Secret Key: {settings.TURNSTILE_SECRET_KEY}")
     
+    # Masking the secret key for security
+    secret_key = settings.TURNSTILE_SECRET_KEY or "NOT_CONFIGURED"
+    masked_key = f"{secret_key[:4]}...{secret_key[-4:]}" if len(secret_key) > 8 else "****"
+    print(f"Testing Turnstile with Secret Key: {masked_key}")
+
+    if secret_key == "1x0000000000000000000000000000000AA":
+        print("⚠️ WARNING: Using Cloudflare's 'Always Pass' secret key. This is NOT secure for production.")
+
+    # Use token from environment if available, otherwise use a generic test token
     # Cloudflare's 'Always Pass' secret key will accept ANY non-empty token.
-    token = "0.always-pass-token"
+    token = os.getenv("TURNSTILE_VERIFY_TOKEN", "test-token-only")
+
+    if not os.getenv("TURNSTILE_VERIFY_TOKEN"):
+        print("ℹ️ No TURNSTILE_VERIFY_TOKEN environment variable found, using default test token.")
+
     # We'll use the actual backend function but with extra logging if it fails
     try:
         result = await verify_turnstile(token)
