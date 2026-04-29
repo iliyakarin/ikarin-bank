@@ -4,7 +4,7 @@ from decimal import Decimal
 import sys
 import os
 
-# Add parent directory to path to import modules
+# Add parent directory to path to import main
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from services.transfer_service import _calculate_next_run_at
 from schemas.transfers import ScheduledTransferCreate
