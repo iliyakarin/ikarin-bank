@@ -58,8 +58,7 @@ class ProducerManager:
             sasl_plain_password=settings.KAFKA_PASSWORD,
             acks="all",
             request_timeout_ms=settings.KAFKA_REQUEST_TIMEOUT_MS,
-            retry_backoff_ms=settings.KAFKA_RETRY_BACKOFF_MS or 100,
-            retries=settings.KAFKA_RETRY_MAX_RETRIES or 3,
+            retry_backoff_ms=settings.KAFKA_RETRY_BACKOFF_MS or 100
         )
         await self._producer.start()
         self._initialized = True
