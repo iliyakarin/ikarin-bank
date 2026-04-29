@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import MagicMock, patch, mock_open, AsyncMock
 import json
 import asyncio
-from datetime import datetime
+import datetime
 import os
 import sys
 
@@ -17,7 +17,9 @@ def mock_consumer_deps():
 
     modules_to_patch = {
         'confluent_kafka': mock_kafka,
-        'clickhouse_connect': MagicMock()
+        'clickhouse_connect': MagicMock(),
+        'config': MagicMock(),
+        'clickhouse_utils': MagicMock()
     }
 
     with patch.dict(sys.modules, modules_to_patch):
@@ -28,8 +30,7 @@ def mock_consumer_deps():
         consumer.ch_client = mock_ch_client
         yield consumer, mock_ch_client
 
-@pytest.mark.asyncio
-async def test_flush_to_clickhouse_async_success(mock_consumer_deps):
+def test_flush_to_clickhouse_async_success(mock_consumer_deps):
     """Test successful async flush to ClickHouse"""
     consumer, mock_ch_client = mock_consumer_deps
     batch = [
@@ -39,7 +40,7 @@ async def test_flush_to_clickhouse_async_success(mock_consumer_deps):
             "amount": 100.0,
             "category": "Test",
             "merchant": "Test Merchant",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "transaction_type": "expense"
         }
     ]
@@ -48,7 +49,7 @@ async def test_flush_to_clickhouse_async_success(mock_consumer_deps):
     mock_loop.run_in_executor = AsyncMock(side_effect=lambda exec, f, *a: f(*a))
 
     with patch('consumer.asyncio.get_event_loop', return_value=mock_loop):
-        result = await consumer.flush_to_clickhouse_async(batch)
+        result = asyncio.run(consumer.flush_to_clickhouse_async(batch))
 
     assert result is True
     assert mock_ch_client.insert.call_count == 1
@@ -58,8 +59,7 @@ async def test_flush_to_clickhouse_async_success(mock_consumer_deps):
     assert args[0].endswith(".transactions")
     assert "transaction_id" in kwargs['column_names']
 
-@pytest.mark.asyncio
-async def test_flush_to_clickhouse_async_failure_fallback(mock_consumer_deps):
+def test_flush_to_clickhouse_async_failure_fallback(mock_consumer_deps):
     """Test fallback to sync flush if async fails"""
     consumer, mock_ch_client = mock_consumer_deps
     batch = [{"transaction_id": "tx1", "account_id": 1, "amount": 100, "category": "cat", "merchant": "merch", "timestamp": "2023-01-01"}]
@@ -71,7 +71,7 @@ async def test_flush_to_clickhouse_async_failure_fallback(mock_consumer_deps):
     mock_loop.run_in_executor = AsyncMock(side_effect=lambda exec, f, *a: f(*a))
 
     with patch('consumer.asyncio.get_event_loop', return_value=mock_loop):
-        result = await consumer.flush_to_clickhouse_async(batch)
+        result = asyncio.run(consumer.flush_to_clickhouse_async(batch))
 
     assert result is True
     # Should be called once in executor (failed) and once as fallback

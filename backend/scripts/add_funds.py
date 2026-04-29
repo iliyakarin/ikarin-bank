@@ -57,10 +57,9 @@ async def add_funds(target_email: str, amount_to_add: Decimal):
             status="cleared",
             transaction_type="income",
             transaction_side="CREDIT",
-            commentary="Manual fund injection for dev test"
+            commentary="Manual fund injection for dev test",
+            created_at=datetime.datetime.now(datetime.timezone.utc)
         )
-        # Fix created_at to use datetime with timezone
-        transaction.created_at = datetime.datetime.now(datetime.timezone.utc)
 
         db.add(transaction)
 

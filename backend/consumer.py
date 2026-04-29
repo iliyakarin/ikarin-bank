@@ -2,7 +2,7 @@ import json
 import os
 import time
 import asyncio
-from datetime import datetime
+import datetime
 from typing import List, Dict, Any
 
 import logging
@@ -37,7 +37,7 @@ def log_malformed_message_batch(malformed_messages):
         return
 
     dlq_file = "/tmp/kafka_dlq.jsonl"
-    timestamp = datetime.now().isoformat()
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     # Batch write for better performance
     batch_entries = [
@@ -85,7 +85,7 @@ async def flush_to_clickhouse_async(batch: List[Dict[str, Any]]) -> bool:
                 msg["merchant"],
                 msg.get("transaction_type") or "expense",
                 msg.get("transaction_side") or "",
-                datetime.fromisoformat(msg["timestamp"].replace("Z", "+00:00")) if isinstance(msg["timestamp"], str) else msg["timestamp"],
+                datetime.datetime.fromisoformat(msg["timestamp"].replace("Z", "+00:00")) if isinstance(msg["timestamp"], str) else msg["timestamp"],
                 msg.get("internal_account_last_4") or "",
                 msg.get("subscriber_id"),
                 msg.get("failure_reason"),
@@ -171,7 +171,7 @@ async def flush_activity_to_clickhouse(batch: List[Dict[str, Any]]) -> bool:
                 msg["user_id"],
                 msg["category"],
                 msg["action"],
-                datetime.fromisoformat(msg["event_time"].replace("Z", "+00:00")) if isinstance(msg["event_time"], str) else msg["event_time"],
+                datetime.datetime.fromisoformat(msg["event_time"].replace("Z", "+00:00")) if isinstance(msg["event_time"], str) else msg["event_time"],
                 msg["title"],
                 msg.get("details", "{}"),
             ]
