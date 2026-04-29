@@ -23,10 +23,12 @@ export default function RegisterPage() {
     const router = useRouter();
 
     const generatePassword = () => {
-        const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+        const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+";
+        const array = new Uint32Array(16);
+        window.crypto.getRandomValues(array);
         let password = "";
         for (let i = 0; i < 16; i++) {
-            password += charset.charAt(Math.floor(Math.random() * charset.length));
+            password += charset.charAt(array[i] % charset.length);
         }
         setFormData({ ...formData, password });
     };
