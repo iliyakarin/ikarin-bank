@@ -187,15 +187,7 @@ async def handle_subscription_deleted(deposit_subscription: dict, db: AsyncSessi
     Handles subscription cancellation from Deposit Mock.
     """
     deposit_sub_id = deposit_subscription.get("id")
-    # Finding user by searching for active subscription with this ID would be ideal
-    # For now, we'll search by user_id if present in metadata or just find the user's active sub
-    customer_id = deposit_subscription.get("customer")
-
-    # Normally we'd look up user by deposit_customer_id
-    # But for simplicity in this mock-to-real transition, let's find the user's most recent active sub
-    # In production, you MUST store deposit_customer_id and deposit_subscription_id.
-
-    # For this exercise, we'll try to find the User via metadata if available
+    # Find the User via metadata if available to deactivate their active subscriptions
     metadata = deposit_subscription.get("metadata", {})
     user_id = metadata.get("user_id")
 
