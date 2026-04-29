@@ -16,12 +16,11 @@ async def test_verification():
     if secret_key == "1x0000000000000000000000000000000AA":
         print("⚠️ WARNING: Using Cloudflare's 'Always Pass' secret key. This is NOT secure for production.")
 
-    # Use token from environment if available, otherwise use a generic test token
-    # Cloudflare's 'Always Pass' secret key will accept ANY non-empty token.
-    token = os.getenv("TURNSTILE_VERIFY_TOKEN", "test-token-only")
+    import sys
+    token = sys.argv[1] if len(sys.argv) > 1 else "<YOUR_SECRET_KEY_HERE>"
 
-    if not os.getenv("TURNSTILE_VERIFY_TOKEN"):
-        print("ℹ️ No TURNSTILE_VERIFY_TOKEN environment variable found, using default test token.")
+    if token == "<YOUR_SECRET_KEY_HERE>":
+        print("ℹ️ No token provided via command line args. Verification will likely fail.")
 
     # We'll use the actual backend function but with extra logging if it fails
     try:
