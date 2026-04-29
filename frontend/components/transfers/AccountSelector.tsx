@@ -47,7 +47,7 @@ export default function AccountSelector({
         >
           <span className="truncate">
             {selectedAccount ? (
-              `${selectedAccount.name || (selectedAccount.is_main ? 'Main Account' : 'Account')} - ${selectedAccount.account_number.slice(-4)} - ${formatCurrency(selectedAccount.balance)}`
+              `${selectedAccount.name || (selectedAccount.is_main ? 'Main Account' : 'Account')} - ${(selectedAccount.masked_account_number ?? selectedAccount.account_number ?? '****').slice(-4)} - ${formatCurrency(selectedAccount.balance)}`
             ) : "Select an account"}
           </span>
           <ChevronDown
@@ -75,7 +75,7 @@ export default function AccountSelector({
                     }}
                     className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${selectedId === acc.id || (selectedId === "" && acc.is_main) ? 'bg-purple-500/20 text-purple-300 font-bold' : 'hover:bg-white/10 text-white'}`}
                   >
-                    <span className="block truncate">{acc.name || (acc.is_main ? 'Main Account' : 'Account')} - {acc.account_number.slice(-4)}</span>
+                    <span className="block truncate">{acc.name || (acc.is_main ? 'Main Account' : 'Account')} - {(acc.masked_account_number ?? acc.account_number ?? '****').slice(-4)}</span>
                     <span className="text-xs opacity-70">{formatCurrency(acc.balance)}</span>
                   </div>
                 ))}
