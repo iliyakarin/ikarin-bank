@@ -1,11 +1,11 @@
 import pytest
 import asyncio
 from unittest.mock import MagicMock, patch
+from auth_utils import admin_only
 
 @pytest.mark.asyncio
 async def test_admin_only_dependency_logic(mock_fastapi_dependency):
     main = mock_fastapi_dependency
-    admin_only = main.admin_only
     main.status.HTTP_403_FORBIDDEN = 403
     main.status.HTTP_401_UNAUTHORIZED = 401
 
@@ -35,8 +35,8 @@ async def test_admin_only_dependency_logic(mock_fastapi_dependency):
 
 @pytest.mark.asyncio
 async def test_get_ch_logs_requires_admin(mock_fastapi_dependency):
+    from routers.admin import get_ch_logs
     main = mock_fastapi_dependency
-    get_ch_logs = main.get_ch_logs
     main.status.HTTP_403_FORBIDDEN = 403
 
     admin_user = MagicMock()
@@ -58,8 +58,8 @@ async def test_get_ch_logs_requires_admin(mock_fastapi_dependency):
 
 @pytest.mark.asyncio
 async def test_get_kafka_status_requires_admin(mock_fastapi_dependency):
+    from routers.admin import get_kafka_status
     main = mock_fastapi_dependency
-    get_kafka_status = main.get_kafka_status
 
     admin_user = MagicMock()
     admin_user.role = "admin"
@@ -76,15 +76,16 @@ async def test_get_kafka_status_requires_admin(mock_fastapi_dependency):
 
 @pytest.mark.asyncio
 async def test_simulate_traffic_api(mock_fastapi_dependency):
+    from routers.admin import simulate_traffic
     main = mock_fastapi_dependency
-    simulate_traffic = main.simulate_traffic
 
     admin_user = MagicMock()
     admin_user.role = "admin"
 
     # Use real Pydantic model if available, else mock
     try:
-        req = main.SimulationRequest(batch_size=10, tps=10, count=100)
+        from schemas.admin import SimulationRequest
+        req = SimulationRequest(batch_size=10, tps=10, count=100)
     except:
         req = MagicMock()
         req.batch_size = 10

@@ -4,9 +4,10 @@ from decimal import Decimal
 import sys
 import os
 
-# Add parent directory to path to import main
+# Add parent directory to path to import modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from main import _calculate_next_run_at, ScheduledTransferCreate
+from services.transfer_service import _calculate_next_run_at
+from schemas.transfers import ScheduledTransferCreate
 
 def test_calculate_next_run_at_daily():
     start = datetime.datetime(2026, 1, 1, 10, 0)

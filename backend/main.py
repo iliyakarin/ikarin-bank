@@ -1,33 +1,12 @@
-import json
-import uuid
-import os
-import re
-import datetime
 import asyncio
-import httpx
-from typing import Dict, Any, Optional, Tuple, List
-from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Request, WebSocket, WebSocketDisconnect
-from sqlalchemy.orm import Session
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import func, text, or_, select
+from fastapi import FastAPI, Depends, Request, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
 from aiokafka import AIOKafkaProducer
-from pydantic import BaseModel
-from database import SessionLocal, Transaction, User, Account, Outbox, IdempotencyKey, ScheduledPayment, PaymentRequest, Contact, PaymentMethod, Base, engine
-from activity import emit_activity, ws_register, ws_unregister
-from security_checks import check_velocity, check_anomaly
-from services.account_service import mask_account_number, decrypt_account_number
-import clickhouse_connect
+from database import SessionLocal, User
+from activity import ws_register, ws_unregister
 
 from fastapi.middleware.cors import CORSMiddleware
-from confluent_kafka.admin import AdminClient
-from confluent_kafka import Consumer, KafkaException
-from clickhouse_utils import get_ch_client, CH_DB
-from passlib.context import CryptContext
 from jose import JWTError, jwt
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sync_checker import run_sync_check
-from services.transfer_service import process_p2p_transfer, get_vendors, _calculate_next_run_at
 
 import logging
 
@@ -108,8 +87,7 @@ app.add_middleware(
 # Auth Configuration
 from auth_utils import (
     SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES,
-    pwd_context, oauth2_scheme, verify_password, get_password_hash,
-    create_access_token, get_db, get_current_user, RoleChecker
+    get_db, get_current_user, admin_only, support_only
 )
 
 
@@ -146,9 +124,6 @@ app.include_router(deposit.router, prefix="/v1")
 
 
 # Helper Functions
-# Role Checkers
-admin_only = RoleChecker(["admin"])
-support_only = RoleChecker(["admin", "support"])
 
 from turnstile import verify_turnstile
 

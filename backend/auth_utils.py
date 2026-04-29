@@ -72,3 +72,6 @@ class RoleChecker:
                 detail="You do not have the required permissions for this operation"
             )
         return current_user
+
+admin_only = RoleChecker(["admin"])
+support_only = RoleChecker(["admin", "support"])

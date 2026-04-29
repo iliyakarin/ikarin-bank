@@ -17,7 +17,8 @@ def mock_deps(mock_fastapi_dependency, mock_db_dependency):
     return mock_fastapi_dependency
 
 def test_role_checker_admin_only():
-    from main import RoleChecker, User
+    from auth_utils import RoleChecker
+    from database import User
 
     checker = RoleChecker(["admin"])
     admin_user = User(id=1, email="admin@test.com", role="admin")
@@ -71,9 +72,9 @@ def test_account_ownership_check():
     asyncio.run(run_test())
 
 def test_jwt_payload_includes_role():
-    from main import create_access_token
+    from auth_utils import create_access_token
     from jose import jwt
-    from main import SECRET_KEY, ALGORITHM
+    from auth_utils import SECRET_KEY, ALGORITHM
 
     token = create_access_token({"sub": "test@test.com", "role": "admin"})
     payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])

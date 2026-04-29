@@ -7,8 +7,7 @@ from database import User, Account, Transaction
 @pytest.mark.asyncio
 async def test_delete_user_unauthorized(mock_fastapi_dependency):
     """Verify that only admins can call the delete_user endpoint."""
-    main = mock_fastapi_dependency
-    delete_user = main.delete_user
+    from routers.admin import delete_user
 
     # Mocking dependencies
     regular_user = MagicMock(spec=User)
@@ -23,8 +22,7 @@ async def test_delete_user_unauthorized(mock_fastapi_dependency):
 @pytest.mark.asyncio
 async def test_delete_user_not_found(mock_fastapi_dependency):
     """Verify 404 is returned if user doesn't exist."""
-    main = mock_fastapi_dependency
-    delete_user = main.delete_user
+    from routers.admin import delete_user
 
     admin_user = MagicMock(spec=User)
     admin_user.role = "admin"
@@ -43,8 +41,7 @@ async def test_delete_user_not_found(mock_fastapi_dependency):
 @pytest.mark.asyncio
 async def test_delete_user_full_cleanup(mock_fastapi_dependency):
     """Verify that a user and all related data are deleted/anonymized."""
-    main = mock_fastapi_dependency
-    delete_user = main.delete_user
+    from routers.admin import delete_user
 
     admin_user = MagicMock(spec=User)
     admin_user.role = "admin"

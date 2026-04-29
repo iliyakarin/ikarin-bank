@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from database import User, Account, Transaction, Outbox, SessionLocal
 from schemas.users import UserResponse
 from schemas.admin import SimulationRequest, QueryRequest
-from auth_utils import get_db, get_current_user, RoleChecker
+from auth_utils import get_db, get_current_user, RoleChecker, admin_only
 from datetime import datetime, timezone, timedelta
 import json
 import logging
@@ -37,7 +37,6 @@ CH_PASSWORD = settings.CLICKHOUSE_PASSWORD
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-admin_only = RoleChecker(["admin"])
 
 # Security: Predefined query registry to prevent arbitrary SQL execution
 PREDEFINED_QUERIES = {

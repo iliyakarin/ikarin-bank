@@ -283,7 +283,7 @@ async def handle_insufficient_funds(db: AsyncSession, payment: ScheduledPayment,
     db.add(failed_tx)
 
     # Emit to ClickHouse via Outbox
-    from main import _create_p2p_outbox_entries
+    from services.transfer_service import _create_p2p_outbox_entries
     from database import Account
     # We only need the sender's side for a failed funding attempt
     db.add(Outbox(
