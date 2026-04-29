@@ -15,6 +15,15 @@ declare global {
 
 const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const widgetIdRef = useRef<string | null>(null);
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Keep callbacks fresh without triggering effect
+    const callbacks = useRef({ onVerify, onError, onExpire });
+    useEffect(() => {
+        callbacks.current = { onVerify, onError, onExpire };
+    }, [onVerify, onError, onExpire]);
+
     // Access TURNSTILE_SITE_KEY from window if injected at runtime, 
     // otherwise fallback to the build-time env var.
     const runtimeSiteKey = typeof window !== 'undefined' ? ((window as any).TURNSTILE_SITE_KEY || (window as any).NEXT_PUBLIC_TURNSTILE_SITE_KEY) : null;
@@ -32,10 +41,9 @@ const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) =>
             siteKey !== 'dummy-site-key';
 
         if (!isProduction) {
-            onVerify('mock-token-dev');
+            callbacks.current.onVerify('mock-token-dev');
             return;
         }
-
 
         if (!containerRef.current) return;
 
@@ -44,33 +52,49 @@ const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) =>
 
         const renderTurnstile = () => {
             if (window.turnstile) {
-                window.turnstile.render(containerRef.current, {
-                    sitekey: siteKey,
-                    callback: onVerify,
-                    'error-callback': () => {
-                        if (onError) onError('Human-bot verification failed');
-                    },
-                    'expired-callback': onExpire,
-                    theme: 'dark',
-                });
+                // Remove existing widget if re-initializing
+                if (widgetIdRef.current) {
+                    window.turnstile.remove(widgetIdRef.current);
+                    widgetIdRef.current = null;
+                }
+                
+                try {
+                    widgetIdRef.current = window.turnstile.render(containerRef.current, {
+                        sitekey: siteKey,
+                        callback: (token: string) => callbacks.current.onVerify(token),
+                        'error-callback': () => {
+                            if (callbacks.current.onError) callbacks.current.onError('Human-bot verification failed');
+                        },
+                        'expired-callback': () => {
+                            if (callbacks.current.onExpire) callbacks.current.onExpire();
+                        },
+                        theme: 'dark',
+                    });
+                } catch (e) {
+                    console.error("Turnstile render error", e);
+                }
             } else if (retryCount < maxRetries) {
                 // If script not loaded yet, retry with backoff
                 retryCount++;
-                setTimeout(renderTurnstile, 500 * retryCount);
+                timeoutRef.current = setTimeout(renderTurnstile, 500 * retryCount);
             } else {
-                if (onError) onError('Human-bot verification failed');
+                if (callbacks.current.onError) callbacks.current.onError('Human-bot verification failed');
             }
         };
-
 
         renderTurnstile();
 
         return () => {
-            if (window.turnstile && containerRef.current) {
-                containerRef.current.innerHTML = '';
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+            }
+            if (window.turnstile && widgetIdRef.current) {
+                window.turnstile.remove(widgetIdRef.current);
+                widgetIdRef.current = null;
             }
         };
-    }, [onVerify, onError, onExpire, siteKey]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [siteKey]);
 
     return (
         <div className="flex justify-center my-4">
