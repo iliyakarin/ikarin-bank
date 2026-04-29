@@ -46,6 +46,9 @@ async def add_funds(target_email: str, amount_to_add: Decimal):
         # 3. Update account balance
         account.balance += amount_to_add
 
+        # Capture a single timestamp for all related records
+        now = datetime.datetime.now(datetime.timezone.utc)
+
         # 4. Create a transaction record
         tx_id = str(uuid.uuid4())
         now = datetime.datetime.now(datetime.timezone.utc)
