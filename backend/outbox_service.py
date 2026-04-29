@@ -59,7 +59,7 @@ class ProducerManager:
             acks="all",
             request_timeout_ms=settings.KAFKA_REQUEST_TIMEOUT_MS,
             retry_backoff_ms=settings.KAFKA_RETRY_BACKOFF_MS or 100,
-            retries=settings.KAFKA_MAX_RETRIES or 3,
+            retries=settings.KAFKA_RETRY_MAX_RETRIES or 3,
         )
         await self._producer.start()
         self._initialized = True
