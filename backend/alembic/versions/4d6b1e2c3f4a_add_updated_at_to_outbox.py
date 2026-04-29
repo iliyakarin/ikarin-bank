@@ -25,13 +25,24 @@ def upgrade() -> None:
     inspector = Inspector.from_engine(conn)
     existing_tables = inspector.get_table_names()
 
-    if "outbox" in existing_tables:
-        columns = [c["name"] for c in inspector.get_columns("outbox")]
-        if "updated_at" not in columns:
-            op.add_column('outbox', sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False))
-            print("Added updated_at to outbox table")
+    tables_to_check = [
+        "users", "subscriptions", "contacts", "scheduled_payments", 
+        "outbox", "accounts", "payment_methods", "transactions", 
+        "payment_requests", "idempotency_keys"
+    ]
+
+    for table in tables_to_check:
+        if table in existing_tables:
+            columns = [c["name"] for c in inspector.get_columns(table)]
+            if "created_at" not in columns:
+                op.add_column(table, sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False))
+                print(f"Added created_at to {table} table")
+            if "updated_at" not in columns:
+                op.add_column(table, sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False))
+                print(f"Added updated_at to {table} table")
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_column('outbox', 'updated_at')
+    pass
+
