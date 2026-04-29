@@ -214,3 +214,77 @@ async def get_scheduled_payments(
     return (await db.execute(
         select(ScheduledPayment).where(ScheduledPayment.user_id == current_user.id).order_by(ScheduledPayment.id.desc())
     )).scalars().all()
+
+
+@router.get("/transfers/scheduled", response_model=List[ScheduledPaymentResponse])
+async def get_scheduled_payments_alias(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Alias for GET /scheduled to match frontend API expectations."""
+    return (await db.execute(
+        select(ScheduledPayment).where(ScheduledPayment.user_id == current_user.id).order_by(ScheduledPayment.id.desc())
+    )).scalars().all()
+
+
+@router.post("/transfers/scheduled")
+async def create_scheduled_payment(
+    payload: ScheduledTransferCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Creates a new scheduled payment."""
+    from date_utils import calculate_next_run_at
+    import datetime
+    now = datetime.datetime.now(datetime.timezone.utc)
+    next_run = calculate_next_run_at(now, payload.frequency)
+
+    new_payment = ScheduledPayment(
+        user_id=current_user.id,
+        recipient_email=payload.recipient_email,
+        amount=payload.amount,
+        frequency=payload.frequency,
+        frequency_interval=payload.frequency_interval,
+        start_date=payload.start_date,
+        end_condition=payload.end_condition,
+        end_date=payload.end_date,
+        target_payments=payload.target_payments,
+        reserve_amount=payload.reserve_amount,
+        funding_account_id=payload.funding_account_id,
+        subscriber_id=payload.subscriber_id,
+        idempotency_key=payload.idempotency_key,
+        status="Active",
+        next_run_at=next_run,
+        payments_made=0,
+        retry_count=0,
+    )
+    db.add(new_payment)
+    await db.commit()
+    await db.refresh(new_payment)
+    return {"scheduled_payment_id": new_payment.id, "status": "created"}
+
+
+@router.post("/transfers/scheduled/{payment_id}/cancel")
+async def cancel_scheduled_payment(
+    payment_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Cancels an active scheduled payment."""
+    payment = (await db.execute(
+        select(ScheduledPayment).where(
+            ScheduledPayment.id == payment_id,
+            ScheduledPayment.user_id == current_user.id
+        )
+    )).scalars().first()
+
+    if not payment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scheduled payment not found")
+    if payment.status in ("Completed", "Failed", "Cancelled"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot cancel a payment with status '{payment.status}'")
+
+    payment.status = "Cancelled"
+    payment.next_run_at = None
+    await db.commit()
+    return {"status": "cancelled", "payment_id": payment_id}
+

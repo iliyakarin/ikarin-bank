@@ -39,15 +39,23 @@ export interface ActivityParams {
   offset?: number;
 }
 
-export const getActivity = (params: ActivityParams) => 
-  api.get<ActivityResponse>("/api/v1/activity", {
-    params: {
-        ...params,
-        limit: params.limit?.toString() ?? "30",
-        offset: params.offset?.toString() ?? "0"
-    },
+export const getActivity = (params: ActivityParams) => {
+  // Filter out undefined values to prevent "undefined" string in query params
+  const cleanParams: Record<string, string> = {
+    limit: params.limit?.toString() ?? "30",
+    offset: params.offset?.toString() ?? "0",
+  };
+  if (params.category) cleanParams.category = params.category;
+  if (params.search) cleanParams.search = params.search;
+  if (params.from_date) cleanParams.from_date = params.from_date;
+  if (params.to_date) cleanParams.to_date = params.to_date;
+  if (params.order) cleanParams.order = params.order;
+
+  return api.get<ActivityResponse>("/api/v1/activity", {
+    params: cleanParams,
     schema: ActivityResponseSchema
   });
+};
 
 export const CATEGORIES = [
   { value: "", label: "All Categories", icon: Activity },

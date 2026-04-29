@@ -7,14 +7,15 @@ import { api } from "./client";
 
 export const AccountSchema = z.object({
   id: z.number(),
-  user_id: z.number(),
-  account_number: z.string(),
-  routing_number: z.string(),
+  user_id: z.number().optional(),
+  account_number: z.string().optional(),
+  routing_number: z.string().nullable().optional(),
   balance: z.number(),
-  currency: z.string(),
+  reserved_balance: z.number().optional().default(0),
+  currency: z.string().optional().default("USD"),
   is_main: z.boolean(),
   name: z.string(),
-  masked_account_number: z.string().optional(),
+  masked_account_number: z.string().nullable().optional(),
 });
 
 export type Account = z.infer<typeof AccountSchema>;
@@ -43,9 +44,10 @@ export const AccountSummarySchema = z.object({
 export type AccountSummary = z.infer<typeof AccountSummarySchema>;
 
 export async function getAccounts(): Promise<Account[]> {
-  return api.get<Account[]>("/api/v1/accounts", {
-    schema: z.array(AccountSchema)
+  const res = await api.get<AccountSummary>("/api/v1/accounts", {
+    schema: AccountSummarySchema
   });
+  return res.accounts;
 }
 
 export async function getAccountSummary(userId: number): Promise<AccountSummary> {

@@ -44,6 +44,30 @@ async def check_account_owner(account_id: int, user_id: int, db: AsyncSession) -
         )
     return account
 
+@router.get("", response_model=BalanceResponse)
+async def get_my_accounts(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Returns all accounts for the currently authenticated user."""
+    accounts = (await db.execute(select(Account).where(Account.user_id == current_user.id))).scalars().all()
+    if not accounts:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No accounts found")
+
+    sub_accounts_data = []
+    for acc in accounts:
+        masked = mask_account_number(decrypt_account_number(acc.account_number_encrypted)) if acc.account_number_encrypted else None
+        sub_accounts_data.append(AccountResponse(
+            id=acc.id, name=acc.name, balance=acc.balance, reserved_balance=acc.reserved_balance or 0,
+            is_main=acc.is_main, routing_number=acc.routing_number, masked_account_number=masked
+        ))
+
+    return BalanceResponse(
+        balance=sum(acc.balance for acc in accounts),
+        reserved_balance=sum(acc.reserved_balance or 0 for acc in accounts),
+        user_id=current_user.id, accounts=sub_accounts_data
+    )
+
 @router.post("/sub", status_code=status.HTTP_201_CREATED, response_model=AccountResponse)
 async def create_sub_account(
     request: SubAccountCreate,
