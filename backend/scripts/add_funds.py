@@ -48,6 +48,7 @@ async def add_funds(target_email: str, amount_to_add: Decimal):
 
         # 4. Create a transaction record
         tx_id = str(uuid.uuid4())
+        now = datetime.datetime.now(datetime.timezone.utc)
         transaction = Transaction(
             id=tx_id,
             account_id=account.id,
@@ -57,10 +58,9 @@ async def add_funds(target_email: str, amount_to_add: Decimal):
             status="cleared",
             transaction_type="income",
             transaction_side="CREDIT",
-            commentary="Manual fund injection for dev test"
+            commentary="Manual fund injection for dev test",
+            created_at=now
         )
-        # Fix created_at to use datetime with timezone
-        transaction.created_at = datetime.datetime.now(datetime.timezone.utc)
 
         db.add(transaction)
 
@@ -80,9 +80,10 @@ async def add_funds(target_email: str, amount_to_add: Decimal):
                 "transaction_type": "income",
                 "transaction_side": "CREDIT",
                 "status": "cleared",
-                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "timestamp": now.isoformat(),
                 "commentary": "Manual fund injection for dev test"
-            }
+            },
+            created_at=now
         )
         db.add(outbox_event)
 
