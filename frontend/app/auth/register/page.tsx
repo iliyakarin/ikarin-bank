@@ -19,6 +19,7 @@ export default function RegisterPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+    const [turnstileKey, setTurnstileKey] = useState(0);
     const router = useRouter();
 
     const generatePassword = () => {
@@ -47,9 +48,13 @@ export default function RegisterPage() {
             } else {
                 const data = await res.json();
                 setError(data.detail || 'Registration failed');
+                setCaptchaToken(null);
+                setTurnstileKey(k => k + 1);
             }
         } catch (err) {
             setError('Connection error. Is the API running?');
+            setCaptchaToken(null);
+            setTurnstileKey(k => k + 1);
         } finally {
             setLoading(false);
         }
@@ -154,6 +159,7 @@ export default function RegisterPage() {
                             </Button>
 
                             <Turnstile
+                                key={turnstileKey}
                                 onVerify={(token) => setCaptchaToken(token)}
                                 onError={() => setError('Captcha failed to load.')}
                                 onExpire={() => setCaptchaToken(null)}

@@ -17,6 +17,7 @@ export default function LoginPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+    const [turnstileKey, setTurnstileKey] = useState(0);
     const { login } = useAuth();
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -43,14 +44,22 @@ export default function LoginPage() {
                 await login(data.access_token);
             } else if (res.status === 401) {
                 setError('Invalid email or password');
+                setCaptchaToken(null);
+                setTurnstileKey(k => k + 1);
             } else if (res.status === 400) {
                 const data = await res.json();
                 setError(data.detail || 'Invalid request');
+                setCaptchaToken(null);
+                setTurnstileKey(k => k + 1);
             } else {
                 setError('Server error (500). Please check backend logs.');
+                setCaptchaToken(null);
+                setTurnstileKey(k => k + 1);
             }
         } catch (err) {
             setError('Connection error. Is the API running?');
+            setCaptchaToken(null);
+            setTurnstileKey(k => k + 1);
         } finally {
             setLoading(false);
         }
@@ -126,6 +135,7 @@ export default function LoginPage() {
                             </Button>
 
                             <Turnstile
+                                key={turnstileKey}
                                 onVerify={(token) => setCaptchaToken(token)}
                                 onError={() => setError('Captcha failed to load.')}
                                 onExpire={() => setCaptchaToken(null)}

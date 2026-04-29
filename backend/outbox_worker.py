@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 async def process_outbox():
     """Main loop for the outbox worker."""
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
-    async with AsyncSession(engine) as session:
-        while True:
-            try:
+    while True:
+        try:
+            async with AsyncSession(engine) as session:
                 result = await session.execute(
                     select(Outbox).where(Outbox.status == "pending").limit(50)
                 )
@@ -39,9 +39,9 @@ async def process_outbox():
                         continue
 
                 await session.commit()
-            except Exception as e:
-                logger.error(f"Loop error: {e}")
-                await asyncio.sleep(2)
+        except Exception as e:
+            logger.error(f"Loop error: {e}")
+            await asyncio.sleep(2)
 
 async def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
