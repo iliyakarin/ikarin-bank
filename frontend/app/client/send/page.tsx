@@ -191,16 +191,16 @@ export default function SendMoneyPage() {
           <div className="max-w-3xl mx-auto w-full">
             <motion.div
               layout
-              className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-xl relative overflow-hidden group"
+              className="bg-white/10 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden group"
             >
-              <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 blur-[100px] pointer-events-none group-hover:bg-indigo-500/10 transition-colors" />
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 blur-[100px] pointer-events-none group-hover:bg-white/10 transition-colors" />
               
               <div className="relative space-y-8">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
+                  <h2 className="text-2xl font-black text-white uppercase tracking-tighter">
                     New {activeTab === 'instant' ? 'Transfer' : activeTab === 'scheduled' ? 'Schedule' : 'Request'}
                   </h2>
-                  <div className="p-2 bg-slate-50 rounded-lg text-slate-300">
+                  <div className="p-2 bg-white/5 rounded-lg text-white/40">
                     <Info size={18} />
                   </div>
                 </div>
@@ -246,15 +246,15 @@ export default function SendMoneyPage() {
 
           {/* History / Management Section - Now Below */}
           <div className="space-y-8">
-            <div className="bg-white border border-slate-200 rounded-[2.5rem] overflow-hidden shadow-sm">
-              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3">
+            <div className="bg-white/10 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl">
+              <div className="p-8 border-b border-white/5 flex items-center justify-between bg-white/5">
+                <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-3">
                   {activeTab === 'instant' ? 'Recent History' : activeTab === 'scheduled' ? 'Active Schedules' : 'Pending Requests'}
-                  <span className="text-[10px] bg-slate-200 px-2 py-1 rounded text-slate-500 font-bold tracking-widest uppercase">Live</span>
+                  <span className="text-[10px] bg-indigo-500/20 px-2 py-1 rounded text-indigo-400 font-bold tracking-widest uppercase border border-indigo-500/20">Live</span>
                 </h3>
                 <button 
                   onClick={fetchData}
-                  className="p-2 hover:bg-slate-200 rounded-xl text-slate-400 hover:text-slate-600 transition-colors"
+                  className="p-2 hover:bg-white/10 rounded-xl text-white/40 hover:text-white transition-colors"
                 >
                   <ChevronRight size={20} />
                 </button>

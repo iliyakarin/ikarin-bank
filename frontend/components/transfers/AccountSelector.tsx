@@ -29,11 +29,11 @@ export default function AccountSelector({
 
   return (
     <div className="space-y-3 relative">
-      <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider flex justify-between">
+      <label className="block text-white/60 font-bold text-sm uppercase tracking-wider flex justify-between">
         <span>{label}</span>
         {selectedId !== "" && (
           <span
-            className="text-[10px] text-indigo-600 cursor-pointer hover:underline font-black tracking-widest"
+            className="text-[10px] text-indigo-400 cursor-pointer hover:underline font-black tracking-widest"
             onClick={() => onSelect("")}
           >
             Reset to Default
@@ -43,7 +43,7 @@ export default function AccountSelector({
       <div className="relative group">
         <div
           onClick={() => isLoading ? null : setIsOpen(!isOpen)}
-          className={`w-full bg-slate-50 border ${isOpen ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-slate-200'} rounded-2xl px-4 py-4 text-slate-900 cursor-pointer hover:bg-slate-100 transition-all flex items-center justify-between shadow-sm`}
+          className={`w-full bg-white/5 border ${isOpen ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-white/10'} rounded-2xl px-4 py-4 text-white cursor-pointer hover:bg-white/10 transition-all flex items-center justify-between shadow-sm`}
         >
           <span className="truncate font-bold text-sm">
             {selectedAccount ? (
@@ -51,7 +51,7 @@ export default function AccountSelector({
             ) : "Select an account"}
           </span>
           <ChevronDown
-            className={`text-slate-300 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
+            className={`text-white/20 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
             size={20}
           />
         </div>
@@ -63,7 +63,7 @@ export default function AccountSelector({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -10 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
-              className="absolute z-[100] w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
+              className="absolute z-[100] w-full mt-2 bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
             >
               <div className="p-2 space-y-1">
                 {accounts.map(acc => (
@@ -73,10 +73,10 @@ export default function AccountSelector({
                       onSelect(acc.id);
                       setIsOpen(false);
                     }}
-                    className={`px-4 py-3 rounded-xl cursor-pointer transition-all ${selectedId === acc.id || (selectedId === "" && acc.is_main) ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-100' : 'hover:bg-slate-50 text-slate-600 border border-transparent'}`}
+                    className={`px-4 py-3 rounded-xl cursor-pointer transition-all ${selectedId === acc.id || (selectedId === "" && acc.is_main) ? 'bg-indigo-500/20 text-indigo-400 font-bold border border-indigo-500/20' : 'hover:bg-white/5 text-white/60 border border-transparent hover:text-white'}`}
                   >
                     <span className="block truncate text-sm font-bold">{acc.name || (acc.is_main ? 'Main Account' : 'Account')} - {(acc.masked_account_number ?? acc.account_number ?? '****').slice(-4)}</span>
-                    <span className="text-[10px] font-black uppercase tracking-widest opacity-60">{formatCurrency(acc.balance)}</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest opacity-40">{formatCurrency(acc.balance)}</span>
                   </div>
                 ))}
               </div>

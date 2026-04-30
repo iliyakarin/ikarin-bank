@@ -90,7 +90,7 @@ export default function InstantTransferTab({
       />
 
       <div className="space-y-3 relative">
-        <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">Recipient Email</label>
+        <label className="block text-white/60 font-bold text-sm uppercase tracking-wider">Recipient Email</label>
         <div className="relative group">
           <input
             type="email"
@@ -99,10 +99,10 @@ export default function InstantTransferTab({
             onFocus={() => setIsContactOpen(true)}
             onBlur={() => setTimeout(() => setIsContactOpen(false), 200)}
             placeholder="user@example.com"
-            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all pr-10"
+            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all pr-10"
             required
           />
-          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 pointer-events-none transition-colors" size={20} />
+          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-indigo-400 pointer-events-none transition-colors" size={20} />
         </div>
 
         <AnimatePresence>
@@ -111,7 +111,7 @@ export default function InstantTransferTab({
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
+              className="absolute z-50 w-full mt-2 bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
             >
               <div className="p-2">
                 {contacts.filter(c => c.email.toLowerCase().includes(recipient.toLowerCase())).length > 0 ? (
@@ -123,17 +123,17 @@ export default function InstantTransferTab({
                         if (c.subscriber_id) setSubscriberId(c.subscriber_id);
                         setIsContactOpen(false);
                       }}
-                      className="px-4 py-3 hover:bg-slate-50 rounded-xl cursor-pointer flex justify-between items-center group/item transition-colors"
+                      className="px-4 py-3 hover:bg-white/10 rounded-xl cursor-pointer flex justify-between items-center group/item transition-colors"
                     >
                       <div>
-                        <p className="text-slate-900 font-bold group-hover/item:text-indigo-600">{c.name || c.email}</p>
-                        <p className="text-slate-400 text-xs font-medium">{c.email}</p>
+                        <p className="text-white font-bold group-hover/item:text-indigo-400">{c.name || c.email}</p>
+                        <p className="text-white/40 text-xs font-medium">{c.email}</p>
                       </div>
-                      <ArrowRight size={14} className="text-slate-200 group-hover/item:text-indigo-400 group-hover/item:translate-x-1 transition-all" />
+                      <ArrowRight size={14} className="text-white/10 group-hover/item:text-indigo-400 group-hover/item:translate-x-1 transition-all" />
                     </div>
                   ))
                 ) : (
-                  <div className="px-4 py-3 text-slate-400 text-sm text-center">No contacts found</div>
+                  <div className="px-4 py-3 text-white/40 text-sm text-center">No contacts found</div>
                 )}
               </div>
             </motion.div>
@@ -142,41 +142,41 @@ export default function InstantTransferTab({
       </div>
 
       <div className="space-y-3">
-        <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">Amount (USD)</label>
+        <label className="block text-white/60 font-bold text-sm uppercase tracking-wider">Amount (USD)</label>
         <div className="relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">$</span>
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 font-bold text-lg">$</span>
           <input
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
             step="0.01"
-            className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-8 pr-4 py-4 text-slate-900 font-bold text-lg placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-8 pr-4 py-4 text-white font-bold text-lg placeholder:text-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all"
             required
           />
         </div>
       </div>
 
       <div className="space-y-3">
-        <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">Commentary <span className="text-slate-400 font-normal normal-case">(Optional)</span></label>
+        <label className="block text-white/60 font-bold text-sm uppercase tracking-wider">Commentary <span className="text-white/20 font-normal normal-case">(Optional)</span></label>
         <textarea
           value={commentary}
           onChange={(e) => setCommentary(e.target.value)}
           placeholder="What is this for?"
           rows={2}
-          className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none"
+          className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all resize-none"
         />
       </div>
 
       {isVendor && (
         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="space-y-3">
-          <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">Subscriber / Contract ID</label>
+          <label className="block text-white/60 font-bold text-sm uppercase tracking-wider">Subscriber / Contract ID</label>
           <input
             type="text"
             value={subscriberId}
             onChange={(e) => setSubscriberId(e.target.value)}
             placeholder="Enter your subscriber ID"
-            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all"
             required
           />
         </motion.div>
@@ -185,7 +185,7 @@ export default function InstantTransferTab({
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 text-white font-black py-5 rounded-[1.5rem] flex items-center justify-center gap-3 transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 uppercase tracking-widest text-sm"
+        className="w-full bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 text-white font-black py-5 rounded-[1.5rem] flex items-center justify-center gap-3 transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 uppercase tracking-widest text-sm"
       >
         {loading ? "Processing..." : <><Send size={20} /> Send Instantly <ArrowRight size={20} /></>}
       </button>

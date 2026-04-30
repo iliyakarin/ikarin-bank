@@ -126,9 +126,9 @@ async def emit_transactional_event(
         from money_utils import from_cents
         amount_str = from_cents(abs(amount))
         if transaction_side == "DEBIT":
-            activity_title = f"Sent {amount_str} to {recipient_email}"
+            activity_title = f"Sent ${amount_str} to {recipient_email}"
         else:
-            activity_title = f"Received {amount_str} from {sender_email}"
+            activity_title = f"Received ${amount_str} from {sender_email}"
             
     emit_activity(
         db=db,
