@@ -15,14 +15,11 @@ from aiokafka import AIOKafkaProducer
 from config import settings
 from database import engine, SessionLocal
 from models.user import User
-from models.account import Account
-from models.transaction import Transaction
-from models.management import Outbox
 from routers import (
-    admin, transfers, dashboard, contacts, 
+    admin, transfers, dashboard, contacts,
     vendors, auth, deposit, accounts
 )
-from activity import ws_register, ws_unregister, broadcast_to_user
+from activity import ws_register, ws_unregister
 from auth_utils import SECRET_KEY, ALGORITHM
 from jose import JWTError, jwt
 from sqlalchemy import select
