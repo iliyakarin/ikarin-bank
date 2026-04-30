@@ -97,7 +97,8 @@ export default function SendMoneyPage() {
 
   const handleTransferSuccess = (id: string) => {
     showNotification('success', `Transfer initiated successfully! ID: ${id}`);
-    setTimeout(fetchData, 1500); // Refresh history with delay
+    // Wait for eventual consistency on backend workers
+    setTimeout(fetchData, 2500);
   };
 
   const handleCancelScheduled = async (payment: ScheduledPayment) => {

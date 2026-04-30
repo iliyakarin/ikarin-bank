@@ -64,36 +64,36 @@ export default function RequestTransferTab({
       />
 
       <div className="space-y-3">
-        <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">Amount to Request (USD)</label>
+        <label className="block text-white/60 font-bold text-sm uppercase tracking-wider">Amount to Request (USD)</label>
         <div className="relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">$</span>
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 font-bold text-lg">$</span>
           <input
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
             step="0.01"
-            className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-8 pr-4 py-4 text-slate-900 font-bold text-lg placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-8 pr-4 py-4 text-white font-bold text-lg placeholder:text-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all"
             required
           />
         </div>
       </div>
 
       <div className="space-y-3">
-        <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">Purpose <span className="text-slate-400 font-normal normal-case">(Optional)</span></label>
+        <label className="block text-white/60 font-bold text-sm uppercase tracking-wider">Purpose <span className="text-white/20 font-normal normal-case">(Optional)</span></label>
         <textarea
           value={purpose}
           onChange={(e) => setPurpose(e.target.value)}
           placeholder="What is this request for?"
           rows={2}
-          className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none"
+          className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all resize-none"
         />
       </div>
 
       <motion.div 
         initial={{ opacity: 0 }} 
         animate={{ opacity: 1 }} 
-        className="p-5 bg-indigo-50/50 border border-indigo-100 rounded-[2rem] text-slate-600 text-xs font-medium leading-relaxed italic"
+        className="p-5 bg-white/5 border border-white/10 rounded-[2rem] text-white/60 text-xs font-medium leading-relaxed italic"
       >
         Your request will be sent to the recipient. They will receive a notification to approve or decline the transfer.
       </motion.div>

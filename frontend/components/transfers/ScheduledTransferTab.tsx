@@ -125,7 +125,7 @@ export default function ScheduledTransferTab({
       />
 
       <div className="space-y-3 relative">
-        <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">Recipient or Vendor</label>
+        <label className="block text-white/60 font-bold text-sm uppercase tracking-wider">Recipient or Vendor</label>
         <div className="relative group">
           <input
             type="text"
@@ -134,10 +134,10 @@ export default function ScheduledTransferTab({
             onFocus={() => setIsVendorDropdownOpen(true)}
             onBlur={() => setTimeout(() => setIsVendorDropdownOpen(false), 200)}
             placeholder="Email or select a vendor"
-            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all pr-10"
+            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all pr-10"
             required
           />
-          <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 pointer-events-none transition-colors" size={20} />
+          <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-indigo-400 pointer-events-none transition-colors" size={20} />
         </div>
 
         <AnimatePresence>
@@ -146,13 +146,13 @@ export default function ScheduledTransferTab({
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
+              className="absolute z-50 w-full mt-2 bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
             >
               <div className="p-2">
                 {/* Vendors Section */}
                 {vendors.length > 0 && (
                   <div className="mb-2">
-                    <p className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">Authorized Merchants</p>
+                    <p className="px-4 py-2 text-[10px] font-black text-white/20 uppercase tracking-widest border-b border-white/5">Authorized Merchants</p>
                     {vendors.filter(v => v.name.toLowerCase().includes(recipient.toLowerCase()) || v.email.toLowerCase().includes(recipient.toLowerCase())).map(v => (
                       <div
                         key={v.id}
@@ -160,13 +160,13 @@ export default function ScheduledTransferTab({
                           setRecipient(v.email);
                           setIsVendorDropdownOpen(false);
                         }}
-                        className="px-4 py-3 hover:bg-slate-50 rounded-xl cursor-pointer flex justify-between items-center group/item transition-colors"
+                        className="px-4 py-3 hover:bg-white/10 rounded-xl cursor-pointer flex justify-between items-center group/item transition-colors"
                       >
                         <div>
-                          <p className="text-slate-900 font-bold group-hover/item:text-indigo-600">{v.name}</p>
-                          <p className="text-slate-400 text-xs font-medium">{v.email}</p>
+                          <p className="text-white font-bold group-hover/item:text-indigo-400">{v.name}</p>
+                          <p className="text-white/40 text-xs font-medium">{v.email}</p>
                         </div>
-                        <span className="text-[9px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded border border-indigo-100 font-black uppercase tracking-tighter">Merchant</span>
+                        <span className="text-[9px] bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20 font-black uppercase tracking-tighter">Merchant</span>
                       </div>
                     ))}
                   </div>
@@ -174,7 +174,7 @@ export default function ScheduledTransferTab({
                 
                 {/* Contacts Section */}
                 <div>
-                  <p className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">Frequent Contacts</p>
+                  <p className="px-4 py-2 text-[10px] font-black text-white/20 uppercase tracking-widest border-b border-white/5">Frequent Contacts</p>
                   {contacts.filter(c => (c.name && c.name.toLowerCase().includes(recipient.toLowerCase())) || c.email.toLowerCase().includes(recipient.toLowerCase())).map(c => (
                     <div
                       key={c.id}
@@ -182,13 +182,13 @@ export default function ScheduledTransferTab({
                         setRecipient(c.email);
                         setIsVendorDropdownOpen(false);
                       }}
-                      className="px-4 py-3 hover:bg-slate-50 rounded-xl cursor-pointer flex justify-between items-center group/item transition-colors"
+                      className="px-4 py-3 hover:bg-white/10 rounded-xl cursor-pointer flex justify-between items-center group/item transition-colors"
                     >
                       <div>
-                        <p className="text-slate-900 font-bold group-hover/item:text-indigo-600">{c.name || c.email}</p>
-                        <p className="text-slate-400 text-xs font-medium">{c.email}</p>
+                        <p className="text-white font-bold group-hover/item:text-indigo-400">{c.name || c.email}</p>
+                        <p className="text-white/40 text-xs font-medium">{c.email}</p>
                       </div>
-                      <span className="text-[9px] bg-slate-50 text-slate-400 px-2 py-0.5 rounded border border-slate-200 font-black uppercase tracking-tighter">Contact</span>
+                      <span className="text-[9px] bg-white/5 text-white/40 px-2 py-0.5 rounded border border-white/10 font-black uppercase tracking-tighter">Contact</span>
                     </div>
                   ))}
                 </div>
@@ -200,31 +200,31 @@ export default function ScheduledTransferTab({
 
       {isVendor && (
         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="space-y-3">
-          <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">Subscriber / Contract ID</label>
+          <label className="block text-white/60 font-bold text-sm uppercase tracking-wider">Subscriber / Contract ID</label>
           <input
             type="text"
             value={subscriberId}
             onChange={(e) => setSubscriberId(e.target.value)}
             placeholder="Enter your subscriber ID"
-            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all"
             required
           />
         </motion.div>
       )}
 
       <div className="space-y-3">
-        <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider flex justify-between">
-          Amount (USD) <span className="text-indigo-600 font-black text-[10px] uppercase tracking-widest">Limit: $5000</span>
+        <label className="block text-white/60 font-bold text-sm uppercase tracking-wider flex justify-between">
+          Amount (USD) <span className="text-indigo-400 font-black text-[10px] uppercase tracking-widest">Limit: $5000</span>
         </label>
         <div className="relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">$</span>
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 font-bold text-lg">$</span>
           <input
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
             step="0.01"
-            className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-8 pr-4 py-4 text-slate-900 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-8 pr-4 py-4 text-white font-bold text-lg placeholder:text-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all"
             required
           />
         </div>
@@ -232,43 +232,43 @@ export default function ScheduledTransferTab({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-3">
-          <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">Frequency</label>
+          <label className="block text-white/60 font-bold text-sm uppercase tracking-wider">Frequency</label>
           <div className="relative group">
             <select
               value={frequency}
               onChange={(e) => setFrequency(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-white font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all appearance-none"
             >
-              <option>One-time</option>
-              <option>Daily</option>
-              <option>Weekly</option>
-              <option>Bi-weekly</option>
-              <option>Monthly</option>
-              <option>Annually</option>
+              <option className="bg-slate-900">One-time</option>
+              <option className="bg-slate-900">Daily</option>
+              <option className="bg-slate-900">Weekly</option>
+              <option className="bg-slate-900">Bi-weekly</option>
+              <option className="bg-slate-900">Monthly</option>
+              <option className="bg-slate-900">Annually</option>
             </select>
-            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none group-focus-within:text-indigo-500" size={18} />
+            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 pointer-events-none group-focus-within:text-indigo-400" size={18} />
           </div>
         </div>
         <div className="space-y-3">
-          <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">Start Date</label>
+          <label className="block text-white/60 font-bold text-sm uppercase tracking-wider">Start Date</label>
           <DatePicker value={startDate} onChange={setStartDate} required />
         </div>
       </div>
 
       {frequency !== "One-time" && (
-        <div className="space-y-4 p-6 border border-slate-100 rounded-2xl bg-slate-50/50">
-          <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">End Condition</label>
+        <div className="space-y-4 p-6 border border-white/5 rounded-2xl bg-white/[0.02]">
+          <label className="block text-white/60 font-bold text-sm uppercase tracking-wider">End Condition</label>
           <div className="flex flex-wrap gap-6">
             {["Until Cancelled", "End Date", "Number of Payments"].map(cond => (
-              <label key={cond} className="flex items-center gap-2 text-slate-600 font-bold text-xs cursor-pointer group">
+              <label key={cond} className="flex items-center gap-2 text-white/60 font-bold text-xs cursor-pointer group">
                 <input
                   type="radio"
                   value={cond}
                   checked={endCondition === cond}
                   onChange={(e) => setEndCondition(e.target.value)}
-                  className="w-4 h-4 accent-indigo-600"
+                  className="w-4 h-4 accent-indigo-500 bg-white/5 border-white/10"
                 />
-                <span className="group-hover:text-indigo-600 transition-colors">{cond}</span>
+                <span className="group-hover:text-indigo-400 transition-colors">{cond}</span>
               </label>
             ))}
           </div>
@@ -280,7 +280,7 @@ export default function ScheduledTransferTab({
                 value={targetPayments}
                 onChange={(e) => setTargetPayments(e.target.value)}
                 placeholder="Total number of payments (e.g. 12)"
-                className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-4 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 placeholder:text-white/10"
                 required
               />
             )}
@@ -288,21 +288,21 @@ export default function ScheduledTransferTab({
         </div>
       )}
 
-      <div className="p-5 border border-indigo-100 rounded-2xl bg-indigo-50/30 flex items-start gap-4">
+      <div className="p-5 border border-white/5 rounded-2xl bg-white/[0.02] flex items-start gap-4">
         <input
           type="checkbox"
           id="reserveCheck"
           checked={reserveAmount}
           onChange={(e) => setReserveAmount(e.target.checked)}
-          className="mt-1 w-5 h-5 accent-indigo-600 rounded-lg cursor-pointer"
+          className="mt-1 w-5 h-5 accent-indigo-500 rounded-lg cursor-pointer bg-white/5 border-white/10"
         />
         <div>
-          <label htmlFor="reserveCheck" className="text-slate-900 font-black text-sm uppercase tracking-tight block cursor-pointer">Reserve Balance Now</label>
-          <p className="text-slate-500 text-xs font-medium leading-relaxed">Funds will be immediately set aside to ensure the schedule executes successfully even if your balance drops.</p>
+          <label htmlFor="reserveCheck" className="text-white font-black text-sm uppercase tracking-tight block cursor-pointer">Reserve Balance Now</label>
+          <p className="text-white/40 text-xs font-medium leading-relaxed">Funds will be immediately set aside to ensure the schedule executes successfully even if your balance drops.</p>
         </div>
       </div>
 
-      <div className="p-5 bg-slate-900 rounded-[2rem] shadow-xl flex gap-4 text-white border border-slate-800">
+      <div className="p-5 bg-white/5 rounded-[2rem] shadow-xl flex gap-4 text-white border border-white/10 backdrop-blur-xl">
         <div className="p-2 bg-white/10 rounded-xl h-fit">
           <Clock className="text-indigo-400" size={20} />
         </div>
@@ -315,11 +315,11 @@ export default function ScheduledTransferTab({
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 text-white font-black py-5 rounded-[1.5rem] flex items-center justify-center gap-3 transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 uppercase tracking-widest text-sm"
+        className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 disabled:opacity-50 text-white font-black py-5 rounded-[1.5rem] flex items-center justify-center gap-3 transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 uppercase tracking-widest text-sm"
       >
         {loading ? "Processing..." : <><Calendar size={20} /> Create Schedule <ArrowRight size={20} /></>}
       </button>
     </form>
-);
+  );
 }
 

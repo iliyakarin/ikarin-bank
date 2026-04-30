@@ -161,9 +161,9 @@ export default function UserManagement({ token }: UserManagementProps) {
         if (!searchTerm) return users;
         const term = searchTerm.toLowerCase();
         return users.filter(u =>
-            u.first_name.toLowerCase().includes(term) ||
-            u.last_name.toLowerCase().includes(term) ||
-            u.email.toLowerCase().includes(term)
+            (u.first_name || "").toLowerCase().includes(term) ||
+            (u.last_name || "").toLowerCase().includes(term) ||
+            (u.email || "").toLowerCase().includes(term)
         );
     }, [users, searchTerm]);
 
@@ -289,10 +289,10 @@ export default function UserManagement({ token }: UserManagementProps) {
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center font-black text-indigo-400 border border-indigo-500/10">
-                                                        {u.first_name[0]}{u.last_name[0]}
+                                                        {(u.first_name?.[0] || u.email[0]).toUpperCase()}{(u.last_name?.[0] || "").toUpperCase()}
                                                     </div>
                                                     <div>
-                                                        <p className="text-white font-bold">{u.first_name} {u.last_name}</p>
+                                                        <p className="text-white font-bold">{u.first_name || 'Anonymous'} {u.last_name || 'Subject'}</p>
                                                         <p className="text-white/30 text-[10px] font-mono">{u.email}</p>
                                                     </div>
                                                 </div>
@@ -441,7 +441,7 @@ export default function UserManagement({ token }: UserManagementProps) {
                             <div className="flex justify-between items-start">
                                 <div>
                                     <p className="text-red-400/60 text-[10px] uppercase font-black tracking-[0.2em] mb-1">Target Identified</p>
-                                    <h4 className="text-white font-black text-2xl tracking-tight">{foundUser.first_name} {foundUser.last_name}</h4>
+                                    <h4 className="text-white font-black text-2xl tracking-tight">{foundUser.first_name || 'Anonymous'} {foundUser.last_name || 'Subject'}</h4>
                                     <p className="text-white/40 font-mono text-sm">{foundUser.email}</p>
                                 </div>
                                 <div className="px-3 py-1 bg-red-500/20 text-red-400 text-[10px] font-black rounded-full border border-red-500/30 uppercase tracking-widest">

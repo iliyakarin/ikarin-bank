@@ -114,8 +114,8 @@ export default function InstantTransferTab({
               className="absolute z-50 w-full mt-2 bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
             >
               <div className="p-2">
-                {contacts.filter(c => c.email.toLowerCase().includes(recipient.toLowerCase())).length > 0 ? (
-                  contacts.filter(c => c.email.toLowerCase().includes(recipient.toLowerCase())).map(c => (
+                {contacts.filter(c => (c.email || "").toLowerCase().includes(recipient.toLowerCase()) || (c.name || "").toLowerCase().includes(recipient.toLowerCase())).length > 0 ? (
+                  contacts.filter(c => (c.email || "").toLowerCase().includes(recipient.toLowerCase()) || (c.name || "").toLowerCase().includes(recipient.toLowerCase())).map(c => (
                     <div
                       key={c.id}
                       onClick={() => {

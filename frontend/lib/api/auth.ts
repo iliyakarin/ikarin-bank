@@ -7,8 +7,8 @@ import { api } from "./client";
 
 export const UserSchema = z.object({
   id: z.number(),
-  first_name: z.string(),
-  last_name: z.string(),
+  first_name: z.string().nullable().optional(),
+  last_name: z.string().nullable().optional(),
   email: z.string(),
   backup_email: z.string().optional().nullable(),
   role: z.string(),

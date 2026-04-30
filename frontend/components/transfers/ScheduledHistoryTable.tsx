@@ -45,9 +45,9 @@ export default function ScheduledHistoryTable({
 
   if (payments.length === 0) {
     return (
-      <div className="p-12 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-        <Calendar size={48} className="mx-auto mb-4 opacity-20" />
-        <p className="text-lg font-medium text-slate-600">No scheduled transfers found.</p>
+      <div className="p-12 text-center text-white/20 bg-white/5 rounded-2xl border border-dashed border-white/10">
+        <Calendar size={48} className="mx-auto mb-4 opacity-10" />
+        <p className="text-lg font-medium text-white/60">No scheduled transfers found.</p>
         <p className="text-sm">Active transfers will appear here.</p>
       </div>
     );
