@@ -1,9 +1,8 @@
 import asyncio
 import os
 from sqlalchemy import select
-from passlib.context import CryptContext
 from database import User, SessionLocal
-from auth_utils import verify_password as verify_auth, pwd_context as auth_pwd_context
+from auth_utils import pwd_context as auth_pwd_context
 from migrations import pwd_context as migration_pwd_context
 
 async def diag():

@@ -5,7 +5,7 @@ Also pushes events in real-time to connected WebSocket clients.
 """
 import uuid
 import datetime
-from datetime import timezone, timedelta
+from datetime import timezone
 import json
 import asyncio
 import re

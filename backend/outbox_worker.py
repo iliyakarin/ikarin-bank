@@ -1,7 +1,6 @@
 """Outbox processor - consumes pending events from Postgres and sends to Kafka."""
 import asyncio
 import logging
-from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy import select
 

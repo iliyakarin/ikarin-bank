@@ -4,7 +4,6 @@ This module provides utilities to ensure that operations (like transfers or depo
 are not processed multiple times if the same idempotency key is used.
 """
 import logging
-from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from models.transaction import IdempotencyKey

@@ -4,8 +4,7 @@ This module provides helper functions for password hashing, JWT token creation,
 and FastAPI dependencies for user authentication and role-based access control.
 """
 import datetime
-from datetime import timezone, timedelta
-from typing import List, Optional
+from typing import List
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer

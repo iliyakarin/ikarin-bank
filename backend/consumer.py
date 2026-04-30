@@ -2,7 +2,7 @@ import json
 import time
 import asyncio
 import logging
-from typing import List, Dict, Any
+from typing import List
 
 from confluent_kafka import Consumer, KafkaError
 from config import settings

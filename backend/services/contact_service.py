@@ -1,6 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
-from models.user import User
+from sqlalchemy import select
 from models.management import Contact
 from schemas.contacts import ContactCreate, ContactUpdate
 from fastapi import HTTPException, status

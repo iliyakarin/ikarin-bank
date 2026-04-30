@@ -1,18 +1,13 @@
 from cryptography.fernet import Fernet
 import secrets
 import uuid
-import logging
-import datetime
-from typing import Optional, Tuple
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from fastapi import HTTPException, status
 
-from database import SessionLocal
-from models.user import User
 from models.account import Account
 from models.transaction import Transaction
-from models.management import Outbox
 from config import settings
 from activity import emit_activity
 

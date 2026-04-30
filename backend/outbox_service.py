@@ -4,7 +4,6 @@ import asyncio
 import logging
 from cryptography.fernet import Fernet
 from datetime import datetime, timezone
-from typing import AsyncIterator
 
 from aiokafka import AIOKafkaProducer
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -96,10 +96,16 @@ init-db/*.conf
 init-db/*.xml
 
 # Markdown Files
+# Generally ignore all but keep README and core documentation
 *.md
 *.MD
 !README.md
 !README.MD
+!CLAUDE.md
+!tasks/
+!task.md
+!implementation_plan.md
+!walkthrough.md
 
 # Infrastructure & Cache
 backend/gunicorn.ctl

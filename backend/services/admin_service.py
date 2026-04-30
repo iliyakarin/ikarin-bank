@@ -1,9 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text, func
-from models.user import User, Subscription
+from models.user import User
 from models.account import Account
 from models.transaction import Transaction
-from models.management import ScheduledPayment, Contact, Outbox
 from clickhouse_utils import get_ch_client, CH_DB
 from activity import emit_activity
 from config import settings

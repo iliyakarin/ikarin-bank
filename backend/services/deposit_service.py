@@ -6,16 +6,12 @@ top-ups, and handles subscription lifecycle events.
 import datetime
 import uuid
 import logging
-from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from fastapi import HTTPException, status
 
-from database import SessionLocal
 from models.user import User, Subscription
-from models.account import Account, PaymentMethod
+from models.account import Account
 from activity import emit_activity
-from money_utils import from_cents
 
 from idempotency import check_idempotency
 from services.event_emitter import emit_transactional_event
