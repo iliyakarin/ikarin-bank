@@ -18,9 +18,11 @@ import {
   getScheduledPayments, 
   getPaymentRequests, 
   cancelScheduledPayment,
+  handlePaymentRequestAction,
   ScheduledPayment,
   PaymentRequest 
 } from "@/lib/api/transfers";
+import { getActivity, ActivityEvent } from "@/lib/api/activity";
 
 // Modular Components
 import InstantTransferTab from "@/components/transfers/InstantTransferTab";
@@ -28,6 +30,7 @@ import ScheduledTransferTab from "@/components/transfers/ScheduledTransferTab";
 import RequestTransferTab from "@/components/transfers/RequestTransferTab";
 import ScheduledHistoryTable from "@/components/transfers/ScheduledHistoryTable";
 import RequestHistoryTable from "@/components/transfers/RequestHistoryTable";
+import RecentTransactionsTable from "@/components/transfers/RecentTransactionsTable";
 import DetailModal from "@/components/transfers/DetailModal";
 
 const TABS = [
@@ -43,6 +46,8 @@ export default function SendMoneyPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [scheduledPayments, setScheduledPayments] = useState<ScheduledPayment[]>([]);
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
+  const [transactions, setTransactions] = useState<ActivityEvent[]>([]);
+  const [vendors, setVendors] = useState<any[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
@@ -57,24 +62,23 @@ export default function SendMoneyPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [accsResult, contsResult, scheduledResult, requestsResult] = await Promise.allSettled([
+      const [accsResult, contsResult, scheduledResult, requestsResult, activityResult, vendorsResult] = await Promise.allSettled([
         getAccounts(),
         getContacts(),
         getScheduledPayments(),
-        getPaymentRequests()
+        getPaymentRequests(),
+        getActivity({ category: 'p2p', limit: 10 }),
+        fetch("/api/v1/vendors", {
+          headers: { Authorization: `Bearer ${localStorage.getItem("bank_token")}` }
+        }).then(res => res.json())
       ]);
 
       if (accsResult.status === 'fulfilled') setAccounts(accsResult.value);
-      else console.error("Failed to load accounts:", accsResult.reason);
-
       if (contsResult.status === 'fulfilled') setContacts(contsResult.value);
-      else console.error("Failed to load contacts:", contsResult.reason);
-
       if (scheduledResult.status === 'fulfilled') setScheduledPayments(scheduledResult.value);
-      else console.error("Failed to load scheduled payments:", scheduledResult.reason);
-
       if (requestsResult.status === 'fulfilled') setPaymentRequests(requestsResult.value);
-      else console.error("Failed to load payment requests:", requestsResult.reason);
+      if (activityResult.status === 'fulfilled') setTransactions(activityResult.value.events);
+      if (vendorsResult.status === 'fulfilled') setVendors(vendorsResult.value.vendors || []);
 
       // Only show error toast if ALL requests failed
       const allFailed = [accsResult, contsResult, scheduledResult, requestsResult].every(r => r.status === 'rejected');
@@ -108,20 +112,32 @@ export default function SendMoneyPage() {
     }
   };
 
-  if (loading) {
+  const handleCancelRequest = async (request: PaymentRequest) => {
+    if (confirm("Are you sure you want to cancel this payment request?")) {
+      try {
+        await handlePaymentRequestAction(request.id, 'decline');
+        showNotification('success', "Payment request cancelled.");
+        fetchData();
+      } catch (err) {
+        showNotification('error', "Failed to cancel request.");
+      }
+    }
+  };
+
+  if (loading && accounts.length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0f0a1e]">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <motion.div 
           animate={{ rotate: 360 }} 
           transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-          className="w-12 h-12 border-4 border-purple-500/20 border-t-purple-500 rounded-full"
+          className="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-600 rounded-full"
         />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0f0a1e] py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
       {/* Notifications */}
       <AnimatePresence>
         {notification && (
@@ -143,13 +159,13 @@ export default function SendMoneyPage() {
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
-            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight mb-2 uppercase">
-              Transfer <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-500">Center</span>
+            <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight mb-2 uppercase">
+              Transfer <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">Center</span>
             </h1>
-            <p className="text-white/40 font-medium">Manage your money moves, scheduled payments, and requests in one place.</p>
+            <p className="text-slate-500 font-medium">Manage your money moves, scheduled payments, and requests in one place.</p>
           </div>
           
-          <div className="flex items-center gap-4 bg-white/5 p-2 rounded-2xl border border-white/10">
+          <div className="flex items-center gap-4 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               return (
@@ -158,8 +174,8 @@ export default function SendMoneyPage() {
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all ${
                     activeTab === tab.id 
-                      ? `bg-gradient-to-r ${tab.color} text-white shadow-lg` 
-                      : "text-white/40 hover:text-white hover:bg-white/5"
+                      ? `bg-gradient-to-r ${tab.color} text-white shadow-md` 
+                      : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
                   }`}
                 >
                   <Icon size={18} />
@@ -170,21 +186,21 @@ export default function SendMoneyPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+        <div className="flex flex-col gap-12">
           {/* Main Form Section */}
-          <div className="lg:col-span-5">
+          <div className="max-w-3xl mx-auto w-full">
             <motion.div
               layout
-              className="bg-[#1a1429] border border-white/10 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden group"
+              className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-xl relative overflow-hidden group"
             >
-              <div className="absolute top-0 right-0 w-64 h-64 bg-purple-600/10 blur-[100px] pointer-events-none group-hover:bg-purple-600/20 transition-colors" />
+              <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 blur-[100px] pointer-events-none group-hover:bg-indigo-500/10 transition-colors" />
               
               <div className="relative space-y-8">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-black text-white uppercase tracking-tighter">
+                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
                     New {activeTab === 'instant' ? 'Transfer' : activeTab === 'scheduled' ? 'Schedule' : 'Request'}
                   </h2>
-                  <div className="p-2 bg-white/5 rounded-lg text-white/20">
+                  <div className="p-2 bg-slate-50 rounded-lg text-slate-300">
                     <Info size={18} />
                   </div>
                 </div>
@@ -201,7 +217,7 @@ export default function SendMoneyPage() {
                       <InstantTransferTab 
                         accounts={accounts} 
                         contacts={contacts} 
-                        vendors={[]} // Vendors could be filtered from contacts or fetched separately
+                        vendors={vendors}
                         onSuccess={handleTransferSuccess}
                         onError={(msg) => showNotification('error', msg)}
                       />
@@ -210,7 +226,7 @@ export default function SendMoneyPage() {
                       <ScheduledTransferTab 
                         accounts={accounts} 
                         contacts={contacts} 
-                        vendors={[]}
+                        vendors={vendors}
                         onSuccess={handleTransferSuccess}
                         onError={(msg) => showNotification('error', msg)}
                       />
@@ -226,68 +242,69 @@ export default function SendMoneyPage() {
                 </AnimatePresence>
               </div>
             </motion.div>
-            
-            {/* Quick Tips */}
-            <div className="mt-8 p-6 bg-indigo-500/5 rounded-3xl border border-indigo-500/10 flex gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 shrink-0">
-                <Send size={24} />
-              </div>
-              <div>
-                <h4 className="text-white font-bold mb-1 uppercase text-sm tracking-widest">Pro Tip</h4>
-                <p className="text-indigo-200/50 text-xs leading-relaxed italic">
-                  Transfers within KarinBank are always instant and fee-free. Use email addresses for zero-config P2P sends.
-                </p>
-              </div>
-            </div>
           </div>
 
-          {/* History / Management Section */}
-          <div className="lg:col-span-7 space-y-8">
-            <div className="bg-[#1a1429]/50 border border-white/10 rounded-[2.5rem] overflow-hidden backdrop-blur-sm">
-              <div className="p-8 border-b border-white/10 flex items-center justify-between bg-white/5">
-                <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-3">
+          {/* History / Management Section - Now Below */}
+          <div className="space-y-8">
+            <div className="bg-white border border-slate-200 rounded-[2.5rem] overflow-hidden shadow-sm">
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3">
                   {activeTab === 'instant' ? 'Recent History' : activeTab === 'scheduled' ? 'Active Schedules' : 'Pending Requests'}
-                  <span className="text-[10px] bg-white/10 px-2 py-1 rounded text-white/40 font-bold tracking-widest uppercase">Live</span>
+                  <span className="text-[10px] bg-slate-200 px-2 py-1 rounded text-slate-500 font-bold tracking-widest uppercase">Live</span>
                 </h3>
                 <button 
                   onClick={fetchData}
-                  className="p-2 hover:bg-white/10 rounded-xl text-white/40 hover:text-white transition-colors"
+                  className="p-2 hover:bg-slate-200 rounded-xl text-slate-400 hover:text-slate-600 transition-colors"
                 >
                   <ChevronRight size={20} />
                 </button>
               </div>
 
-              <div className="min-h-[400px]">
+              <div className="min-h-[300px]">
                 {activeTab === 'scheduled' ? (
                   <ScheduledHistoryTable 
                     payments={scheduledPayments}
                     onViewDetails={(p) => setSelectedDetail({ data: p, type: 'scheduled' })}
                     onCancel={handleCancelScheduled}
                   />
+                ) : activeTab === 'instant' ? (
+                  <RecentTransactionsTable
+                    transactions={transactions}
+                  />
                 ) : (
                   <RequestHistoryTable 
                     requests={paymentRequests}
+                    currentUserEmail={user?.email}
                     onViewDetails={(r) => setSelectedDetail({ data: r, type: 'request' })}
+                    onCancel={handleCancelRequest}
+                    onPay={(r) => {
+                      // Switch to instant transfer and pre-fill
+                      setActiveTab('instant');
+                      // We can pass data to InstantTransferTab via props if we want, 
+                      // but for now let's just scroll up or notify
+                      showNotification('success', `Paying request for ${r.amount/100}`);
+                    }}
                   />
                 )}
               </div>
+
             </div>
 
             {/* Extra info cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="p-8 bg-gradient-to-br from-[#2a1f42] to-[#1a1429] border border-white/10 rounded-3xl">
-                <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center text-purple-400 mb-4">
+              <div className="p-8 bg-white border border-slate-200 rounded-3xl shadow-sm hover:shadow-md transition-shadow">
+                <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center text-purple-600 mb-4">
                   <Handshake size={20} />
                 </div>
-                <h4 className="text-white font-bold mb-2 uppercase tracking-tight">Zero-Config Requests</h4>
-                <p className="text-white/40 text-sm leading-relaxed">Simply enter an email to request funds. Recipients with KarinBank accounts can approve instantly.</p>
+                <h4 className="text-slate-900 font-bold mb-2 uppercase tracking-tight">Zero-Config Requests</h4>
+                <p className="text-slate-500 text-sm leading-relaxed">Simply enter an email to request funds. Recipients with KarinBank accounts can approve instantly.</p>
               </div>
-              <div className="p-8 bg-gradient-to-br from-[#1b264f] to-[#1a1429] border border-white/10 rounded-3xl">
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center text-indigo-400 mb-4">
+              <div className="p-8 bg-white border border-slate-200 rounded-3xl shadow-sm hover:shadow-md transition-shadow">
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 mb-4">
                   <Calendar size={20} />
                 </div>
-                <h4 className="text-white font-bold mb-2 uppercase tracking-tight">Smart Scheduling</h4>
-                <p className="text-white/40 text-sm leading-relaxed">Set up recurring bills or savings goals. Our engine handles the rest, keeping you updated on every execution.</p>
+                <h4 className="text-slate-900 font-bold mb-2 uppercase tracking-tight">Smart Scheduling</h4>
+                <p className="text-slate-500 text-sm leading-relaxed">Set up recurring bills or savings goals. Our engine handles the rest, keeping you updated on every execution.</p>
               </div>
             </div>
           </div>

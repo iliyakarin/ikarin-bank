@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, ArrowRight, ChevronDown, Clock } from "lucide-react";
+import { Calendar, ArrowRight, ChevronDown, Clock, Search } from "lucide-react";
 import DatePicker from "@/components/ui/DatePicker";
 import { formatCurrency } from "@/lib/transactionUtils";
 import { Account } from "@/lib/api/accounts";
@@ -60,7 +60,6 @@ export default function ScheduledTransferTab({
 
     setLoading(true);
     try {
-      // Map frontend values to API enum values
       const freqMap: Record<string, "daily" | "weekly" | "monthly"> = {
         "Daily": "daily",
         "Weekly": "weekly",
@@ -126,8 +125,8 @@ export default function ScheduledTransferTab({
       />
 
       <div className="space-y-3 relative">
-        <label className="block text-white font-semibold">Recipient or Vendor</label>
-        <div className="relative">
+        <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">Recipient or Vendor</label>
+        <div className="relative group">
           <input
             type="text"
             value={recipient}
@@ -135,10 +134,10 @@ export default function ScheduledTransferTab({
             onFocus={() => setIsVendorDropdownOpen(true)}
             onBlur={() => setTimeout(() => setIsVendorDropdownOpen(false), 200)}
             placeholder="Email or select a vendor"
-            className="w-full bg-[#3b2d59] border border-white/20 rounded-xl px-4 py-3 text-white placeholder:text-white/40 focus:outline-none focus:border-indigo-400 pr-10"
+            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all pr-10"
             required
           />
-          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" size={20} />
+          <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 pointer-events-none transition-colors" size={20} />
         </div>
 
         <AnimatePresence>
@@ -147,25 +146,52 @@ export default function ScheduledTransferTab({
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="absolute z-50 w-full mt-2 bg-[#2a1f42] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
+              className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
             >
               <div className="p-2">
-                {contacts.filter(c => c.email.toLowerCase().includes(recipient.toLowerCase())).map(c => (
-                  <div
-                    key={c.id}
-                    onClick={() => {
-                      setRecipient(c.email);
-                      setIsVendorDropdownOpen(false);
-                    }}
-                    className="px-4 py-3 hover:bg-white/10 rounded-lg cursor-pointer flex justify-between items-center group"
-                  >
-                    <div>
-                      <p className="text-white font-medium group-hover:text-indigo-300">{c.name || c.email}</p>
-                      <p className="text-white/50 text-sm">{c.email}</p>
-                    </div>
-                    <span className="text-[10px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded border border-purple-500/30 font-bold uppercase">Contact</span>
+                {/* Vendors Section */}
+                {vendors.length > 0 && (
+                  <div className="mb-2">
+                    <p className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">Authorized Merchants</p>
+                    {vendors.filter(v => v.name.toLowerCase().includes(recipient.toLowerCase()) || v.email.toLowerCase().includes(recipient.toLowerCase())).map(v => (
+                      <div
+                        key={v.id}
+                        onClick={() => {
+                          setRecipient(v.email);
+                          setIsVendorDropdownOpen(false);
+                        }}
+                        className="px-4 py-3 hover:bg-slate-50 rounded-xl cursor-pointer flex justify-between items-center group/item transition-colors"
+                      >
+                        <div>
+                          <p className="text-slate-900 font-bold group-hover/item:text-indigo-600">{v.name}</p>
+                          <p className="text-slate-400 text-xs font-medium">{v.email}</p>
+                        </div>
+                        <span className="text-[9px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded border border-indigo-100 font-black uppercase tracking-tighter">Merchant</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+                
+                {/* Contacts Section */}
+                <div>
+                  <p className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">Frequent Contacts</p>
+                  {contacts.filter(c => (c.name && c.name.toLowerCase().includes(recipient.toLowerCase())) || c.email.toLowerCase().includes(recipient.toLowerCase())).map(c => (
+                    <div
+                      key={c.id}
+                      onClick={() => {
+                        setRecipient(c.email);
+                        setIsVendorDropdownOpen(false);
+                      }}
+                      className="px-4 py-3 hover:bg-slate-50 rounded-xl cursor-pointer flex justify-between items-center group/item transition-colors"
+                    >
+                      <div>
+                        <p className="text-slate-900 font-bold group-hover/item:text-indigo-600">{c.name || c.email}</p>
+                        <p className="text-slate-400 text-xs font-medium">{c.email}</p>
+                      </div>
+                      <span className="text-[9px] bg-slate-50 text-slate-400 px-2 py-0.5 rounded border border-slate-200 font-black uppercase tracking-tighter">Contact</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </motion.div>
           )}
@@ -174,31 +200,31 @@ export default function ScheduledTransferTab({
 
       {isVendor && (
         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="space-y-3">
-          <label className="block text-white font-semibold">Subscriber / Contract ID</label>
+          <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">Subscriber / Contract ID</label>
           <input
             type="text"
             value={subscriberId}
             onChange={(e) => setSubscriberId(e.target.value)}
             placeholder="Enter your subscriber ID"
-            className="w-full bg-[#3b2d59] border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-400"
+            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
             required
           />
         </motion.div>
       )}
 
       <div className="space-y-3">
-        <label className="block text-white font-semibold flex justify-between">
-          Amount (USD) <span className="text-indigo-300 font-normal text-sm">Limit: $5000</span>
+        <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider flex justify-between">
+          Amount (USD) <span className="text-indigo-600 font-black text-[10px] uppercase tracking-widest">Limit: $5000</span>
         </label>
         <div className="relative">
-          <span className="absolute left-4 top-3 text-white font-semibold text-lg">$</span>
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">$</span>
           <input
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
             step="0.01"
-            className="w-full bg-white/10 border border-white/20 rounded-xl pl-8 pr-4 py-3 text-white focus:outline-none focus:border-indigo-400"
+            className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-8 pr-4 py-4 text-slate-900 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
             required
           />
         </div>
@@ -206,82 +232,94 @@ export default function ScheduledTransferTab({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-3">
-          <label className="block text-white font-semibold">Frequency</label>
-          <select
-            value={frequency}
-            onChange={(e) => setFrequency(e.target.value)}
-            className="w-full bg-[#3b2d59] border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-400"
-          >
-            <option>One-time</option>
-            <option>Daily</option>
-            <option>Weekly</option>
-            <option>Bi-weekly</option>
-            <option>Monthly</option>
-            <option>Annually</option>
-            <option>Specific Day of Week</option>
-            <option>Specific Date of Month</option>
-          </select>
+          <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">Frequency</label>
+          <div className="relative group">
+            <select
+              value={frequency}
+              onChange={(e) => setFrequency(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none"
+            >
+              <option>One-time</option>
+              <option>Daily</option>
+              <option>Weekly</option>
+              <option>Bi-weekly</option>
+              <option>Monthly</option>
+              <option>Annually</option>
+            </select>
+            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none group-focus-within:text-indigo-500" size={18} />
+          </div>
         </div>
-        <DatePicker label="Start Date" value={startDate} onChange={setStartDate} required />
+        <div className="space-y-3">
+          <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">Start Date</label>
+          <DatePicker value={startDate} onChange={setStartDate} required />
+        </div>
       </div>
 
       {frequency !== "One-time" && (
-        <div className="space-y-4 p-4 border border-white/10 rounded-xl bg-white/5">
-          <label className="block text-white font-semibold">End Condition</label>
-          <div className="flex gap-4">
+        <div className="space-y-4 p-6 border border-slate-100 rounded-2xl bg-slate-50/50">
+          <label className="block text-slate-700 font-bold text-sm uppercase tracking-wider">End Condition</label>
+          <div className="flex flex-wrap gap-6">
             {["Until Cancelled", "End Date", "Number of Payments"].map(cond => (
-              <label key={cond} className="flex items-center gap-2 text-white/80 cursor-pointer">
+              <label key={cond} className="flex items-center gap-2 text-slate-600 font-bold text-xs cursor-pointer group">
                 <input
                   type="radio"
                   value={cond}
                   checked={endCondition === cond}
                   onChange={(e) => setEndCondition(e.target.value)}
-                  className="accent-indigo-500"
+                  className="w-4 h-4 accent-indigo-600"
                 />
-                {cond}
+                <span className="group-hover:text-indigo-600 transition-colors">{cond}</span>
               </label>
             ))}
           </div>
-          {endCondition === "End Date" && <DatePicker value={endDate} onChange={setEndDate} required />}
-          {endCondition === "Number of Payments" && (
-            <input
-              type="number"
-              value={targetPayments}
-              onChange={(e) => setTargetPayments(e.target.value)}
-              placeholder="E.g. 5"
-              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white"
-              required
-            />
-          )}
+          <div className="mt-4">
+            {endCondition === "End Date" && <DatePicker label="Finish Date" value={endDate} onChange={setEndDate} required />}
+            {endCondition === "Number of Payments" && (
+              <input
+                type="number"
+                value={targetPayments}
+                onChange={(e) => setTargetPayments(e.target.value)}
+                placeholder="Total number of payments (e.g. 12)"
+                className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-4 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                required
+              />
+            )}
+          </div>
         </div>
       )}
 
-      <div className="p-4 border border-indigo-500/30 rounded-xl bg-indigo-500/10 flex items-start gap-4">
+      <div className="p-5 border border-indigo-100 rounded-2xl bg-indigo-50/30 flex items-start gap-4">
         <input
           type="checkbox"
           id="reserveCheck"
           checked={reserveAmount}
           onChange={(e) => setReserveAmount(e.target.checked)}
-          className="mt-1 w-5 h-5 accent-indigo-500 rounded"
+          className="mt-1 w-5 h-5 accent-indigo-600 rounded-lg cursor-pointer"
         />
         <div>
-          <label htmlFor="reserveCheck" className="text-white font-semibold block cursor-pointer">Reserve Balance Now</label>
-          <p className="text-indigo-200/70 text-sm">Deduct the funds immediately and keep them aside for this transfer.</p>
+          <label htmlFor="reserveCheck" className="text-slate-900 font-black text-sm uppercase tracking-tight block cursor-pointer">Reserve Balance Now</label>
+          <p className="text-slate-500 text-xs font-medium leading-relaxed">Funds will be immediately set aside to ensure the schedule executes successfully even if your balance drops.</p>
         </div>
       </div>
 
-      <div className="p-4 bg-black/20 rounded-xl shadow-inner border border-white/5 flex gap-3 text-indigo-100">
-        <Clock className="shrink-0 mt-1" size={20} />
-        <p className="font-medium text-sm leading-relaxed">{renderSummary()}</p>
+      <div className="p-5 bg-slate-900 rounded-[2rem] shadow-xl flex gap-4 text-white border border-slate-800">
+        <div className="p-2 bg-white/10 rounded-xl h-fit">
+          <Clock className="text-indigo-400" size={20} />
+        </div>
+        <div>
+          <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-1">Schedule Summary</p>
+          <p className="font-bold text-sm leading-relaxed">{renderSummary()}</p>
+        </div>
       </div>
 
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 disabled:opacity-50 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2"
+        className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 text-white font-black py-5 rounded-[1.5rem] flex items-center justify-center gap-3 transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 uppercase tracking-widest text-sm"
       >
-        {loading ? "Processing..." : <><Calendar size={20} /> Schedule Transfer <ArrowRight size={20} /></>}
+        {loading ? "Processing..." : <><Calendar size={20} /> Create Schedule <ArrowRight size={20} /></>}
       </button>
     </form>
-  );
+);
 }
+
