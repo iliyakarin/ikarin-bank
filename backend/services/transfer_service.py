@@ -120,7 +120,7 @@ async def process_p2p_transfer(
     # Sender side
     await emit_transactional_event(
         db=db, user_id=current_user.id, account_id=sender_account.id, amount=-amount,
-        category="P2P", merchant=f"To {recipient.email}", transaction_type="transfer",
+        category="p2p", merchant=f"To {recipient.email}", transaction_type="transfer",
         transaction_side="DEBIT", sender_email=current_user.email, recipient_email=recipient.email,
         internal_account_last_4=sender_account.account_number_last_4, event_type="p2p.sender",
         idempotency_key=idempotency_key, commentary=commentary, ip_address=client_ip or "0.0.0.0",
@@ -130,7 +130,7 @@ async def process_p2p_transfer(
     # Recipient side
     await emit_transactional_event(
         db=db, user_id=recipient.id, account_id=recipient_account.id, amount=amount,
-        category="P2P", merchant=f"From {current_user.email}", transaction_type="transfer",
+        category="p2p", merchant=f"From {current_user.email}", transaction_type="transfer",
         transaction_side="CREDIT", sender_email=current_user.email, recipient_email=recipient.email,
         internal_account_last_4=recipient_account.account_number_last_4, event_type="p2p.recipient",
         idempotency_key=idempotency_key, commentary=commentary, ip_address=client_ip or "0.0.0.0",

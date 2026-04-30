@@ -136,7 +136,13 @@ async def emit_transactional_event(
         category=activity_category,
         action=activity_action,
         title=activity_title,
-        details={"transaction_id": tx_id, "parent_id": final_parent_id},
+        details={
+            "transaction_id": tx_id, 
+            "parent_id": final_parent_id,
+            "sender_email": sender_email,
+            "recipient_email": recipient_email,
+            "amount": amount
+        },
         ip=ip_address,
         user_agent=user_agent
     )
