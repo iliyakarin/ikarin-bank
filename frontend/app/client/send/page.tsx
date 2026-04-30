@@ -59,8 +59,8 @@ export default function SendMoneyPage() {
     fetchData();
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [accsResult, contsResult, scheduledResult, requestsResult, activityResult, vendorsResult] = await Promise.allSettled([
         getAccounts(),
@@ -82,11 +82,11 @@ export default function SendMoneyPage() {
 
       // Only show error toast if ALL requests failed
       const allFailed = [accsResult, contsResult, scheduledResult, requestsResult].every(r => r.status === 'rejected');
-      if (allFailed) showNotification('error', "Failed to load transfer data.");
+      if (allFailed && !silent) showNotification('error', "Failed to load transfer data.");
     } catch (err) {
-      showNotification('error', "Failed to load transfer data.");
+      if (!silent) showNotification('error', "Failed to load transfer data.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -97,8 +97,10 @@ export default function SendMoneyPage() {
 
   const handleTransferSuccess = (id: string) => {
     showNotification('success', `Transfer initiated successfully! ID: ${id}`);
-    // Wait for eventual consistency on backend workers
-    setTimeout(fetchData, 2500);
+    // Polling background refresh to account for varying ClickHouse eventual consistency delays
+    setTimeout(() => fetchData(true), 1000);
+    setTimeout(() => fetchData(true), 3000);
+    setTimeout(() => fetchData(true), 6000);
   };
 
   const handleCancelScheduled = async (payment: ScheduledPayment) => {
