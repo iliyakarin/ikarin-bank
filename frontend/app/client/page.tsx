@@ -44,7 +44,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (user) {
-      setUserName(user.first_name);
+      setUserName(user.first_name || "User");
     }
   }, [user]);
 

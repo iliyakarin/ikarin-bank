@@ -155,8 +155,8 @@ export default function ProfilePage() {
                 >
                     <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 flex flex-shrink-0 items-center justify-center shadow-lg shadow-purple-500/20">
                         <span className="text-white font-black text-4xl">
-                            {user.first_name[0]}
-                            {user.last_name[0]}
+                            {(user.first_name?.[0] || 'U')}
+                            {(user.last_name?.[0] || '')}
                         </span>
                     </div>
                     <div className="flex-1 space-y-4 w-full">
@@ -166,7 +166,7 @@ export default function ProfilePage() {
                                     Full Name
                                 </p>
                                 <p className="text-white font-semibold text-lg">
-                                    {user.first_name} {user.last_name}
+                                    {user.first_name || 'User'} {user.last_name || ''}
                                 </p>
                             </div>
                             <div>

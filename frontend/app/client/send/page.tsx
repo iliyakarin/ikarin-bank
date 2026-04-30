@@ -256,7 +256,7 @@ export default function SendMoneyPage() {
                   <span className="text-[10px] bg-indigo-500/20 px-2 py-1 rounded text-indigo-400 font-bold tracking-widest uppercase border border-indigo-500/20">Live</span>
                 </h3>
                 <button 
-                  onClick={fetchData}
+                  onClick={() => fetchData()}
                   className="p-2 hover:bg-white/10 rounded-xl text-white/40 hover:text-white transition-colors"
                 >
                   <ChevronRight size={20} />

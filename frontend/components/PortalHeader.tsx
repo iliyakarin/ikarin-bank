@@ -40,7 +40,7 @@ export default function PortalHeader() {
         <h2 className="text-white font-bold text-2xl">
           Welcome,{" "}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-400">
-            {user.first_name} {user.last_name}
+            {user.first_name || 'User'} {user.last_name || ''}
           </span>
         </h2>
       </div>
@@ -148,7 +148,7 @@ export default function PortalHeader() {
         >
           <div className="text-right hidden sm:block">
             <p className="text-sm font-bold text-white leading-none group-hover:text-purple-300 transition-colors">
-              {user.first_name} {user.last_name}
+              {user.first_name || 'User'} {user.last_name || ''}
             </p>
             <div className="flex items-center justify-end gap-1 mt-1">
               {user.role === "admin" ? (
@@ -171,8 +171,8 @@ export default function PortalHeader() {
             className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center cursor-pointer shadow-lg shadow-purple-500/30 border-2 border-transparent group-hover:border-purple-400/50 transition-all"
           >
             <span className="text-white font-black text-sm">
-              {user.first_name[0]}
-              {user.last_name[0]}
+              {(user.first_name?.[0] || 'U')}
+              {(user.last_name?.[0] || '')}
             </span>
           </motion.div>
         </Link>
