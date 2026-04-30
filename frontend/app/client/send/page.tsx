@@ -67,7 +67,7 @@ export default function SendMoneyPage() {
         getContacts(),
         getScheduledPayments(),
         getPaymentRequests(),
-        getActivity({ category: 'p2p', limit: 10 }),
+        getActivity({ category: 'p2p', limit: 50 }),
         fetch("/api/v1/vendors", {
           headers: { Authorization: `Bearer ${localStorage.getItem("bank_token")}` }
         }).then(res => res.json())
@@ -97,7 +97,7 @@ export default function SendMoneyPage() {
 
   const handleTransferSuccess = (id: string) => {
     showNotification('success', `Transfer initiated successfully! ID: ${id}`);
-    fetchData(); // Refresh history
+    setTimeout(fetchData, 1500); // Refresh history with delay
   };
 
   const handleCancelScheduled = async (payment: ScheduledPayment) => {
@@ -126,18 +126,18 @@ export default function SendMoneyPage() {
 
   if (loading && accounts.length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen flex items-center justify-center">
         <motion.div 
           animate={{ rotate: 360 }} 
           transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-          className="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-600 rounded-full"
+          className="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-400 rounded-full"
         />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="py-12 px-4 sm:px-6 lg:px-8">
       {/* Notifications */}
       <AnimatePresence>
         {notification && (
@@ -159,13 +159,13 @@ export default function SendMoneyPage() {
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
-            <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight mb-2 uppercase">
-              Transfer <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">Center</span>
+            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight mb-2 uppercase">
+              Transfer <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">Center</span>
             </h1>
-            <p className="text-slate-500 font-medium">Manage your money moves, scheduled payments, and requests in one place.</p>
+            <p className="text-white/60 font-medium">Manage your money moves, scheduled payments, and requests in one place.</p>
           </div>
           
-          <div className="flex items-center gap-4 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center gap-4 bg-white/5 backdrop-blur-xl p-2 rounded-2xl border border-white/10 shadow-2xl">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               return (
@@ -174,8 +174,8 @@ export default function SendMoneyPage() {
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all ${
                     activeTab === tab.id 
-                      ? `bg-gradient-to-r ${tab.color} text-white shadow-md` 
-                      : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                      ? `bg-gradient-to-r ${tab.color} text-white shadow-lg` 
+                      : "text-white/40 hover:text-white hover:bg-white/10"
                   }`}
                 >
                   <Icon size={18} />
