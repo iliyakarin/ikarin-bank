@@ -25,7 +25,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     }
 
     return (
-        <ClientRouteBoundary>
+        <ClientRouteBoundary key={pathname}>
             <div className="flex bg-gradient-to-br from-purple-900 via-indigo-900 to-black min-h-screen font-sans selection:bg-white selection:text-black">
                 <Sidebar />
                 <main className="flex-1 relative overflow-x-hidden min-h-screen">

@@ -57,16 +57,28 @@ export default function SendMoneyPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [accs, conts, scheduled, requests] = await Promise.all([
+      const [accsResult, contsResult, scheduledResult, requestsResult] = await Promise.allSettled([
         getAccounts(),
         getContacts(),
         getScheduledPayments(),
         getPaymentRequests()
       ]);
-      setAccounts(accs);
-      setContacts(conts);
-      setScheduledPayments(scheduled);
-      setPaymentRequests(requests);
+
+      if (accsResult.status === 'fulfilled') setAccounts(accsResult.value);
+      else console.error("Failed to load accounts:", accsResult.reason);
+
+      if (contsResult.status === 'fulfilled') setContacts(contsResult.value);
+      else console.error("Failed to load contacts:", contsResult.reason);
+
+      if (scheduledResult.status === 'fulfilled') setScheduledPayments(scheduledResult.value);
+      else console.error("Failed to load scheduled payments:", scheduledResult.reason);
+
+      if (requestsResult.status === 'fulfilled') setPaymentRequests(requestsResult.value);
+      else console.error("Failed to load payment requests:", requestsResult.reason);
+
+      // Only show error toast if ALL requests failed
+      const allFailed = [accsResult, contsResult, scheduledResult, requestsResult].every(r => r.status === 'rejected');
+      if (allFailed) showNotification('error', "Failed to load transfer data.");
     } catch (err) {
       showNotification('error', "Failed to load transfer data.");
     } finally {
