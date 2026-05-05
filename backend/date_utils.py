@@ -1,16 +1,10 @@
 import datetime
 from typing import Optional, Any
+from dateutil.relativedelta import relativedelta
 
 def add_one_month(dt: datetime.datetime) -> datetime.datetime:
-    """Safely adds one month to a datetime object, handling shorter months and leap years."""
-    month = dt.month
-    year = dt.year + (month // 12)
-    month = (month % 12) + 1
-    days_in_month = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    # Leap year check
-    if month == 2 and (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)):
-        days_in_month[2] = 29
-    return dt.replace(year=year, month=month, day=min(dt.day, days_in_month[month]))
+    """Safely adds one month to a datetime object."""
+    return dt + relativedelta(months=1)
 
 def get_next_weekday(dt: datetime.datetime, weekday_name: str) -> Optional[datetime.datetime]:
     """Calculates the next occurrence of a specific weekday."""

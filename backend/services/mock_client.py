@@ -1,9 +1,14 @@
+import os
 import httpx
 import logging
 from typing import Optional, Any, Dict
 from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
+
+# Guard against production usage
+if os.getenv("ENV") == "production":
+    raise ImportError("MockServiceClient is strictly for development and testing environments.")
 
 class MockServiceClient:
     """Unified client for interacting with mock services."""
