@@ -66,6 +66,7 @@ class IdempotencyKey(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     key: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String(20), default="pending", server_default="completed")
     response_code: Mapped[Optional[int]] = mapped_column()
     response_body: Mapped[Optional[dict]] = mapped_column(JSONB)
 

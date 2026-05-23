@@ -26,7 +26,7 @@ from services.transfer_service import process_p2p_transfer, get_vendors
 from services.event_emitter import emit_transactional_event
 from activity import emit_activity, emit_transaction_status_update
 from money_utils import from_cents
-from idempotency import check_idempotency
+from idempotency import check_idempotency, complete_idempotency
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Transfers"])
@@ -107,14 +107,11 @@ async def create_p2p_transfer(
     Raises:
         Exception: Re-raises exceptions from the transfer service.
     """
-    # 1. Idempotency Check
+    # Phase 1: idempotency check — returns saved response on replay, None to proceed
     if transfer.idempotency_key:
-        if await check_idempotency(db, transfer.idempotency_key, current_user.id):
-            # For routers, if it already exists, we might want to return the saved response
-            # But in our refactored transfer_service, it just skips logic.
-            # Original router logic was returning existing.response_body.
-            # Simplified approach: If it exists, we just return a success status if it was processed.
-            return {"status": "success", "transaction_id": "idempotent-skip"}
+        saved = await check_idempotency(db, transfer.idempotency_key, current_user.id)
+        if saved is not None:
+            return saved
 
     try:
         response_body = await process_p2p_transfer(
@@ -126,9 +123,10 @@ async def create_p2p_transfer(
             subscriber_id=transfer.subscriber_id
         )
 
-        # Idempotency response recording is now simpler or moved to middleware if needed
-        # For now, we rely on the check_idempotency utility called at the start.
-        
+        # Phase 2: store response so future replays return the original result
+        if transfer.idempotency_key:
+            await complete_idempotency(db, transfer.idempotency_key, response_body)
+
         await db.commit()
         return response_body
 
