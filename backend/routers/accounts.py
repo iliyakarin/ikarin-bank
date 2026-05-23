@@ -19,6 +19,7 @@ from services.account_service import (
     mask_account_number,
     create_user_sub_account,
     execute_internal_transfer,
+    get_owned_account,
 )
 from auth_utils import get_db, get_current_user
 from money_utils import from_cents
@@ -33,16 +34,6 @@ def is_valid_name(name: str) -> bool:
     """Minimal validation for account names."""
     return bool(re.match(r"^[a-zA-Z0-9 ]+$", name))
 
-async def check_account_owner(account_id: int, user_id: int, db: AsyncSession) -> Account:
-    """Ensures an account exists and belongs to the specified user."""
-    result = await db.execute(select(Account).where(Account.id == account_id, Account.user_id == user_id))
-    account = result.scalars().first()
-    if not account:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Account not found or access denied"
-        )
-    return account
 
 @router.get("", response_model=BalanceResponse)
 async def get_my_accounts(
@@ -119,7 +110,7 @@ async def rename_account(
             detail="Name can only contain letters, numbers, and spaces"
         )
 
-    account = await check_account_owner(account_id, current_user.id, db)
+    account = await get_owned_account(db, account_id, current_user.id)
     old_name = account.name
     account.name = name
 
@@ -166,7 +157,7 @@ async def get_account_credentials(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    account = await check_account_owner(account_id, current_user.id, db)
+    account = await get_owned_account(db, account_id, current_user.id)
     if not account.account_number_encrypted:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No credentials")
     full = decrypt_account_number(account.account_number_encrypted)

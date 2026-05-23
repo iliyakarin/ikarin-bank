@@ -44,6 +44,17 @@ def mask_account_number(number: str) -> str:
     if len(number) < 4: return "****"
     return "****" + number[-4:]
 
+async def get_owned_account(db: AsyncSession, account_id: int, user_id: int) -> Account:
+    """Fetch an account that belongs to the given user, or raise 404."""
+    result = await db.execute(
+        select(Account).where(Account.id == account_id, Account.user_id == user_id)
+    )
+    account = result.scalars().first()
+    if not account:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found or access denied")
+    return account
+
+
 async def assign_account_credentials(db: AsyncSession, account: Account):
     """Generate and assign ABA and encrypted account number."""
     account.routing_number = generate_aba()
