@@ -1,7 +1,7 @@
 from sqlalchemy import String, Integer, Float, DateTime, ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from datetime import datetime
+from datetime import datetime, UTC
 
 class Base(AsyncAttrs, DeclarativeBase):
     pass
@@ -24,4 +24,4 @@ class Transaction(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False) # 'CLEARED', 'FAILED'
     trace_id: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     failure_reason: Mapped[str] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))

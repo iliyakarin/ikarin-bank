@@ -1,22 +1,21 @@
-"""Third-Party Vendor Simulator.
+"""Mock Deposit Funds Service.
 
-This service simulates external vendors and banks for P2P transfers
-and vendor discovery.
-"""
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
-"""Mock Payment Gateway Service.
-
-This service simulates a payment processor (like Stripe) for testing
+This service simulates a payment processor for testing
 deposits and subscriptions.
 """
-import asyncio
 import uuid
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 app = FastAPI(title="Deposit Funds Mock Service")
 
 # In-memory store for mock objects
 payment_intents = {}
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 @app.post("/v1/payment_intents")
 async def create_payment_intent(request: Request):
@@ -78,7 +77,7 @@ async def create_checkout_session(request: Request):
 @app.get("/v1/customers")
 async def list_customers(email: str = None):
     """
-    Mock Stripe Customer listing.
+    Mock Deposit Customer listing.
     """
     return JSONResponse({
         "object": "list",
@@ -94,7 +93,7 @@ async def list_customers(email: str = None):
 @app.post("/v1/billing_portal/sessions")
 async def create_portal_session(request: Request):
     """
-    Mock Stripe Billing Portal Session creation.
+    Mock Deposit Funds Billing Portal Session creation.
     """
     form_data = await request.form()
     return_url = form_data.get("return_url", "http://localhost:3000/dashboard")
@@ -110,4 +109,4 @@ async def trigger_webhook(request: Request):
     Local testing endpoint to trigger a fake webhook to the backend.
     """
     data = await request.json()
-    pass
+    return {"received": True, "event_type": data.get("type")}

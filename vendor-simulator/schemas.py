@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import date, datetime
 
@@ -32,6 +32,8 @@ class VendorListResponse(BaseModel):
     vendors: List[VendorInfo]
 
 class TransactionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     merchant_id: str
     subscriber_id: str
@@ -40,6 +42,3 @@ class TransactionResponse(BaseModel):
     trace_id: str
     failure_reason: Optional[str] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True

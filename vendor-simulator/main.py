@@ -52,6 +52,11 @@ async def verify_api_key(x_api_key: str = Header(...)):
         )
     return x_api_key
 
+def _vendor_email(name: str) -> str:
+    """Derive a billing email address from a merchant name."""
+    slug = name.lower().replace(" ", "").replace("(", "").replace(")", "")
+    return f"billing@{slug}.com"
+
 # DB Dependency
 async def get_db():
     async with AsyncSessionLocal() as session:
@@ -68,7 +73,7 @@ async def get_vendors(db: AsyncSession = Depends(get_db)):
                 id=m.merchant_id,
                 name=m.name,
                 category=m.category,
-                email=f"billing@{m.name.lower().replace(' ', '').replace('(', '').replace(')', '')}.com"
+                email=_vendor_email(m.name)
             ) for m in merchants
         ]
     )
