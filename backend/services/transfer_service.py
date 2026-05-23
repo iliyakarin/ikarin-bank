@@ -14,6 +14,7 @@ from models.account import Account
 from models.transaction import PaymentRequest
 from activity import emit_activity
 from services.event_emitter import emit_transactional_event
+from services.vendor_service import get_vendors
 
 from services.mock_client import MockServiceClient
 
@@ -186,14 +187,6 @@ async def _handle_vendor_payment(
     )
     await db.commit()
     return {"status": "success", "transaction_id": tx_id, "vendor_status": sim_resp.get("status")}
-
-async def get_vendors():
-    """Fetches vendors from the simulator."""
-    try:
-        res = await simulator_client.get("/vendors")
-        return res.get("vendors", [])
-    except Exception:
-        return []
 
 async def _execute_p2p_balances(db: AsyncSession, sender_id: int, recipient_id: int, amount: int) -> Tuple[Account, Account]:
     """Atomically update balances for both accounts."""
