@@ -23,6 +23,7 @@ from schemas.transfers import (
 )
 from auth_utils import get_db, get_current_user
 from services.transfer_service import process_p2p_transfer, get_vendors
+from services.event_emitter import emit_transactional_event
 from activity import emit_activity, emit_transaction_status_update
 from money_utils import from_cents
 from idempotency import check_idempotency
@@ -55,24 +56,29 @@ async def create_transfer(
     if not account:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account not found or access denied")
 
-    tx_id = str(uuid.uuid4())
-    new_tx = Transaction(
-        id=tx_id, account_id=transfer.account_id, amount=transfer.amount,
-        category=transfer.category, merchant=transfer.merchant, status="cleared",
-        internal_account_last_4=account.account_number_last_4,
-        sender_email=current_user.email, recipient_email="external@gateway.com"
-    )
-    db.add(new_tx)
+    client_ip = request.client.host if request.client else "0.0.0.0"
+    user_agent = request.headers.get("user-agent", "unknown")
 
-    payload = {
-        "transaction_id": tx_id, "account_id": transfer.account_id,
-        "internal_account_last_4": account.account_number_last_4,
-        "internal_reference_id": account.internal_reference_id,
-        "amount": transfer.amount, "category": transfer.category,
-        "merchant": transfer.merchant, "transaction_type": "expense",
-        "status": "cleared", "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    }
-    db.add(Outbox(event_type="transaction.created", payload=payload))
+    tx_id = await emit_transactional_event(
+        db=db,
+        user_id=current_user.id,
+        account_id=transfer.account_id,
+        amount=transfer.amount,
+        category=transfer.category,
+        merchant=transfer.merchant,
+        transaction_type="expense",
+        transaction_side="DEBIT",
+        sender_email=current_user.email,
+        recipient_email="external@gateway.com",
+        internal_account_last_4=account.account_number_last_4,
+        event_type="transaction.created",
+        idempotency_key=str(uuid.uuid4()),
+        ip_address=client_ip,
+        user_agent=user_agent,
+        status="cleared",
+        activity_category="transfer",
+        activity_action="sent",
+    )
 
     await db.commit()
     return {"status": "success", "transaction_id": tx_id}
