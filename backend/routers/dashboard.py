@@ -15,6 +15,11 @@ from models.user import User
 from models.account import Account
 from auth_utils import get_db, get_current_user
 from clickhouse_utils import get_ch_client, CH_DB
+from clickhouse_queries import (
+    build_balance_history_query,
+    build_recent_transactions_query,
+    build_transactions_query,
+)
 from schemas.dashboard import DashboardMetrics, RecentTransaction, ChartDataPoint
 from sqlalchemy import func
 
@@ -119,14 +124,8 @@ async def get_balance_history(
 
     try:
         ch = get_ch_client()
-        # Use parametrized interval if possible, or f-string for now as days is trusted int
-        query = f"""
-            SELECT toDate(event_time) as date, sum(amount) as daily_change
-            FROM {CH_DB}.transactions
-            WHERE account_id = {account.id} AND event_time >= now() - INTERVAL {days} DAY
-            GROUP BY toDate(event_time) ORDER BY date
-        """
-        result = ch.query(query).named_results()
+        query, params = build_balance_history_query(CH_DB, account.id, days)
+        result = ch.query(query, parameters=params).named_results()
         
         # Build history (simplified)
         history = [{"date": str(row["date"]), "daily_change": int(row["daily_change"])} for row in result]
@@ -159,14 +158,9 @@ async def get_recent_transactions(
     # ClickHouse ONLY
     final_txs = []
     try:
-        ids_str = ",".join(map(str, target_ids))
         ch = get_ch_client()
-        query = f"""
-            SELECT toString(transaction_id), amount, category, merchant, transaction_type, transaction_side, event_time, status
-            FROM {CH_DB}.transactions WHERE account_id IN ({ids_str}) AND event_time >= now() - INTERVAL {hours} HOUR
-            ORDER BY event_time DESC LIMIT 1 BY transaction_id
-        """
-        ch_rows = ch.query(query).named_results()
+        query, params = build_recent_transactions_query(CH_DB, target_ids, hours)
+        ch_rows = ch.query(query, parameters=params).named_results()
         for row in ch_rows:
             final_txs.append({
                 "id": row["toString(transaction_id)"], "amount": int(row["amount"]),
@@ -202,31 +196,12 @@ async def get_transactions(
 
     try:
         ch = get_ch_client()
-        ids_str = ",".join(map(str, account_ids))
-        
-        conditions = [f"account_id IN ({ids_str})", f"event_time >= now() - INTERVAL {days} DAY"]
-        
-        if tx_type == "incoming":
-            conditions.append("amount > 0")
-        elif tx_type == "outgoing":
-            conditions.append("amount < 0")
-            
-        if min_amount is not None:
-            conditions.append(f"abs(amount) >= {min_amount * 100}")
-        if max_amount is not None:
-            conditions.append(f"abs(amount) <= {max_amount * 100}")
-            
-        where_clause = " AND ".join(conditions)
-        sort_dir = "ASC" if sort.lower() == "asc" else "DESC"
-        
-        query = f"""
-            SELECT toString(transaction_id) as tx_id, sender_email, recipient_email, amount, category, merchant, event_time, status, transaction_type
-            FROM {CH_DB}.transactions
-            WHERE {where_clause}
-            ORDER BY event_time {sort_dir}
-            LIMIT 1 BY transaction_id
-        """
-        ch_rows = ch.query(query).named_results()
+        query, params = build_transactions_query(
+            CH_DB, list(account_ids), days,
+            tx_type=tx_type, min_amount=min_amount,
+            max_amount=max_amount, sort=sort,
+        )
+        ch_rows = ch.query(query, parameters=params).named_results()
         
         return {
             "transactions": [
