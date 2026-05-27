@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Transaction Integrity Flows', () => {
-    const password = "REDACTED!";
+    const password = process.env.ADMIN_PASSWORD!;
     const emailA = `userA_${Math.floor(Math.random() * 100000)}@test.com`;
     const emailB = `userB_${Math.floor(Math.random() * 100000)}@test.com`;
 

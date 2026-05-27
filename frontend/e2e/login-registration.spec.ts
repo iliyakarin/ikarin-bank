@@ -31,8 +31,4 @@ test.describe('Auth Flow', () => {
         await expect(page.locator('text=Welcome')).toBeVisible();
     });
 
-    test('should show custom error on human-bot verification failure', async ({ page }) => {
-        await page.goto('/auth/login');
-        // This test is left as a placeholder or for future mocking
-    });
 });
