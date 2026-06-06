@@ -5,7 +5,6 @@ password updates, and notifications.
 """
 import datetime
 import logging
-import os
 import uuid
 import httpx
 

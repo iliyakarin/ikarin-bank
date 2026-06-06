@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.transaction import Transaction
 from models.management import Outbox
 from activity import emit_activity
+from money_utils import from_cents
 
 async def emit_transactional_event(
     db: AsyncSession,
@@ -119,11 +120,9 @@ async def emit_transactional_event(
         
     activity_title = f"{activity_action.title()} {category}" # Simple default
     if category == "Top-up":
-        from money_utils import from_cents
         activity_title = f"Deposited ${from_cents(amount)} via Gateway"
         activity_action = "deposit_success"
     elif category == "P2P":
-        from money_utils import from_cents
         amount_str = from_cents(abs(amount))
         if transaction_side == "DEBIT":
             activity_title = f"Sent ${amount_str} to {recipient_email}"

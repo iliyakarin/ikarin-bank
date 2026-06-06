@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from database import Outbox, Transaction
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,6 @@ class ProducerManager:
         return self._producer
 
     async def _create_producer(self) -> None:
-        from config import settings
         self._producer = AIOKafkaProducer(
             bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
             enable_idempotence=True,
@@ -75,7 +75,6 @@ _manager = ProducerManager()
 
 async def send_to_kafka(session: AsyncSession, event: Outbox) -> bool:
     """Process a single outbox event."""
-    from config import settings
     producer = await _manager.get_producer()
 
     try:
