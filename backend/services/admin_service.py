@@ -28,8 +28,15 @@ async def compliance_delete_user(db: AsyncSession, admin_id: int, target_id: int
 
     try:
         ch = get_ch_client()
-        if acc_ids: ch.command(f"ALTER TABLE {CH_DB}.transactions DELETE WHERE account_id IN ({','.join(map(str, acc_ids))})")
-        ch.command(f"ALTER TABLE {CH_DB}.activity_events DELETE WHERE user_id = {target_id}")
+        if acc_ids:
+            ch.command(
+                "ALTER TABLE {db}.transactions DELETE WHERE account_id IN :ids".format(db=CH_DB),
+                parameters={"ids": list(acc_ids)},
+            )
+        ch.command(
+            "ALTER TABLE {db}.activity_events DELETE WHERE user_id = :uid".format(db=CH_DB),
+            parameters={"uid": target_id},
+        )
     except Exception as e:
         logger.error(f"CH purge fail: {e}")
 
