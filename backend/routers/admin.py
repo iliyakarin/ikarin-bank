@@ -33,7 +33,7 @@ from services.admin_service import compliance_delete_user, get_system_metrics
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/admin", tags=["Admin"])
+router = APIRouter(tags=["Admin"])
 admin_only = RoleChecker(["admin"])
 
 # --- PII Masking Helpers ---

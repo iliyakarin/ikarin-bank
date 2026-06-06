@@ -34,7 +34,7 @@ from services.mock_client import MockServiceClient
 from security_utils import encrypt_value
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/deposits", tags=["Deposits"])
+router = APIRouter(tags=["Deposits"])
 
 # Initialize Mock Gateway Client
 gateway_client = MockServiceClient(

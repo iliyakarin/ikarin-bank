@@ -28,7 +28,7 @@ from schemas.accounts import (
     AccountResponse, BalanceResponse, AccountCredentialsResponse
 )
 
-router = APIRouter(prefix="/accounts", tags=["accounts"])
+router = APIRouter(tags=["accounts"])
 
 def is_valid_name(name: str) -> bool:
     """Minimal validation for account names."""
