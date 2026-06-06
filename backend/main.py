@@ -102,6 +102,9 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization"],
 )
 
+from middleware import CspNonceMiddleware
+app.add_middleware(CspNonceMiddleware)
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     logger.info(f"➡️ {request.method} {request.url.path}")
