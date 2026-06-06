@@ -107,6 +107,10 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
             # Deduct subscription fee from main account
             account = (await db.execute(select(Account).where(Account.user_id == user.id, Account.is_main == True).with_for_update())).scalars().first()
             if account:
+                if account.balance < 4900:
+                    await db.rollback()
+                    logger.error(f"Insufficient balance for subscription: user {u_id}, balance {account.balance}")
+                    return
                 account.balance -= 4900
             
             db.add(Subscription(
