@@ -135,6 +135,8 @@ export default function ErrorBoundary({ children, fallback, onError }: ErrorBoun
   });
   const retryCountRef = useRef(0);
   const maxRetries = 3;
+  const onErrorRef = useRef(onError);
+  useEffect(() => { onErrorRef.current = onError; }, [onError]);
 
   useEffect(() => {
     if (state.error && state.errorInfo) {
@@ -144,9 +146,9 @@ export default function ErrorBoundary({ children, fallback, onError }: ErrorBoun
         componentStack: state.errorInfo.componentStack,
         timestamp: new Date().toISOString(),
       });
-      onError?.(state.error, state.errorInfo);
+      onErrorRef.current?.(state.error, state.errorInfo);
     }
-  }, [state.error, state.errorInfo, onError]);
+  }, [state.error, state.errorInfo]);
 
   function handleReset() {
     if (retryCountRef.current >= maxRetries) {
