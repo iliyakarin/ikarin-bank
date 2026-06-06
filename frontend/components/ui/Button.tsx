@@ -8,7 +8,7 @@ interface ButtonProps extends HTMLMotionProps<'button'> {
     loading?: boolean;
 }
 
-export default function Button({
+const Button = React.memo(function Button({
     children,
     variant = 'primary',
     size = 'md',
@@ -44,4 +44,5 @@ export default function Button({
             ) : children}
         </motion.button>
     );
-}
+}, (prev, next) => prev.variant === next.variant && prev.size === next.size && prev.loading === next.loading && prev.children === next.children);
+export default Button;

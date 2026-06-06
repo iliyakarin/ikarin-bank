@@ -100,7 +100,7 @@ function TransactionItem({ transaction, index }: { transaction: Transaction, ind
     );
 }
 
-export default function TransactionList({ transactions, loading }: { transactions: Transaction[], loading: boolean }) {
+const TransactionList = React.memo(function TransactionList({ transactions, loading }: { transactions: Transaction[], loading: boolean }) {
     return (
         <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-[2.5rem] shadow-sm overflow-hidden p-2 mt-8">
             <div className="p-6 flex justify-between items-center">
@@ -120,4 +120,4 @@ export default function TransactionList({ transactions, loading }: { transaction
             </div>
         </div>
     );
-}
+}, (prev, next) => prev.transactions === next.transactions && prev.loading === next.loading);

@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { motion } from "framer-motion";
 import { TrendingUp, Eye, EyeOff, Copy, Check } from "lucide-react";
 import { useState } from "react";
@@ -11,7 +12,7 @@ interface BalanceCardProps {
     accountNumber: string;
 }
 
-export default function BalanceCard({ balance, growth, accountNumber }: BalanceCardProps) {
+const BalanceCard = React.memo(function BalanceCard({ balance, growth, accountNumber }: BalanceCardProps) {
     const [showFullAccount, setShowFullAccount] = useState(false);
     const [copied, setCopied] = useState(false);
 
@@ -85,4 +86,5 @@ export default function BalanceCard({ balance, growth, accountNumber }: BalanceC
             <div className="absolute -top-10 -right-10 w-24 h-24 bg-white/10 blur-3xl rounded-full" />
         </motion.div>
     );
-}
+}, (prev, next) => prev.balance === next.balance && prev.growth === next.growth && prev.accountNumber === next.accountNumber);
+export default BalanceCard;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, ChevronDown, ChevronUp, Wallet, Settings, Send } from "lucide-react";
 import { Account } from "@/hooks/useDashboard";
@@ -14,7 +14,7 @@ interface SubAccountManagerProps {
     refresh: () => Promise<void>;
 }
 
-export default function SubAccountManager({ accounts, refresh }: SubAccountManagerProps) {
+const SubAccountManager = React.memo(function SubAccountManager({ accounts, refresh }: SubAccountManagerProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [newName, setNewName] = useState("");
@@ -166,4 +166,5 @@ export default function SubAccountManager({ accounts, refresh }: SubAccountManag
             </AnimatePresence>
         </div>
     );
-}
+}, (prev, next) => prev.accounts === next.accounts && prev.refresh === next.refresh);
+export default SubAccountManager;

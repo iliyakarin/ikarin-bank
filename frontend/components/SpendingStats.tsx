@@ -1,5 +1,6 @@
 "use client";
 
+import React from 'react';
 import { Transaction } from '@/lib/types';
 import { useMemo } from 'react';
 import { calculateStats, calculateSpendingByCategory } from '@/lib/dashboardUtils';
@@ -12,7 +13,7 @@ interface SpendingStatsProps {
     period: string;
 }
 
-export default function SpendingStats({ transactions, period }: SpendingStatsProps) {
+const SpendingStats = React.memo(function SpendingStats({ transactions, period }: SpendingStatsProps) {
     const stats = useMemo(() => calculateStats(transactions), [transactions]);
 
 
@@ -79,14 +80,15 @@ export default function SpendingStats({ transactions, period }: SpendingStatsPro
             </div>
         </div>
     );
-}
+}, (prev, next) => prev.transactions === next.transactions && prev.period === next.period);
+export default SpendingStats;
 
 interface SpendingByCategoryProps {
     transactions: Transaction[];
     limit?: number;
 }
 
-export function SpendingByCategory({ transactions, limit = 5 }: SpendingByCategoryProps) {
+const SpendingByCategory = React.memo(function SpendingByCategory({ transactions, limit = 5 }: SpendingByCategoryProps) {
     const spendingData = useMemo(() => calculateSpendingByCategory(transactions, limit), [transactions, limit]);
 
 
@@ -125,7 +127,7 @@ export function SpendingByCategory({ transactions, limit = 5 }: SpendingByCatego
             </div>
         </div>
     );
-}
+}, (prev, next) => prev.transactions === next.transactions && prev.limit === next.limit);
 
 interface QuickSummaryProps {
     balance: number | null;
@@ -133,7 +135,7 @@ interface QuickSummaryProps {
     loading: boolean;
 }
 
-export function QuickSummary({ balance, transactions, loading }: QuickSummaryProps) {
+const QuickSummary = React.memo(function QuickSummary({ balance, transactions, loading }: QuickSummaryProps) {
     const recentSpending = useMemo(() => {
         const recent = transactions
             .filter(t => (t.transaction_type === 'expense' || t.transaction_type === 'transfer') && t.category !== 'Internal Transfer' && t.amount < 0)
@@ -170,4 +172,6 @@ export function QuickSummary({ balance, transactions, loading }: QuickSummaryPro
             </div>
         </div>
     );
-}
+}, (prev, next) => prev.balance === next.balance && prev.transactions === next.transactions && prev.loading === next.loading);
+
+export { SpendingByCategory, QuickSummary };
