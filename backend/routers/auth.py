@@ -116,8 +116,7 @@ async def login(
     Raises:
         HTTPException: If credentials or captcha are invalid.
     """
-    form = await request.form()
-    captcha_token = form.get("captcha_token") or form.get("cf-turnstile-response")
+    captcha_token = form_data.extra.get("captcha_token") or form_data.extra.get("cf-turnstile-response")
 
     if not await verify_turnstile(captcha_token, request.client.host):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid captcha")
