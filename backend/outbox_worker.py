@@ -1,11 +1,10 @@
 """Outbox processor - consumes pending events from Postgres and sends to Kafka."""
 import asyncio
 import logging
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from config import settings
-from database import SessionLocal
+from database import SessionLocal, engine
 from models.management import Outbox
 from outbox_service import ProducerManager, send_to_kafka
 
@@ -13,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 async def process_outbox():
     """Main loop for the outbox worker."""
-    engine = create_async_engine(settings.DATABASE_URL, echo=False)
     while True:
         try:
             async with AsyncSession(engine) as session:

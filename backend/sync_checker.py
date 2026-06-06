@@ -3,9 +3,9 @@ import logging
 from datetime import datetime, timezone, timedelta
 import asyncio
 import clickhouse_connect
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from database import Transaction, Outbox
+from database import Transaction, Outbox, engine
 from config import settings
 
 logging.basicConfig(level=logging.INFO)
@@ -15,7 +15,6 @@ CHECK_INTERVAL = 86400
 
 async def run_sync_check():
     logger.info("Checking Postgres <-> ClickHouse Sync...")
-    engine = create_async_engine(settings.DATABASE_URL)
     async with AsyncSession(engine) as db:
         try:
             ch = clickhouse_connect.get_client(host=settings.CLICKHOUSE_HOST, port=settings.CLICKHOUSE_PORT, username=settings.CLICKHOUSE_USER, password=settings.CLICKHOUSE_PASSWORD)

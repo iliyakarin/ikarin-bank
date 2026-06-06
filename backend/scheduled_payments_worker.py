@@ -6,9 +6,9 @@ import uuid
 import httpx
 from typing import Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
-from database import SessionLocal
+from database import SessionLocal, engine
 from models.user import User
 from models.account import Account
 from models.transaction import Transaction
@@ -37,7 +37,6 @@ async def execute_vendor_payment(v_id: str, s_id: str, amount: int):
         except Exception as e: return {"status": "FAILED", "failure_reason": str(e)}
 
 async def process_scheduled_payments():
-    engine = create_async_engine(settings.DATABASE_URL)
     async with AsyncSession(engine) as db:
         try:
             now = datetime.datetime.now(timezone.utc)
