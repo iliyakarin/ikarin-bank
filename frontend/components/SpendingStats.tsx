@@ -127,7 +127,7 @@ const SpendingByCategory = React.memo(function SpendingByCategory({ transactions
             </div>
         </div>
     );
-}, (prev, next) => prev.transactions === next.transactions && prev.limit === next.limit);
+}, (prev, next) => prev.transactions === next.transactions && (prev.limit ?? 5) === (next.limit ?? 5));
 
 interface QuickSummaryProps {
     balance: number | null;
