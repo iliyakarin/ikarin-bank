@@ -23,7 +23,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # During history rewrites, the range calculation might fail.
         # This fallback ensures we still scan if the range is invalid.
-        continue-on-error: true
+        with:
+          args: --verbose --report-format json --report-path gitleaks-report.json
+      - name: Upload Gitleaks Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
       - name: Gitleaks Full Scan if Range Failed
         if: steps.gitleaks.outcome == 'failure'
         uses: gitleaks/gitleaks-action@v2
