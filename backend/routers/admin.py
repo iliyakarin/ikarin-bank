@@ -95,8 +95,8 @@ async def list_users(skip: int = 0, limit: int = 100, db: AsyncSession = Depends
     result = await db.execute(select(User).order_by(User.id.desc()).offset(skip).limit(limit))
     users = result.scalars().all()
     for user in users:
-        # user.email = mask_email(user.email)
-        # user.backup_email = mask_email(user.backup_email) if user.backup_email else None
+        user.email = mask_email(user.email)
+        user.backup_email = mask_email(user.backup_email) if user.backup_email else None
         user.first_name = mask_name(user.first_name)
         user.last_name = mask_name(user.last_name)
     return users
@@ -105,8 +105,8 @@ async def list_users(skip: int = 0, limit: int = 100, db: AsyncSession = Depends
 async def search_user_by_email(email: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_only)):
     user = (await db.execute(select(User).where(User.email == email))).scalars().first()
     if not user: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    # user.email = mask_email(user.email)
-    # user.backup_email = mask_email(user.backup_email) if user.backup_email else None
+    user.email = mask_email(user.email)
+    user.backup_email = mask_email(user.backup_email) if user.backup_email else None
     user.first_name = mask_name(user.first_name)
     user.last_name = mask_name(user.last_name)
     return user
