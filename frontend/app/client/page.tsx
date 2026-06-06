@@ -4,12 +4,12 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { useTransactions, useBalance } from "@/hooks/useDashboard";
-import SpendingStats, { SpendingByCategory } from "@/components/SpendingStats";
+import { SpendingByCategory } from "@/components/SpendingStats";
 import TransactionList from "@/components/TransactionList";
-import BalanceHistoryChart from "@/components/BalanceHistoryChart";
 import SubAccountManager from "@/components/SubAccountManager";
 import { TrendingUp, RefreshCw, ShieldCheck } from "lucide-react";
 import { formatCurrency } from "@/lib/transactionUtils";
+import { calculateStats } from "@/lib/dashboardUtils";
 import {
   LineChart,
   Line,
@@ -21,7 +21,7 @@ import {
 } from "recharts";
 
 export default function DashboardPage() {
-  const { user, token, settings } = useAuth();
+  const { user, settings } = useAuth();
   const [userName, setUserName] = useState<string>("User");
   const [dayFilter, setDayFilter] = useState(1); // Default to 24h
   const [showSuccess, setShowSuccess] = useState(false);
@@ -39,7 +39,6 @@ export default function DashboardPage() {
     accounts,
     loading: balanceLoading,
     refresh: refreshBalance,
-    refetching: balanceRefetching,
   } = useBalance(true);
 
   useEffect(() => {
@@ -55,15 +54,7 @@ export default function DashboardPage() {
   const isRefreshing = transactionsLoading || balanceLoading || refetching;
 
 
-  const stats = {
-    totalIncome: transactions
-      .filter((t) => t.amount > 0 && t.category !== "Internal Transfer")
-      .reduce((sum, t) => sum + t.amount, 0),
-    totalExpenses: transactions
-      .filter((t) => t.amount < 0 && t.category !== "Internal Transfer")
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0),
-    transactionCount: transactions.filter((t) => t.category !== "Internal Transfer").length,
-  };
+  const stats = calculateStats(transactions);
 
   const balanceHistoryData = transactions
     .map((t) => ({
@@ -183,18 +174,6 @@ export default function DashboardPage() {
           </motion.div>
         </div>
       </div>
-
-      {/* Success Message */}
-      {showSuccess && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 p-4 rounded-2xl"
-        >
-          <p className="font-bold mb-1">Payment Successful!</p>
-          <p className="text-sm">Your balance will update shortly. Please refresh the page to see your new balance.</p>
-        </motion.div>
-      )}
 
       {/* Error Display */}
       {transactionsError && (

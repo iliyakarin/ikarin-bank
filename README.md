@@ -143,27 +143,18 @@ The application uses `backend/config.py` as the source of truth. Reference `.env
 
 ```
 karin-bank/
-├── backend/                # FastAPI application
-│   ├── main.py            # API routes and endpoints
-│   ├── database.py       # SQLAlchemy models
-│   ├── consumer.py        # Kafka consumer
-│   ├── scheduled_payments_worker.py
-│   ├── outbox_worker.py
-│   ├── sync_checker.py
-│   ├── account_service.py
-│   ├── activity.py
-│   └── tests/             # Pytest test suite
-├── frontend/              # Next.js application
-│   ├── app/             # App Router pages
-│   ├── components/      # React components
-│   └── tests/          # Playwright E2E tests
-├── init-db/            # Database initialization scripts
-├── vendor-simulator/    # Vendor payment simulation
-├── mock-fed-gateway/   # Federal payment gateway mock
-├── nginx.conf         # Nginx configuration
-├── docker-compose.yml # Service orchestration
-├── .env.example       # Example environment configuration
-└── README.md          # This file
+├── backend/              # FastAPI app (routers/, services/, models/, schemas/)
+├── frontend/             # Next.js 15 app (app/, components/, lib/api/)
+├── mock-fed-gateway/     # Mock Federal Reserve ACH gateway
+├── vendor-simulator/     # Mock bill pay vendor service
+├── deposit-funds-mock/   # Mock deposit/top-up provider
+├── tests/                # Integration, unit, and E2E tests
+├── init-db/              # DB initialization configs
+├── docs/                 # Policies and reference docs
+├── docker-compose.yml    # Service orchestration
+├── .env.example          # Environment variable template
+├── CLAUDE.md             # AI agent development rules
+└── SECURITY.md           # Security policy
 ```
 
 ## User Roles
@@ -204,11 +195,10 @@ npx playwright test
 
 ## Documentation
 
-- **[CLAUDE.md](CLAUDE.md)** - Comprehensive development guide
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment instructions
-- **[PERSISTENCE.md](PERSISTENCE.md)** - Database persistence details
-- **[DASHBOARD_IMPLEMENTATION.md](DASHBOARD_IMPLEMENTATION.md)** - Dashboard features
-- **[GEMINI.md](GEMINI.md)** - Additional implementation notes
+- **[CLAUDE.md](CLAUDE.md)** — AI agent development rules
+- **[SECURITY.md](SECURITY.md)** — Security policy and vulnerability reporting
+- **[SETUP_ENV.md](SETUP_ENV.md)** — Environment variable setup guide
+- **[docs/financial_precision_policy.md](docs/financial_precision_policy.md)** — Integer-cents monetary policy
 
 ## Database Management
 

@@ -69,3 +69,7 @@ export async function getAccountTransactions(accountId: number): Promise<Transac
     schema: z.array(TransactionSchema)
   });
 }
+
+export async function createSubAccount(name: string): Promise<void> {
+  await api.post("/api/v1/accounts/sub", { name });
+}

@@ -6,6 +6,8 @@ import DOMPurify from "isomorphic-dompurify";
 import { toCents } from "@/lib/transactionUtils";
 import { Account } from "@/lib/api/accounts";
 import { Contact } from "@/lib/api/contacts";
+import { createP2PTransfer } from "@/lib/api/transfers";
+import { ApiError } from "@/lib/api/client";
 import AccountSelector from "./AccountSelector";
 
 interface InstantTransferTabProps {
@@ -48,32 +50,23 @@ export default function InstantTransferTab({
     setLoading(true);
     try {
       const cleanCommentary = DOMPurify.sanitize(commentary);
-      const res = await fetch("/api/v1/p2p-transfer", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("bank_token")}`,
-        },
-        body: JSON.stringify({
-          recipient_email: recipient,
-          amount: toCents(amount),
-          commentary: cleanCommentary || null,
-          source_account_id: sourceAccountId || undefined,
-          subscriber_id: subscriberId || undefined,
-        }),
+      const data = await createP2PTransfer({
+        recipient_email: recipient,
+        amount: toCents(amount),
+        commentary: cleanCommentary || null,
+        source_account_id: sourceAccountId || undefined,
+        subscriber_id: subscriberId || undefined,
       });
-      if (res.ok) {
-        const data = await res.json();
-        onSuccess(data.transaction_id);
-        setRecipient("");
-        setAmount("");
-        setCommentary("");
-      } else {
-        const data = await res.json();
-        onError(data.detail || "Transfer failed");
-      }
+      onSuccess(data.transaction_id);
+      setRecipient("");
+      setAmount("");
+      setCommentary("");
     } catch (err) {
-      onError("Connection error. Please try again.");
+      if (err instanceof ApiError) {
+        onError(err.detail?.detail || "Transfer failed");
+      } else {
+        onError("Connection error. Please try again.");
+      }
     } finally {
       setLoading(false);
     }

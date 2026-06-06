@@ -2,6 +2,7 @@
 
 import { Transaction } from '@/lib/types';
 import { useMemo } from 'react';
+import { calculateStats, calculateSpendingByCategory } from '@/lib/dashboardUtils';
 import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLOR } from '@/lib/constants';
 import { ArrowUpRight, ArrowDownLeft, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import { formatCurrency } from '@/lib/transactionUtils';
@@ -12,44 +13,7 @@ interface SpendingStatsProps {
 }
 
 export default function SpendingStats({ transactions, period }: SpendingStatsProps) {
-    const stats = useMemo(() => {
-        const totalIncome = transactions
-            .filter(t => t.transaction_type === 'income' && t.category !== 'Internal Transfer')
-            .reduce((sum, t) => sum + t.amount, 0);
-
-        const totalExpenses = transactions
-            .filter(t => (t.transaction_type === 'expense' || t.transaction_type === 'transfer') && t.category !== 'Internal Transfer' && t.amount < 0)
-            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-
-        const netFlow = totalIncome - totalExpenses;
-
-        const spendingByCategory = transactions
-            .filter(t => (t.transaction_type === 'expense' || t.transaction_type === 'transfer') && t.category !== 'Internal Transfer' && t.amount < 0)
-            .reduce((acc, t) => {
-                const category = t.transaction_type === 'transfer' ? 'Transfers' : t.category;
-                const amount = Math.abs(t.amount);
-                acc[category] = (acc[category] || 0) + amount;
-                return acc;
-            }, {} as Record<string, number>);
-
-        const topCategories = Object.entries(spendingByCategory)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3);
-
-        const pendingCount = transactions.filter(t => t.status === 'pending').length;
-        const clearedCount = transactions.filter(t => t.status === 'cleared').length;
-
-        return {
-            totalIncome,
-            totalExpenses,
-            netFlow,
-            spendingByCategory,
-            topCategories,
-            pendingCount,
-            clearedCount,
-            averageTransaction: transactions.length > 0 ? totalExpenses / transactions.length : 0,
-        };
-    }, [transactions]);
+    const stats = useMemo(() => calculateStats(transactions), [transactions]);
 
 
     return (
@@ -123,27 +87,7 @@ interface SpendingByCategoryProps {
 }
 
 export function SpendingByCategory({ transactions, limit = 5 }: SpendingByCategoryProps) {
-    const spendingData = useMemo(() => {
-        const spendingByCategory = transactions
-            .filter(t => (t.transaction_type === 'expense' || t.transaction_type === 'transfer') && t.category !== 'Internal Transfer' && t.amount < 0)
-            .reduce((acc, t) => {
-                const category = t.transaction_type === 'transfer' ? 'Transfers' : t.category;
-                const amount = Math.abs(t.amount);
-                acc[category] = (acc[category] || 0) + amount;
-                return acc;
-            }, {} as Record<string, number>);
-
-        const totalSpending = Object.values(spendingByCategory).reduce((a, b) => a + b, 0);
-
-        return Object.entries(spendingByCategory)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, limit)
-            .map(([category, amount]) => ({
-                category,
-                amount,
-                percentage: totalSpending > 0 ? (amount / totalSpending) * 100 : 0,
-            }));
-    }, [transactions, limit]);
+    const spendingData = useMemo(() => calculateSpendingByCategory(transactions, limit), [transactions, limit]);
 
 
     if (spendingData.length === 0) {

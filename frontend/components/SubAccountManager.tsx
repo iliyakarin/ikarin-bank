@@ -4,8 +4,9 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, ChevronDown, ChevronUp, Wallet, Settings, Send } from "lucide-react";
 import { Account } from "@/hooks/useDashboard";
-import { useAuth } from "@/lib/AuthContext";
 import { formatCurrency } from "@/lib/transactionUtils";
+import { createSubAccount } from "@/lib/api/accounts";
+import { ApiError } from "@/lib/api/client";
 import Link from "next/link";
 
 interface SubAccountManagerProps {
@@ -14,7 +15,6 @@ interface SubAccountManagerProps {
 }
 
 export default function SubAccountManager({ accounts, refresh }: SubAccountManagerProps) {
-    const { token } = useAuth();
     const [isExpanded, setIsExpanded] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [newName, setNewName] = useState("");
@@ -32,26 +32,12 @@ export default function SubAccountManager({ accounts, refresh }: SubAccountManag
         setLoading(true);
         setError(null);
         try {
-            const authToken = token || localStorage.getItem('bank_token');
-            const response = await fetch("/api/v1/accounts/sub", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${authToken}`,
-                },
-                body: JSON.stringify({ name: newName.trim() }),
-            });
-
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.detail || "Failed to create sub-account");
-            }
-
+            await createSubAccount(newName.trim());
             setNewName("");
             setIsCreating(false);
             await refresh();
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err) {
+            setError(err instanceof ApiError ? (err.detail?.detail || "Failed to create sub-account") : (err as Error).message);
         } finally {
             setLoading(false);
         }

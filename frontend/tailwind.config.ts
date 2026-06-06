@@ -11,6 +11,21 @@ const config: Config = {
             colors: {
                 background: "var(--background)",
                 foreground: "var(--foreground)",
+
+                // ── Dark palette ──
+                dark: {
+                    base: "#050510",
+                    surface: "#0a0a1a",
+                    panel: "rgba(255, 255, 255, 0.03)",
+                },
+
+                // ── Glass borders ──
+                glassBorder: {
+                    DEFAULT: "rgba(255, 255, 255, 0.08)",
+                    strong: "rgba(255, 255, 255, 0.12)",
+                    accent: "rgba(139, 92, 246, 0.25)",
+                },
+
                 primary: {
                     50: '#eff6ff',
                     100: '#dbeafe',
@@ -24,6 +39,11 @@ const config: Config = {
                     900: '#1e3a8a',
                     950: '#172554',
                 },
+            },
+            backdropBlur: {
+                glass: '16px',
+                elevated: '24px',
+                light: '8px',
             },
             animation: {
                 'blob': 'blob 7s infinite',

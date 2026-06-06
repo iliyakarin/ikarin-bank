@@ -1,0 +1,36 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.venv/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Test artifacts — never leak into production image
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+junit.xml
+test-results/
+tests/.pytest_cache/
+tests/__pycache__/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# Environment
+.env*
+!.env.example
+
+# Docs
+*.md

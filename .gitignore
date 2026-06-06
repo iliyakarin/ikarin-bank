@@ -75,6 +75,10 @@ frontend/playwright-report/
 frontend/blob-report/
 frontend/playwright/.cache/
 frontend/e2e_error.log
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+tests/e2e/node_modules/
+tests/e2e/tests/e2e/
 # TypeScript
 *.tsbuildinfo
 frontend/tsconfig.tsbuildinfo
@@ -88,6 +92,7 @@ frontend/tsconfig.tsbuildinfo
 .cursor/
 .codex/
 .config-history/
+.agents/
 scratch/
 init-db/setup-admin.xml
 
@@ -118,3 +123,4 @@ init-db/*.prod.xml
 nginx.prod.conf
 deploy.sh
 backend/scripts/
+.aider*

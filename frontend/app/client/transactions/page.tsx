@@ -48,11 +48,6 @@ export default function TransactionsPage() {
 
         if (res.ok) {
           const data = await res.json();
-          console.log(`[TransactionsPage] Received 200 OK from ${res.url}`);
-          console.log(`[TransactionsPage] Received data keys: ${Object.keys(data)}`);
-          console.log(`[TransactionsPage] data.transactions length: ${data.transactions?.length}`);
-          console.log(`[TransactionsPage] Transactions data:`, JSON.stringify(data.transactions));
-          console.log(`[TransactionsPage] Fetched ${data.transactions?.length || 0} transactions`);
           setTransactions(data.transactions || []);
         } else {
           const errorText = await res.text();
@@ -65,7 +60,6 @@ export default function TransactionsPage() {
       }
     };
 
-    console.log("[TransactionsPage] Effect triggered with token:", !!token);
     if (token) fetchTransactions();
   }, [token, dayRange, txType, minAmount, maxAmount, sortAsc]);
 

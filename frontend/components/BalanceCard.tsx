@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { TrendingUp, Eye, EyeOff, Copy, Check } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { formatCurrency } from "@/lib/transactionUtils";
 
 interface BalanceCardProps {
@@ -13,7 +13,6 @@ interface BalanceCardProps {
 
 export default function BalanceCard({ balance, growth, accountNumber }: BalanceCardProps) {
     const [showFullAccount, setShowFullAccount] = useState(false);
-    const [mounted, setMounted] = useState(false);
     const [copied, setCopied] = useState(false);
 
     const handleCopy = () => {
@@ -22,13 +21,7 @@ export default function BalanceCard({ balance, growth, accountNumber }: BalanceC
         setTimeout(() => setCopied(false), 2000);
     };
 
-    useEffect(() => {
-        setMounted(true);
-    }, []);
-
-    const formattedBalance = mounted
-        ? formatCurrency(balance)
-        : formatCurrency(balance);
+    const formattedBalance = formatCurrency(balance);
 
     return (
         <motion.div

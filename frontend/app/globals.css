@@ -3,35 +3,158 @@
 @tailwind utilities;
 
 :root {
-  --background: #020617;
-  --foreground: #f8fafc;
+  --background: #050510;
+  --foreground: #ededed;
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  min-height: 100vh;
-  overflow-x: hidden;
+/* ===== Glass Design System ===== */
+
+/* Surface glass panels (cards, list items) */
+.glass-base {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+/* Elevated glass panels (modals, dropdowns, active states) */
+.glass-elevated {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
 }
 
-.glass-panel {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(20px);
+/* High-emphasis glass (active buttons, selected items) */
+.glass-accent {
+  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+/* Overlay glass (tooltips, overlays, banners) */
+.glass-overlay {
+  background: rgba(5, 5, 16, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
+/* Form input glass */
+.glass-input {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  color: #e4e4e7;
+  transition: border-color 0.2s, background 0.2s;
 }
 
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+.glass-input:focus {
+  border-color: rgba(139, 92, 246, 0.5);
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+
+.glass-input::placeholder {
+  color: rgba(148, 163, 184, 0.6);
+}
+
+/* Button variants */
+.glass-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  color: #e4e4e7;
+  transition: all 0.2s;
+}
+
+.glass-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.glass-btn-primary {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: white;
+  transition: all 0.2s;
+}
+
+.glass-btn-primary:hover {
+  background: linear-gradient(135deg, #9f73fb 0%, #7478fc 100%);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
+}
+
+/* Sidebar item active */
+.glass-nav-active {
+  background: rgba(139, 92, 246, 0.1);
+  border-left: 2px solid #8b5cf6;
+  color: #c4b5fd;
+}
+
+/* Status badges */
+.status-success {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+}
+
+.status-warning {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  color: #fcd34d;
+}
+
+.status-error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Selection */
+::selection {
+  background: rgba(139, 92, 246, 0.3);
+  color: #e4e4e7;
+}
+
+/* Animated gradient mesh background */
+.bg-mesh {
+  background: radial-gradient(ellipse at 10% 20%, rgba(59, 130, 246, 0.12) 0%, transparent 50%),
+              radial-gradient(ellipse at 90% 80%, rgba(139, 92, 246, 0.10) 0%, transparent 50%),
+              radial-gradient(ellipse at 50% 50%, rgba(22, 78, 121, 0.08) 0%, transparent 60%),
+              #050510;
+}
+
+/* Text gradient utilities */
+.text-gradient {
+  background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 50%, #8b5cf6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Subtle border highlight on cards */
+.glow-border:hover {
+  border-color: rgba(139, 92, 246, 0.2);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.05);
 }
