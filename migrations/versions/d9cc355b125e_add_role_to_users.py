@@ -1,7 +1,6 @@
-
 """add role to users
 
-Revision ID: 1a2b3c4d5e6f
+Revision ID: d9cc355b125e
 Revises:
 Create Date: 2023-10-27 10:00:00.000000
 
@@ -11,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '1a2b3c4d5e6f'
+revision = 'd9cc355b125e'
 down_revision = None
 branch_labels = None
 depends_on = None
