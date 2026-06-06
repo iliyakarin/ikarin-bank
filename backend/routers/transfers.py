@@ -220,17 +220,6 @@ async def get_scheduled_payments(
     )).scalars().all()
 
 
-@router.get("/transfers/scheduled", response_model=List[ScheduledPaymentResponse])
-async def get_scheduled_payments_alias(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Alias for GET /scheduled to match frontend API expectations."""
-    return (await db.execute(
-        select(ScheduledPayment).where(ScheduledPayment.user_id == current_user.id).order_by(ScheduledPayment.id.desc())
-    )).scalars().all()
-
-
 @router.post("/transfers/scheduled")
 async def create_scheduled_payment(
     payload: ScheduledTransferCreate,
