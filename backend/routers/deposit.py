@@ -14,6 +14,7 @@ from typing import List, Optional
 from cryptography.fernet import Fernet
 
 from config import settings
+from constants import SUBSCRIPTION_BLACK_PRICE
 from auth_utils import get_db, get_current_user
 from database import SessionLocal
 from models.user import User, Subscription
@@ -74,7 +75,7 @@ async def create_checkout_session(payload: CheckoutSessionCreate, current_user: 
 
 @router.post("/payment_intents", response_model=PaymentIntentResponse)
 async def create_payment_intent(payload: PaymentIntentCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if payload.amount == 4900:
+    if payload.amount == SUBSCRIPTION_BLACK_PRICE:
         existing = (await db.execute(select(Subscription).where(Subscription.user_id == current_user.id, Subscription.status == "active"))).scalars().first()
         if existing: raise HTTPException(status_code=400, detail="User already subscribed")
     
@@ -120,8 +121,8 @@ async def confirm_payment_intent(intent_id: str, payload: PaymentIntentConfirm, 
         intent = await gateway_client.get(f"/v1/payment_intents/{intent_id}")
         if not intent.get("metadata"): intent["metadata"] = {}
         intent["metadata"]["user_id"] = str(current_user.id)
-        if "mode" not in intent["metadata"]: intent["metadata"]["mode"] = "subscription" if "4900" in str(intent_id) else "payment"
-        if not intent.get("amount"): intent["amount"] = 4900 if intent["metadata"]["mode"] == "subscription" else int(intent.get("amount", 0))
+        if "mode" not in intent["metadata"]: intent["metadata"]["mode"] = "subscription" if str(SUBSCRIPTION_BLACK_PRICE) in str(intent_id) else "payment"
+        if not intent.get("amount"): intent["amount"] = SUBSCRIPTION_BLACK_PRICE if intent["metadata"]["mode"] == "subscription" else int(intent.get("amount", 0))
         
         await handle_checkout_completed(intent, db)
         await db.commit()

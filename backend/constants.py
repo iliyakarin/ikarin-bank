@@ -1,40 +1,14 @@
-"""Shared constants and defaults for the KarinBank backend.
+"""Application-wide constants."""
 
-This module provides a centralized location for magic strings, default values,
-and enumeration-like constants used across the application to avoid hardcoding
-and ensure consistency.
-"""
+# Subscription pricing (in cents)
+SUBSCRIPTION_BLACK_PRICE = 4900  # $49.00/month
 
-# UUIDs
-NULL_UUID = "00000000-0000-0000-0000-000000000000"
+# Timeouts (in milliseconds)
+KAFKA_REQUEST_TIMEOUT_MS = 10000
+OPTIMAL_SESSION_TIMEOUT = 10000
 
-# Transaction Constants
-TRANSACTION_TYPE_EXPENSE = "expense"
-TRANSACTION_TYPE_INCOME = "income"
-TRANSACTION_TYPE_TRANSFER = "transfer"
-TRANSACTION_TYPE_P2P = "p2p"
+# Sync check interval (in seconds)
+CHECK_INTERVAL_SECONDS = 86400  # 24 hours
 
-TRANSACTION_STATUS_PENDING = "pending"
-TRANSACTION_STATUS_COMPLETED = "completed"
-TRANSACTION_STATUS_FAILED = "failed"
-TRANSACTION_STATUS_CANCELLED = "cancelled"
-
-TRANSACTION_SIDE_DEBIT = "DEBIT"
-TRANSACTION_SIDE_CREDIT = "CREDIT"
-
-# Activity Constants
-ACTIVITY_DETAILS_EMPTY = "{}"
-
-# Scheduled Payment Constants
-SCHEDULED_PAYMENT_STATUS_ACTIVE = "Active"
-SCHEDULED_PAYMENT_STATUS_PAUSED = "Paused"
-SCHEDULED_PAYMENT_STATUS_COMPLETED = "Completed"
-
-# Contact Constants
-CONTACT_TYPE_KARIN = "karin"
-CONTACT_TYPE_EXTERNAL = "external"
-
-# Outbox Constants
-OUTBOX_STATUS_PENDING = "pending"
-OUTBOX_STATUS_PROCESSED = "processed"
-OUTBOX_STATUS_FAILED = "failed"
+# E2E test seed balance (in cents)
+E2E_SEED_BALANCE_CENTS = 100000  # $1000.00

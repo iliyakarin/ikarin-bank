@@ -11,7 +11,7 @@ from config import settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-CHECK_INTERVAL = 86400
+CHECK_INTERVAL = 86400  # 24 hours in seconds
 
 async def run_sync_check():
     logger.info("Checking Postgres <-> ClickHouse Sync...")

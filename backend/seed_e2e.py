@@ -8,6 +8,7 @@ from passlib.context import CryptContext
 
 # Set path to import models and config
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__))))
+from constants import E2E_SEED_BALANCE_CENTS
 from models.user import User
 from models.account import Account
 from config import settings
@@ -47,7 +48,7 @@ async def seed_data():
             account = Account(
                 user_id=user_id,
                 name="Main Account",
-                balance=100000, # $1000.00 in cents
+                balance=E2E_SEED_BALANCE_CENTS, # $1000.00 in cents
                 is_main=True
             )
             session.add(account)
