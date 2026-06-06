@@ -111,7 +111,7 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
                 if account.balance < SUBSCRIPTION_BLACK_PRICE:
                     await db.rollback()
                     logger.error(f"Insufficient balance for subscription: user {u_id}, balance {account.balance}")
-                    return
+                    raise ValueError("Insufficient balance for subscription")
                 account.balance -= SUBSCRIPTION_BLACK_PRICE
             
             db.add(Subscription(
