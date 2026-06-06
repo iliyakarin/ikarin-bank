@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 async def process_outbox():
     """Main loop for the outbox worker."""
+    attempt = 0
     while True:
         try:
             async with AsyncSession(engine) as session:
@@ -36,9 +37,12 @@ async def process_outbox():
                         continue
 
                 await session.commit()
+                attempt = 0
         except Exception as e:
             logger.error(f"Loop error: {e}")
-            await asyncio.sleep(2)
+            backoff = min(2 ** attempt, 30)
+            await asyncio.sleep(backoff)
+            attempt += 1
 
 async def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
