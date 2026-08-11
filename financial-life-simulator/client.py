@@ -63,12 +63,12 @@ class ApiClient:
             await self.register(email, password, first_name, last_name)
             return await self.login(email, password)
 
-    async def get_main_account_id(self, token: str) -> int:
+    async def get_main_account_info(self, token: str) -> dict:
         resp = await self._http.get("/v1/accounts", headers=_auth(token))
         resp.raise_for_status()
         accounts = resp.json()["accounts"]
         main = next((a for a in accounts if a["is_main"]), accounts[0])
-        return main["id"]
+        return main
 
     async def expense(
         self, token: str, account_id: int, amount: int, category: str, merchant: str, idempotency_key: str

@@ -35,8 +35,8 @@ class FinancialLifeSimulator:
         user2_token = await self.client.ensure_logged_in(
             settings.SIM_USER2_EMAIL, settings.SIM_USER2_PASSWORD, "Ikarin", "Six"
         )
-        admin_account_id = await self.client.get_main_account_id(admin_token)
-        return admin_token, user2_token, admin_account_id
+        admin_account = await self.client.get_main_account_info(admin_token)
+        return admin_token, user2_token, admin_account
 
     async def tick(self) -> None:
         async with self._lock:
@@ -45,12 +45,15 @@ class FinancialLifeSimulator:
     async def _tick_unlocked(self) -> None:
         self.last_tick_at = datetime.datetime.now(datetime.timezone.utc)
         try:
-            admin_token, user2_token, admin_account_id = await self._sessions()
+            admin_token, user2_token, admin_account = await self._sessions()
+            admin_account_id = admin_account["id"]
+            current_balance = admin_account["balance"]
         except Exception:
             logger.exception("Failed to establish simulator sessions; skipping tick")
             return
 
-        today = datetime.date.today()
+        utc_now = datetime.datetime.now(datetime.timezone.utc)
+        today = utc_now.date()
         month_key = today.strftime("%Y-%m")
 
         if today.day in (1, 15):
@@ -73,18 +76,35 @@ class FinancialLifeSimulator:
                     "insurance", CAR_INSURANCE_MERCHANT, key
                 ))
 
-        if random.random() < settings.PURCHASE_CHANCE_PER_TICK:
-            merchant = random_merchant()
-            key = f"purchase-{uuid.uuid4()}"
-            await self._safe(self._fire_expense(
-                admin_token, admin_account_id, random_amount(merchant),
-                merchant["category"], merchant["name"], key
-            ))
+        est_hour = (utc_now.hour - 5) % 24
+        is_daytime = 8 <= est_hour <= 22
+        multiplier = 1.5 if is_daytime else 0.1
 
-        if random.random() < settings.P2P_CHANCE_PER_TICK:
-            await self._safe(self._fire_p2p(admin_token, settings.SIM_USER2_EMAIL))
-        if random.random() < settings.P2P_CHANCE_PER_TICK:
-            await self._safe(self._fire_p2p(user2_token, settings.ADMIN_EMAIL))
+        purchase_chance = settings.PURCHASE_CHANCE_PER_TICK * multiplier
+        p2p_chance = settings.P2P_CHANCE_PER_TICK * multiplier
+
+        if random.random() < purchase_chance:
+            merchant = random_merchant()
+            amount = random_amount(merchant)
+            if current_balance >= amount:
+                key = f"purchase-{uuid.uuid4()}"
+                await self._safe(self._fire_expense(
+                    admin_token, admin_account_id, amount,
+                    merchant["category"], merchant["name"], key
+                ))
+                current_balance -= amount
+
+        if random.random() < p2p_chance:
+            amount = random.randint(1000, 15000)
+            if current_balance >= amount:
+                key = f"p2p-{uuid.uuid4()}"
+                await self._safe(self._fire_p2p(admin_token, settings.SIM_USER2_EMAIL, amount, key))
+                current_balance -= amount
+
+        if random.random() < p2p_chance:
+            amount = random.randint(1000, 15000)
+            key = f"p2p-{uuid.uuid4()}"
+            await self._safe(self._fire_p2p(user2_token, settings.ADMIN_EMAIL, amount, key))
 
     async def _fire_salary(self, admin_token: str, key: str) -> None:
         await self.client.admin_credit(
@@ -101,9 +121,9 @@ class FinancialLifeSimulator:
         self.state.mark_done(key)
         logger.info("Fired expense %s: %s cents at %s (%s)", key, amount, merchant, category)
 
-    async def _fire_p2p(self, token: str, recipient_email: str) -> None:
-        amount = random.randint(1000, 15000)
-        key = f"p2p-{uuid.uuid4()}"
+    async def _fire_p2p(self, token: str, recipient_email: str, amount: int = None, key: str = None) -> None:
+        amount = amount or random.randint(1000, 15000)
+        key = key or f"p2p-{uuid.uuid4()}"
         await self.client.p2p_transfer(token, recipient_email, amount, random.choice(P2P_MEMOS), key)
         logger.info("Fired P2P transfer %s to %s: %s cents", key, recipient_email, amount)
 
@@ -135,7 +155,8 @@ class FinancialLifeSimulator:
         return {"key": key}
 
     async def trigger_rent(self) -> dict:
-        admin_token, _, admin_account_id = await self._sessions()
+        admin_token, _, admin_account = await self._sessions()
+        admin_account_id = admin_account["id"]
         key = f"rent-manual-{uuid.uuid4()}"
         await self._fire_expense(
             admin_token, admin_account_id, settings.RENT_AMOUNT_CENTS, "rent", RENT_MERCHANT, key
@@ -143,7 +164,8 @@ class FinancialLifeSimulator:
         return {"key": key}
 
     async def trigger_insurance(self) -> dict:
-        admin_token, _, admin_account_id = await self._sessions()
+        admin_token, _, admin_account = await self._sessions()
+        admin_account_id = admin_account["id"]
         key = f"car-insurance-manual-{uuid.uuid4()}"
         await self._fire_expense(
             admin_token, admin_account_id, settings.CAR_INSURANCE_AMOUNT_CENTS,
@@ -152,7 +174,8 @@ class FinancialLifeSimulator:
         return {"key": key}
 
     async def trigger_purchase(self) -> dict:
-        admin_token, _, admin_account_id = await self._sessions()
+        admin_token, _, admin_account = await self._sessions()
+        admin_account_id = admin_account["id"]
         merchant = random_merchant()
         key = f"purchase-manual-{uuid.uuid4()}"
         await self._fire_expense(
