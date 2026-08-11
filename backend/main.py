@@ -19,7 +19,7 @@ from config import settings
 from database import engine, SessionLocal
 from models.user import User
 from routers import (
-    auth, accounts, admin, transfers, dashboard, contacts, vendors, deposit, fed_gateway_v2
+    auth, accounts, admin, transfers, dashboard, contacts, vendors, deposit
 )
 from activity import ws_register, ws_unregister
 from auth_utils import SECRET_KEY, ALGORITHM
@@ -128,4 +128,4 @@ app.include_router(vendors.router, prefix=api_v1_prefix)
 app.include_router(deposit.router, prefix=api_v1_prefix)
 
 # Include V2 Gateway Router
-app.include_router(fed_gateway_v2.router, prefix="/v2")
+# app.include_router(fed_gateway_v2.router, prefix="/v2")
