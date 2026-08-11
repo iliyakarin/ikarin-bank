@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     SIMULATOR_API_KEY: str
     GATEWAY_API_KEY: str
 
+    # Financial Life Simulator: shared secret letting this trusted internal
+    # service log in without solving the Turnstile captcha (see routers/auth.py)
+    SIMULATOR_SERVICE_KEY: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=env_file_path if os.path.exists(env_file_path) else None,
         env_file_encoding='utf-8',

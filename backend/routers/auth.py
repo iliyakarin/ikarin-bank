@@ -4,6 +4,7 @@ This module handles user registration, login, logout, profile management,
 password updates, and notifications.
 """
 import datetime
+import hmac
 import logging
 import uuid
 import httpx
@@ -38,6 +39,17 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Auth"])
 
+def _is_trusted_service(request: Request) -> bool:
+    """True if the request presents the shared secret used by trusted internal
+    services (e.g. the financial life simulator) to bypass Turnstile.
+
+    Constant-time compare to avoid a timing side-channel on the secret.
+    """
+    service_key = request.headers.get("x-service-key")
+    return bool(settings.SIMULATOR_SERVICE_KEY) and bool(service_key) and hmac.compare_digest(
+        service_key, settings.SIMULATOR_SERVICE_KEY
+    )
+
 @router.post("/register", response_model=UserResponse)
 async def register(request: Request, user: UserCreate, db: AsyncSession = Depends(get_db)):
     """Registers a new user and automatically creates a main account.
@@ -56,7 +68,7 @@ async def register(request: Request, user: UserCreate, db: AsyncSession = Depend
     Raises:
         HTTPException: If captcha is invalid or email is already registered.
     """
-    if not await verify_turnstile(user.captcha_token, request.client.host):
+    if not _is_trusted_service(request) and not await verify_turnstile(user.captcha_token, request.client.host):
          raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid captcha")
 
     result = await db.execute(select(User).where(User.email == user.email))
@@ -117,7 +129,7 @@ async def login(
     """
     captcha_token = form_data.extra.get("captcha_token") or form_data.extra.get("cf-turnstile-response")
 
-    if not await verify_turnstile(captcha_token, request.client.host):
+    if not _is_trusted_service(request) and not await verify_turnstile(captcha_token, request.client.host):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid captcha")
 
     result = await db.execute(select(User).where(User.email == form_data.username))

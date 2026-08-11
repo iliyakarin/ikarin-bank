@@ -23,18 +23,84 @@ from models.account import Account
 from models.transaction import Transaction
 from models.management import Outbox
 from schemas.users import UserResponse
-from schemas.admin import SimulationRequest, QueryRequest
+from schemas.admin import SimulationRequest, QueryRequest, AdminCreditRequest
 from auth_utils import get_db, get_current_user, RoleChecker
 from clickhouse_utils import get_ch_client, CH_DB
 from activity import emit_activity
 from sync_checker import run_sync_check
 from config import settings
 from services.admin_service import compliance_delete_user, get_system_metrics
+from services.event_emitter import emit_transactional_event
+from idempotency import check_idempotency, complete_idempotency
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Admin"])
 admin_only = RoleChecker(["admin"])
+
+@router.post("/credit")
+async def admin_credit_account(
+    payload: AdminCreditRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_only),
+):
+    """Credits a user's main account from outside the ledger.
+
+    For demo/simulation use (e.g. payroll deposits): records an inbound
+    transaction with no debiting counterparty, mirroring how
+    services/transfer_service.py mutates balance directly before logging via
+    emit_transactional_event.
+    """
+    if payload.idempotency_key:
+        saved = await check_idempotency(db, payload.idempotency_key, current_user.id)
+        if saved is not None:
+            return saved
+
+    target = (await db.execute(select(User).where(User.email == payload.recipient_email))).scalars().first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipient not found")
+
+    account = (await db.execute(
+        select(Account).where(Account.user_id == target.id, Account.is_main == True)
+    )).scalars().first()
+    if not account:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipient has no main account")
+
+    account.balance += payload.amount
+
+    client_ip = request.client.host if request.client else "0.0.0.0"
+    user_agent = request.headers.get("user-agent", "unknown")
+    idem_key = payload.idempotency_key or str(uuid.uuid4())
+
+    tx_id = await emit_transactional_event(
+        db=db,
+        user_id=target.id,
+        account_id=account.id,
+        amount=payload.amount,
+        category=payload.category,
+        merchant=payload.source_name,
+        transaction_type="deposit",
+        transaction_side="CREDIT",
+        sender_email=payload.source_name,
+        recipient_email=target.email,
+        internal_account_last_4=account.account_number_last_4,
+        event_type="transaction.created",
+        idempotency_key=idem_key,
+        commentary=payload.commentary,
+        ip_address=client_ip,
+        user_agent=user_agent,
+        status="cleared",
+        activity_category="deposit",
+        activity_action="received",
+    )
+
+    response_body = {"status": "success", "transaction_id": tx_id}
+    if payload.idempotency_key:
+        await complete_idempotency(db, payload.idempotency_key, response_body)
+
+    await db.commit()
+    return response_body
 
 # --- PII Masking Helpers ---
 def mask_email(email: str) -> str:

@@ -289,6 +289,26 @@ services:
     ports:
       - "8003:8000"
 
+  financial-life-simulator:
+    build: ./financial-life-simulator
+    container_name: financial-life-simulator
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    env_file: .env.dev
+    environment:
+      - API_BASE_URL=http://api:8000
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - SIM_USER2_EMAIL=${SIM_USER2_EMAIL}
+      - SIM_USER2_PASSWORD=${SIM_USER2_PASSWORD}
+      - SIMULATOR_SERVICE_KEY=${SIMULATOR_SERVICE_KEY}
+    ports:
+      - "8004:8004"
+    depends_on:
+      - api
+
   playwright:
     image: mcr.microsoft.com/playwright:v1.58.2-jammy
     container_name: bank-playwright

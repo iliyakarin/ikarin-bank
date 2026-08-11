@@ -66,6 +66,8 @@ jobs:
             image_suffix: mock-fed-gateway
           - context: ./deposit-funds-mock
             image_suffix: deposit-funds-mock
+          - context: ./financial-life-simulator
+            image_suffix: financial-life-simulator
 
     steps:
       - name: Checkout repository
