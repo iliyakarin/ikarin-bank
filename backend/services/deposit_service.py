@@ -13,7 +13,7 @@ from models.user import User, Subscription
 from models.account import Account
 from activity import emit_activity
 
-from idempotency import check_idempotency
+from idempotency import check_idempotency, complete_idempotency
 from services.event_emitter import emit_transactional_event
 from constants import SUBSCRIPTION_BLACK_PRICE
 
@@ -53,7 +53,7 @@ async def _atomic_topup_balance(
     account.balance += amount_cents
 
     # 4. Use unified event emitter for Top-up
-    await emit_transactional_event(
+    tx_id = await emit_transactional_event(
         db=db, user_id=user.id, account_id=account.id, amount=amount_cents,
         category="Top-up", merchant="Simulated Gateway", transaction_type="deposit",
         transaction_side="CREDIT", sender_email="gateway@karinbank.com",
@@ -62,6 +62,11 @@ async def _atomic_topup_balance(
         commentary=f"Gateway Session: {gateway_session_id}",
         ip_address="gateway_webhook", user_agent="gateway"
     )
+
+    # Without this, the key stays 'pending' forever and a redelivered webhook
+    # (Stripe explicitly documents at-least-once delivery) reprocesses the
+    # deposit every time instead of being deduped.
+    await complete_idempotency(db, idempotency_key, {"status": "success", "transaction_id": tx_id})
 
     await db.commit()
 
@@ -122,6 +127,10 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
                 db, u_id, "settings", "subscription_started", "Upgraded to Karin Black",
                 {"deposit_subscription_id": session.get("subscription")}
             )
+            # See the matching comment in _atomic_topup_balance: without this
+            # the key never leaves 'pending' and a redelivered webhook charges
+            # the subscription fee again.
+            await complete_idempotency(db, ik, {"status": "success", "subscription": session.get("subscription")})
             await db.commit()
 
 async def handle_subscription_deleted(deposit_subscription: dict, db: AsyncSession):

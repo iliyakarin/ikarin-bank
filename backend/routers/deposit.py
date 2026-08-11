@@ -28,7 +28,7 @@ from schemas.deposit import (
     PaymentMethodCreate, PaymentMethodResponse, CardResponse
 )
 from services.deposit_service import handle_checkout_completed, handle_subscription_deleted
-from idempotency import check_idempotency
+from idempotency import check_idempotency, complete_idempotency
 import httpx
 
 from services.mock_client import MockServiceClient
@@ -114,25 +114,29 @@ async def create_payment_method(payload: PaymentMethodCreate, db: AsyncSession =
 @router.post("/payment_intents/{intent_id}/confirm", response_model=PaymentIntentResponse)
 async def confirm_payment_intent(intent_id: str, payload: PaymentIntentConfirm, request: Request, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     ik = request.headers.get("Idempotency-Key") or f"confirm_{intent_id}"
-    if await check_idempotency(db, ik, current_user.id):
-        return PaymentIntentResponse(client_secret="mock", id=intent_id, status="succeeded")
-    
+    saved = await check_idempotency(db, ik, current_user.id)
+    if saved is not None:
+        return saved
+
     try:
         intent = await gateway_client.get(f"/v1/payment_intents/{intent_id}")
         if not intent.get("metadata"): intent["metadata"] = {}
         intent["metadata"]["user_id"] = str(current_user.id)
         if "mode" not in intent["metadata"]: intent["metadata"]["mode"] = "subscription" if str(SUBSCRIPTION_BLACK_PRICE) in str(intent_id) else "payment"
         if not intent.get("amount"): intent["amount"] = SUBSCRIPTION_BLACK_PRICE if intent["metadata"]["mode"] == "subscription" else int(intent.get("amount", 0))
-        
+
         await handle_checkout_completed(intent, db)
+
+        response_body = {
+            "client_secret": intent.get("client_secret", "mock"),
+            "id": intent["id"],
+            "status": "succeeded",
+            "amount": intent.get("amount"),
+            "currency": intent.get("currency", "usd"),
+        }
+        await complete_idempotency(db, ik, response_body)
         await db.commit()
-        return PaymentIntentResponse(
-            client_secret=intent.get("client_secret", "mock"),
-            id=intent["id"],
-            status="succeeded",
-            amount=intent.get("amount"),
-            currency=intent.get("currency", "usd")
-        )
+        return response_body
     except Exception as e:
         logger.error(f"Confirm fail: {e}")
         raise HTTPException(status_code=500, detail=str(e))

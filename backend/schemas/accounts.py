@@ -12,6 +12,7 @@ class InternalTransferRequest(BaseModel):
     to_account_id: int
     amount: int
     commentary: Optional[str] = None
+    idempotency_key: Optional[str] = None
 
 class AccountResponse(BaseModel):
     id: int

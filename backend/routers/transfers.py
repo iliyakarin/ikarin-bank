@@ -49,10 +49,15 @@ async def create_transfer(
     Returns:
         dict: Success status and transaction ID.
     """
+    if transfer.idempotency_key:
+        saved = await check_idempotency(db, transfer.idempotency_key, current_user.id)
+        if saved is not None:
+            return saved
+
     account = (await db.execute(
         select(Account).where(Account.id == transfer.account_id, Account.user_id == current_user.id)
     )).scalars().first()
-    
+
     if not account:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account not found or access denied")
 
@@ -72,7 +77,7 @@ async def create_transfer(
         recipient_email="external@gateway.com",
         internal_account_last_4=account.account_number_last_4,
         event_type="transaction.created",
-        idempotency_key=str(uuid.uuid4()),
+        idempotency_key=transfer.idempotency_key or str(uuid.uuid4()),
         ip_address=client_ip,
         user_agent=user_agent,
         status="cleared",
@@ -80,8 +85,12 @@ async def create_transfer(
         activity_action="sent",
     )
 
+    response_body = {"status": "success", "transaction_id": tx_id}
+    if transfer.idempotency_key:
+        await complete_idempotency(db, transfer.idempotency_key, response_body)
+
     await db.commit()
-    return {"status": "success", "transaction_id": tx_id}
+    return response_body
 
 @router.post("/p2p-transfer")
 async def create_p2p_transfer(
@@ -227,6 +236,11 @@ async def create_scheduled_payment(
     current_user: User = Depends(get_current_user)
 ):
     """Creates a new scheduled payment."""
+    if payload.idempotency_key:
+        saved = await check_idempotency(db, payload.idempotency_key, current_user.id)
+        if saved is not None:
+            return saved
+
     from date_utils import calculate_next_run_at
     import datetime
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -254,7 +268,12 @@ async def create_scheduled_payment(
     db.add(new_payment)
     await db.commit()
     await db.refresh(new_payment)
-    return {"scheduled_payment_id": new_payment.id, "status": "created"}
+
+    response_body = {"scheduled_payment_id": new_payment.id, "status": "created"}
+    if payload.idempotency_key:
+        await complete_idempotency(db, payload.idempotency_key, response_body)
+        await db.commit()
+    return response_body
 
 
 @router.post("/transfers/scheduled/{payment_id}/cancel")

@@ -13,6 +13,7 @@ from models.user import User
 from models.account import Account
 from models.transaction import Transaction
 from activity import emit_activity
+from idempotency import check_idempotency, complete_idempotency
 from services.account_service import (
     assign_account_credentials,
     decrypt_account_number,
@@ -141,15 +142,29 @@ async def internal_transfer(
     Returns:
         dict: A success message and updated account balances.
     """
+    if request.idempotency_key:
+        saved = await check_idempotency(db, request.idempotency_key, current_user.id)
+        if saved is not None:
+            return saved
+
     sender, receiver = await execute_internal_transfer(
         db=db, user_id=current_user.id, from_id=request.from_account_id, to_id=request.to_account_id,
         amount=request.amount, comm=request.commentary, ip=current_request.client.host,
         ua=current_request.headers.get("user-agent"), email=current_user.email
     )
-    return {
+    response_body = {
         "status": "success", "message": "Internal transfer completed",
         "sender_balance": int(sender.balance), "receiver_balance": int(receiver.balance)
     }
+    # execute_internal_transfer() already commits its own transaction, so this
+    # is a separate, second commit rather than one atomic unit with the
+    # transfer - same pattern already used by services/deposit_service.py's
+    # _atomic_topup_balance. Narrows, but doesn't fully close, the retry
+    # window compared to the single-commit pattern used elsewhere.
+    if request.idempotency_key:
+        await complete_idempotency(db, request.idempotency_key, response_body)
+        await db.commit()
+    return response_body
 
 @router.get("/{account_id}/credentials", response_model=AccountCredentialsResponse)
 async def get_account_credentials(

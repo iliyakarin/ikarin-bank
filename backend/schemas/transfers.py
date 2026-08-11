@@ -57,4 +57,5 @@ class TransferRequest(BaseModel):
     account_id: int
     amount: int = Field(..., description="Amount in cents")
     category: str
+    idempotency_key: Optional[str] = None
     merchant: str
