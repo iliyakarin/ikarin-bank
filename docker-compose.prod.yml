@@ -46,9 +46,10 @@ services:
       - --spider
       - -q
       - localhost:8123/ping
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 60s
     restart: always
     labels:
     - autoheal=true
