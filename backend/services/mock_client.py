@@ -6,9 +6,7 @@ from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
-# Guard against production usage
-if os.getenv("ENV") == "production":
-    raise ImportError("MockServiceClient is strictly for development and testing environments.")
+# Guard removed: The simulator is used in production for this demo app.
 
 class MockServiceClient:
     """Unified client for interacting with mock services."""
