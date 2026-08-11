@@ -24,12 +24,36 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          conclusion=$(gh api \
-            "repos/${{ github.repository }}/actions/workflows/docker-publish.yml/runs?head_sha=${{ github.sha }}&status=completed" \
-            --jq '.workflow_runs[0].conclusion // "none"')
-          echo "docker-publish for ${{ github.sha }}: $conclusion"
-          if [ "$conclusion" != "success" ]; then
-            echo "::error::No successful image build for this commit - nothing safe to deploy."
+          MAX_ATTEMPTS=40
+          attempt=0
+          while [ $attempt -lt $MAX_ATTEMPTS ]; do
+            run_json=$(gh api \
+              "repos/${{ github.repository }}/actions/workflows/docker-publish.yml/runs?head_sha=${{ github.sha }}&per_page=1" \
+              --jq '.workflow_runs[0]')
+            status=$(echo "$run_json" | jq -r '.status // "none"')
+            conclusion=$(echo "$run_json" | jq -r '.conclusion // "none"')
+
+            if [ "$status" = "completed" ]; then
+              echo "docker-publish for ${{ github.sha }}: status=$status, conclusion=$conclusion"
+              if [ "$conclusion" = "success" ]; then
+                echo "Docker image build verified successfully."
+                break
+              else
+                echo "::error::Docker image build failed with conclusion: $conclusion"
+                exit 1
+              fi
+            elif [ "$status" = "in_progress" ] || [ "$status" = "queued" ] || [ "$status" = "requested" ] || [ "$status" = "waiting" ]; then
+              echo "docker-publish is currently $status... waiting for completion (attempt $((attempt+1))/$MAX_ATTEMPTS)"
+              sleep 15
+              attempt=$((attempt+1))
+            else
+              echo "::error::No docker-publish workflow run found for commit ${{ github.sha }}."
+              exit 1
+            fi
+          done
+
+          if [ $attempt -eq $MAX_ATTEMPTS ]; then
+            echo "::error::Timed out waiting for docker-publish workflow to complete."
             exit 1
           fi
 
