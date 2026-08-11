@@ -1,0 +1,13 @@
+[Unit]
+Description=Poll GitHub for pending Karin Bank production deployments
+Documentation=https://github.com/iliyakarin/ikarin-bank/blob/main/scripts/DEPLOY-AGENT.md
+
+[Timer]
+# Roughly a 2 minute lag between clicking "Run workflow" and the deploy starting.
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=30s
+Unit=karin-deploy-agent.service
+
+[Install]
+WantedBy=timers.target

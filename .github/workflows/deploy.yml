@@ -1,0 +1,50 @@
+# Requests a production deploy. This workflow never touches the VM directly:
+# it only records a GitHub Deployment. The deploy agent running on the VM polls
+# for that deployment and applies it locally (see scripts/DEPLOY-AGENT.md).
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why are you deploying?"
+        required: false
+        default: "manual deploy"
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  request-deploy:
+    name: Request Production Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify images were published for this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          conclusion=$(gh api \
+            "repos/${{ github.repository }}/actions/workflows/docker-publish.yml/runs?head_sha=${{ github.sha }}&status=completed" \
+            --jq '.workflow_runs[0].conclusion // "none"')
+          echo "docker-publish for ${{ github.sha }}: $conclusion"
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::No successful image build for this commit - nothing safe to deploy."
+            exit 1
+          fi
+
+      - name: Create deployment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${{ github.repository }}/deployments" -X POST --input - <<EOF
+          {
+            "ref": "${{ github.sha }}",
+            "environment": "production",
+            "description": "${{ inputs.reason }} (by ${{ github.actor }})",
+            "auto_merge": false,
+            "required_contexts": [],
+            "production_environment": true
+          }
+          EOF
+          echo "Deployment requested. The VM agent will pick it up on its next poll."

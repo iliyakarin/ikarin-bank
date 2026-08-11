@@ -1,0 +1,15 @@
+[Unit]
+Description=Karin Bank pull-based production deploy agent
+Documentation=https://github.com/iliyakarin/ikarin-bank/blob/main/scripts/DEPLOY-AGENT.md
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/karin-deploy-agent.sh
+# Runs as root for docker socket access, matching the `sudo docker compose`
+# invocation deploy.sh already uses.
+User=root
+# A deploy (pull + migrate + health check) should never outlive this.
+TimeoutStartSec=900
