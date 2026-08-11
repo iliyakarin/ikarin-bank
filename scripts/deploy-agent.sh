@@ -14,7 +14,7 @@ set -euo pipefail
 REPO="iliyakarin/ikarin-bank"
 ENVIRONMENT="production"
 DEPLOY_DIR="/home/ikarin/karin-bank"
-TOKEN_FILE="/etc/karin-deploy/token"
+TOKEN_FILE="/home/ikarin/karin-bank/github-deploy"
 HEALTH_URL="http://localhost/api/health"
 HEALTH_RETRIES=12
 HEALTH_DELAY=5
@@ -97,7 +97,8 @@ if [ ! -f .env.prod ]; then
 fi
 
 # --- 3. Apply -----------------------------------------------------------------
-log "Pulling images"
+export IMAGE_TAG="sha-${sha:0:7}"
+log "Pulling images for tag $IMAGE_TAG"
 "${COMPOSE[@]}" pull
 
 log "Restarting services"

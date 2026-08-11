@@ -54,10 +54,9 @@ Create a **fine-grained personal access token** at
 Install it root-only:
 
 ```bash
-sudo mkdir -p /etc/karin-deploy
-printf '%s' 'github_pat_XXXXXXXXXXXX' | sudo tee /etc/karin-deploy/token >/dev/null
-sudo chmod 600 /etc/karin-deploy/token
-sudo chown root:root /etc/karin-deploy/token
+mkdir -p /home/ikarin/karin-bank
+printf '%s' 'github_pat_XXXXXXXXXXXX' > /home/ikarin/karin-bank/github-deploy
+chmod 600 /home/ikarin/karin-bank/github-deploy
 ```
 
 This token is the only new secret. It cannot read code (the repo is public
@@ -141,10 +140,6 @@ tagged `sha-<short>` in GHCR, so you can pin a known-good tag by hand.
 
 ## Known gaps
 
-- `docker-compose.prod.yml` pins images to `:latest`, so the deployed image is
-  whatever `latest` points to rather than the exact deployment SHA. Templating
-  the tag as `${IMAGE_TAG}` and having the agent export the deployment SHA would
-  close this.
 - Migrations run with no automatic reversal. `alembic upgrade head` failing
   leaves the new containers up and reports `failure`; recovery is manual.
 - The agent claims a deployment by posting `in_progress`. If it is killed
