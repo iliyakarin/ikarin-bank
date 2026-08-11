@@ -493,6 +493,7 @@ services:
     - SIM_USER2_EMAIL=${SIM_USER2_EMAIL}
     - SIM_USER2_PASSWORD=${SIM_USER2_PASSWORD}
     - SIMULATOR_SERVICE_KEY=${SIMULATOR_SERVICE_KEY}
+    - STATE_DB_PATH=/tmp/simulator_state.db
     security_opt:
     - no-new-privileges:true
     cap_drop:
