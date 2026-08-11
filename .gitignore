@@ -116,7 +116,6 @@ init-db/*.xml
 backend/gunicorn.ctl
 backend/.pytest_cache/
 frontend/.next/
-docker-compose.prod.yml
 .env.prod
 init-db/*.prod.conf
 init-db/*.prod.xml

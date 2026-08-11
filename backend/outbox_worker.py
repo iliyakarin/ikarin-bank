@@ -3,6 +3,7 @@ import asyncio
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from pathlib import Path
 
 from database import SessionLocal, engine
 from models.management import Outbox
@@ -14,6 +15,7 @@ async def process_outbox():
     """Main loop for the outbox worker."""
     attempt = 0
     while True:
+        Path("/tmp/heartbeat.txt").touch(exist_ok=True)
         try:
             async with AsyncSession(engine) as session:
                 result = await session.execute(

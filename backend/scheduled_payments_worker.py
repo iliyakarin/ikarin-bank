@@ -5,6 +5,7 @@ from datetime import timezone, timedelta
 import uuid
 import httpx
 from typing import Optional
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
@@ -144,6 +145,7 @@ async def handle_fail(db, p, acc, s_email, r_email, merchant):
 
 async def main():
     while True:
+        Path("/tmp/heartbeat.txt").touch(exist_ok=True)
         await process_scheduled_payments()
         await asyncio.sleep(60)
 

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from database import Transaction, Outbox, engine
 from config import settings
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ async def run_sync_check():
 
 async def main():
     while True:
+        Path("/tmp/heartbeat.txt").touch(exist_ok=True)
         await run_sync_check()
         await asyncio.sleep(CHECK_INTERVAL)
 

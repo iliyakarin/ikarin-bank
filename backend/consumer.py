@@ -3,6 +3,7 @@ import time
 import asyncio
 import logging
 from typing import List
+from pathlib import Path
 
 from confluent_kafka import Consumer, KafkaError
 from config import settings
@@ -105,6 +106,7 @@ class KafkaConsumerApp:
         
         try:
             while True:
+                Path("/tmp/heartbeat.txt").touch(exist_ok=True)
                 msg = self.consumer.poll(1.0)
                 
                 if msg is None:

@@ -1,0 +1,548 @@
+networks:
+  cloudflare_net:
+    driver: bridge
+  frontend_net:
+    driver: bridge
+  backend_net:
+    driver: bridge
+    internal: true
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bank-postgres
+    env_file: .env.prod
+    volumes:
+    - ./data/postgres:/var/lib/postgresql/data
+    networks:
+    - backend_net
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    restart: always
+    labels:
+    - autoheal=true
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: bank-clickhouse
+    env_file: .env.prod
+    volumes:
+    - ./init-db/clickhouse_init.sql:/docker-entrypoint-initdb.d/init.sql
+    - ./data/clickhouse:/var/lib/clickhouse
+    networks:
+    - backend_net
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - --spider
+      - -q
+      - localhost:8123/ping
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+    labels:
+    - autoheal=true
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: bank-kafka
+    env_file: .env.prod
+    environment:
+    - KAFKA_NODE_ID=1
+    - KAFKA_PROCESS_ROLES=broker,controller
+    - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+    - KAFKA_LISTENERS=SASL_PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+    - KAFKA_ADVERTISED_LISTENERS=SASL_PLAINTEXT://kafka:9092
+    - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=SASL_PLAINTEXT:SASL_PLAINTEXT,CONTROLLER:PLAINTEXT
+    - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+    - KAFKA_INTER_BROKER_LISTENER_NAME=SASL_PLAINTEXT
+    - KAFKA_SASL_ENABLED_MECHANISMS=PLAIN
+    - KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL=PLAIN
+    - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+    - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+    - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+    - KAFKA_CLUSTER_ID=${CLUSTER_ID}
+    - KAFKA_OPTS=-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf
+      -DKAFKA_ADMIN_PASSWORD=${KAFKA_ADMIN_PASSWORD} -DKAFKA_CLIENT_PASSWORD=${KAFKA_CLIENT_PASSWORD}
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - nc -z localhost 9092 || exit 1
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    volumes:
+    - ./data/kafka:/var/lib/kafka/data
+    - ./init-db/kafka-server-jaas.prod.conf:/etc/kafka/kafka_server_jaas.conf:ro
+    networks:
+    - backend_net
+    restart: always
+    labels:
+    - autoheal=true
+  api:
+    image: ghcr.io/iliyakarin/ikarin-bank-backend:${IMAGE_TAG:-latest}
+    container_name: bank-api
+    command: gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+    user: 1000:1000
+    env_file: .env.prod
+    environment:
+    - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    - PYTHONUNBUFFERED=1
+    security_opt:
+    - no-new-privileges:true
+    cap_drop:
+    - ALL
+    networks:
+    - frontend_net
+    - backend_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+        || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+    read_only: true
+    tmpfs:
+    - /tmp
+    - /run
+    restart: always
+    labels:
+    - autoheal=true
+  proxy:
+    image: nginx:alpine
+    container_name: bank-proxy
+    ports:
+    - 80:80
+    volumes:
+    - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
+    networks:
+    - cloudflare_net
+    - frontend_net
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - nginx -t && wget -qO- http://127.0.0.1/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: always
+    labels:
+    - autoheal=true
+  consumer:
+    image: ghcr.io/iliyakarin/ikarin-bank-backend:${IMAGE_TAG:-latest}
+    container_name: bank-consumer
+    command: python consumer.py
+    user: 1000:1000
+    env_file: .env.prod
+    environment:
+    - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    - PYTHONUNBUFFERED=1
+    security_opt:
+    - no-new-privileges:true
+    cap_drop:
+    - ALL
+    networks:
+    - backend_net
+    depends_on:
+      kafka:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    read_only: true
+    tmpfs:
+    - /tmp
+    - /run
+    restart: always
+    labels:
+    - autoheal=true
+    healthcheck: &id001
+      test:
+      - CMD-SHELL
+      - find /tmp/heartbeat.txt -mmin -2 | grep -q . || exit 1
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+  outbox-worker:
+    image: ghcr.io/iliyakarin/ikarin-bank-backend:${IMAGE_TAG:-latest}
+    container_name: bank-outbox-worker
+    command: python outbox_worker.py
+    user: 1000:1000
+    env_file: .env.prod
+    environment:
+    - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    - PYTHONUNBUFFERED=1
+    security_opt:
+    - no-new-privileges:true
+    cap_drop:
+    - ALL
+    networks:
+    - backend_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+    read_only: true
+    tmpfs:
+    - /tmp
+    - /run
+    restart: always
+    labels:
+    - autoheal=true
+    healthcheck: *id001
+  sync-checker:
+    image: ghcr.io/iliyakarin/ikarin-bank-backend:${IMAGE_TAG:-latest}
+    container_name: bank-sync-checker
+    command: python sync_checker.py
+    user: 1000:1000
+    env_file: .env.prod
+    environment:
+    - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    - PYTHONUNBUFFERED=1
+    security_opt:
+    - no-new-privileges:true
+    cap_drop:
+    - ALL
+    networks:
+    - backend_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
+    read_only: true
+    tmpfs:
+    - /tmp
+    - /run
+    restart: always
+    labels:
+    - autoheal=true
+    healthcheck: *id001
+  vendor-simulator:
+    image: ghcr.io/iliyakarin/ikarin-bank-vendor-simulator:${IMAGE_TAG:-latest}
+    container_name: bank-vendor-simulator
+    user: 1000:1000
+    env_file: .env.prod
+    environment:
+    - DATABASE_URL=postgresql+asyncpg://${VENDOR_SIMULATOR_DB_USER}:${VENDOR_SIMULATOR_DB_PASSWORD}@vendor-simulator-db:5432/${VENDOR_SIMULATOR_DB_NAME}
+    - SIMULATOR_API_KEY=${SIMULATOR_API_KEY}
+    security_opt:
+    - no-new-privileges:true
+    cap_drop:
+    - ALL
+    networks:
+    - backend_net
+    depends_on:
+      vendor-simulator-db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+    read_only: true
+    tmpfs:
+    - /tmp
+    - /run
+    restart: always
+    labels:
+    - autoheal=true
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget --spider -q localhost:8000 || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+  vendor-simulator-db:
+    image: postgres:16-alpine
+    container_name: bank-vendor-simulator-db
+    env_file: .env.prod
+    environment:
+    - POSTGRES_USER=${VENDOR_SIMULATOR_DB_USER}
+    - POSTGRES_PASSWORD=${VENDOR_SIMULATOR_DB_PASSWORD}
+    - POSTGRES_DB=${VENDOR_SIMULATOR_DB_NAME}
+    security_opt:
+    - no-new-privileges:true
+    volumes:
+    - ./data/vendor-simulator:/var/lib/postgresql/data
+    networks:
+    - backend_net
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U $${VENDOR_SIMULATOR_DB_USER} -d $${VENDOR_SIMULATOR_DB_NAME}
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: always
+    labels:
+    - autoheal=true
+  fed-gateway-db:
+    image: postgres:16-alpine
+    container_name: fed-gateway-db
+    env_file: .env.prod
+    environment:
+    - POSTGRES_USER=${FED_GATEWAY_DB_USER}
+    - POSTGRES_PASSWORD=${FED_GATEWAY_DB_PASSWORD}
+    - POSTGRES_DB=${FED_GATEWAY_DB_NAME}
+    security_opt:
+    - no-new-privileges:true
+    volumes:
+    - ./data/fed-gateway:/var/lib/postgresql/data
+    networks:
+    - backend_net
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U $${FED_GATEWAY_DB_USER} -d $${FED_GATEWAY_DB_NAME}
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: always
+    labels:
+    - autoheal=true
+  mock-fed-gateway:
+    image: ghcr.io/iliyakarin/ikarin-bank-mock-fed-gateway:${IMAGE_TAG:-latest}
+    container_name: mock-fed-gateway
+    user: 1000:1000
+    env_file: .env.prod
+    environment:
+    - DATABASE_URL=postgresql+asyncpg://${FED_GATEWAY_DB_USER}:${FED_GATEWAY_DB_PASSWORD}@fed-gateway-db:5432/${FED_GATEWAY_DB_NAME}
+    - GATEWAY_API_KEY=${GATEWAY_API_KEY}
+    security_opt:
+    - no-new-privileges:true
+    cap_drop:
+    - ALL
+    networks:
+    - backend_net
+    depends_on:
+      fed-gateway-db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+    read_only: true
+    tmpfs:
+    - /tmp
+    - /run
+    restart: always
+    labels:
+    - autoheal=true
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget --spider -q localhost:8000 || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+  deposit-funds-mock:
+    image: ghcr.io/iliyakarin/ikarin-bank-deposit-funds-mock:${IMAGE_TAG:-latest}
+    container_name: deposit-funds-mock
+    user: 1000:1000
+    security_opt:
+    - no-new-privileges:true
+    cap_drop:
+    - ALL
+    networks:
+    - backend_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 128M
+    read_only: true
+    tmpfs:
+    - /tmp
+    - /run
+    restart: always
+    labels:
+    - autoheal=true
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget --spider -q localhost:8000 || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+  frontend:
+    image: ghcr.io/iliyakarin/ikarin-bank-frontend:${IMAGE_TAG:-latest}
+    container_name: bank-frontend
+    user: 1000:1000
+    env_file: .env.prod
+    security_opt:
+    - no-new-privileges:true
+    cap_drop:
+    - ALL
+    networks:
+    - frontend_net
+    depends_on:
+    - api
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    read_only: true
+    tmpfs:
+    - /tmp
+    - /run
+    restart: always
+    labels:
+    - autoheal=true
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget --spider -q localhost:3000 || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+  scheduled-payments-worker:
+    image: ghcr.io/iliyakarin/ikarin-bank-backend:${IMAGE_TAG:-latest}
+    container_name: bank-scheduled-payments-worker
+    command: python scheduled_payments_worker.py
+    user: 1000:1000
+    env_file: .env.prod
+    environment:
+    - PYTHONUNBUFFERED=1
+    - ADMIN_EMAIL=${ADMIN_EMAIL}
+    - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    security_opt:
+    - no-new-privileges:true
+    cap_drop:
+    - ALL
+    networks:
+    - backend_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+    read_only: true
+    tmpfs:
+    - /tmp
+    - /run
+    restart: always
+    labels:
+    - autoheal=true
+    healthcheck: *id001
+  financial-life-simulator:
+    image: ghcr.io/iliyakarin/ikarin-bank-financial-life-simulator:${IMAGE_TAG:-latest}
+    container_name: financial-life-simulator
+    user: 1000:1000
+    env_file: .env.prod
+    environment:
+    - API_BASE_URL=http://api:8000
+    - ADMIN_EMAIL=${ADMIN_EMAIL}
+    - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    - SIM_USER2_EMAIL=${SIM_USER2_EMAIL}
+    - SIM_USER2_PASSWORD=${SIM_USER2_PASSWORD}
+    - SIMULATOR_SERVICE_KEY=${SIMULATOR_SERVICE_KEY}
+    security_opt:
+    - no-new-privileges:true
+    cap_drop:
+    - ALL
+    networks:
+    - backend_net
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+    read_only: true
+    tmpfs:
+    - /tmp
+    - /run
+    - /app/data
+    restart: always
+    labels:
+    - autoheal=true
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget --spider -q localhost:8000 || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: bank-cloudflared
+    restart: unless-stopped
+    env_file: .env.prod
+    command: tunnel --no-autoupdate run
+    security_opt:
+    - no-new-privileges:true
+    networks:
+    - cloudflare_net
+    depends_on:
+      proxy:
+        condition: service_healthy
+    labels:
+    - autoheal=true
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: autoheal
+    environment:
+    - AUTOHEAL_CONTAINER_LABEL=autoheal
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    restart: always

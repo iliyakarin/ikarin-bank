@@ -16,7 +16,7 @@ services:
       retries: 5
 
   clickhouse:
-    image: clickhouse/clickhouse-server:latest
+    image: clickhouse/clickhouse-server:23.8
     container_name: bank-clickhouse
     env_file: .env.dev
     security_opt:
