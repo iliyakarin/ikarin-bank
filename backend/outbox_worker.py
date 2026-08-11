@@ -17,7 +17,7 @@ async def process_outbox():
     while True:
         Path("/tmp/heartbeat.txt").touch(exist_ok=True)
         try:
-            async with AsyncSession(engine) as session:
+            async with SessionLocal() as session:
                 result = await session.execute(
                     select(Outbox).where(Outbox.status == "pending").limit(50)
                 )
