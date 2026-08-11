@@ -24,13 +24,29 @@ export const SubscriptionSchema = z.object({
 export type UserSubscription = z.infer<typeof SubscriptionSchema>;
 
 export async function createPaymentIntent(amount: number): Promise<PaymentIntentResponse> {
-  return api.post<PaymentIntentResponse>("/api/v1/deposits/create-payment-intent", { amount }, {
+  return api.post<PaymentIntentResponse>("/api/v1/deposits/payment_intents", { amount }, {
     schema: PaymentIntentResponseSchema
   });
 }
 
-export async function fulfillPayment(paymentIntentId: string): Promise<{ status: string }> {
-  return api.post<{ status: string }>("/api/v1/deposits/fulfill", { payment_intent_id: paymentIntentId });
+export async function createPaymentMethod(card: {
+  card_number: string;
+  exp_month: string;
+  exp_year: string;
+  cvc: string;
+  name: string;
+}): Promise<{ id: string }> {
+  return api.post<{ id: string }>("/api/v1/deposits/payment_methods", card);
+}
+
+export async function confirmPayment(
+  paymentIntentId: string,
+  paymentMethodId: string
+): Promise<{ status: string }> {
+  return api.post<{ status: string }>(
+    `/api/v1/deposits/payment_intents/${encodeURIComponent(paymentIntentId)}/confirm`,
+    { payment_method: paymentMethodId }
+  );
 }
 
 export async function createCheckoutSession(payload: {

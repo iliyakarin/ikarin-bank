@@ -52,7 +52,7 @@ test.describe('Deposit E2E Flow', () => {
 
     // Wait for the final confirmation requests
     const fulfillPromise = page.waitForResponse(response =>
-      response.url().includes('/deposits/fulfill-payment')
+      response.url().includes('/deposits/payment_intents/') && response.url().includes('/confirm')
     );
 
     // In mock mode, we don't expect a real confirm request as the mock form handles it

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, CheckCircle2, AlertCircle, CreditCard, Sparkles, Wand2 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { formatCurrency } from "@/lib/transactionUtils";
-import { createPaymentIntent, fulfillPayment } from "@/lib/api/deposits";
+import { createPaymentIntent, createPaymentMethod, confirmPayment } from "@/lib/api/deposits";
 
 export default function DepositModal({
   isOpen,
@@ -83,8 +83,16 @@ export default function DepositModal({
     try {
       if (!clientSecret) throw new Error("Missing client secret");
       const intentId = clientSecret.split("_secret_")[0];
-      
-      await fulfillPayment(intentId);
+
+      const paymentMethod = await createPaymentMethod({
+        card_number: cardNumber.replace(/\s/g, ""),
+        exp_month: expMonth,
+        exp_year: expYear,
+        cvc,
+        name: cardName,
+      });
+
+      await confirmPayment(intentId, paymentMethod.id);
 
       setStatus("success");
       setTimeout(() => {
