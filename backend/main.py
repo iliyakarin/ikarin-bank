@@ -26,38 +26,23 @@ from auth_utils import SECRET_KEY, ALGORITHM
 from jose import JWTError, jwt
 from sqlalchemy import select
 
-from v2.fed_gateway.transport.mq_client import MQClient
-from v2.fed_gateway.engine.settlement import SettlementEngine
-from v2.fed_gateway.gateway import FedGatewayHost
-
 logger = logging.getLogger(__name__)
 
 producer: AIOKafkaProducer = None
-fed_gateway_host: FedGatewayHost = None
-mq_client: MQClient = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global producer, fed_gateway_host, mq_client
+    global producer
     logger.info("Starting KarinBank API...")
 
     await init_kafka()
-
-    mq_client = MQClient()
-    await mq_client.start()
-
-    settlement_engine = SettlementEngine()
-    fed_gateway_host = FedGatewayHost(mq_client, settlement_engine)
-    gateway_task = asyncio.create_task(fed_gateway_host.start())
 
     try:
         yield
     finally:
         logger.info("Shutting down KarinBank API...")
-        await fed_gateway_host.stop()
-        gateway_task.cancel()
-        await mq_client.stop()
+
         if producer:
             await producer.stop()
             logger.info("Kafka producer stopped")
