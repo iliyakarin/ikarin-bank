@@ -98,10 +98,14 @@ export default function DepositPage() {
         window.dispatchEvent(new Event('balanceUpdate'));
     };
 
-    const showToast = (message: string, type: 'success' | 'error') => {
+    const showToast = useCallback((message: string, type: 'success' | 'error') => {
         setToast({ show: true, message, type });
         setTimeout(() => setToast(prev => ({ ...prev, show: false })), 5000);
-    };
+    }, []);
+
+    // Stable reference: DepositModal re-runs its payment-intent effect whenever
+    // onError changes identity, so an inline arrow here loops it indefinitely.
+    const handleDepositError = useCallback((msg: string) => showToast(msg, "error"), [showToast]);
 
     return (
         <div className="min-h-screen bg-black text-white p-8 font-sans selection:bg-zinc-800 relative">
@@ -201,7 +205,7 @@ export default function DepositPage() {
                 </div>
             </div>
 
-            <DepositModal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} amount={selectedAmount} onSuccess={handlePaymentSuccess} onError={(msg) => showToast(msg, "error")} />
+            <DepositModal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} amount={selectedAmount} onSuccess={handlePaymentSuccess} onError={handleDepositError} />
         </div>
     );
 }

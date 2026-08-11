@@ -154,6 +154,18 @@ async def login(
 
     return {"access_token": access_token, "token_type": "bearer"}
 
+@router.post("/token/renew", response_model=Token)
+async def renew_token(current_user: User = Depends(get_current_user)):
+    """Issues a fresh access token to a caller whose current token is still valid.
+
+    This is a sliding session: it extends an active session without requiring
+    re-entry of credentials. It does not resurrect an already-expired token,
+    since get_current_user rejects those.
+    """
+    access_token = create_access_token(data={"sub": current_user.email, "role": current_user.role})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
 @router.get("/me", response_model=UserResponse)
 async def read_users_me(current_user: User = Depends(get_current_user)):
     """Returns the profile details of the currently authenticated user.

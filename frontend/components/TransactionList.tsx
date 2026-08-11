@@ -121,3 +121,5 @@ const TransactionList = React.memo(function TransactionList({ transactions, load
         </div>
     );
 }, (prev, next) => prev.transactions === next.transactions && prev.loading === next.loading);
+
+export default TransactionList;

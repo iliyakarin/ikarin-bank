@@ -1,8 +1,26 @@
 "use client";
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { User, getCurrentUser, logout as logoutApi, updatePreferences } from './api/auth';
+import SessionExpiryWarning from '@/components/SessionExpiryWarning';
+import { User, getCurrentUser, logout as logoutApi, updatePreferences, renewToken } from './api/auth';
+
+// Minutes before expiry at which the user is warned.
+const WARNING_THRESHOLDS_MINUTES = [15, 5, 1];
+
+/** Reads the `exp` claim (POSIX seconds) from a JWT and returns it in ms. */
+function getTokenExpiryMs(token: string): number | null {
+    try {
+        const payload = token.split('.')[1];
+        if (!payload) return null;
+        const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+        const claims = JSON.parse(atob(padded));
+        return typeof claims.exp === 'number' ? claims.exp * 1000 : null;
+    } catch {
+        return null;
+    }
+}
 
 interface Settings {
     use24Hour: boolean;
@@ -93,8 +111,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     };
 
+    const [warningMinutes, setWarningMinutes] = useState<number | null>(null);
+    const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+    // Warn ahead of expiry, then log out once the token actually expires.
+    // Re-runs whenever the token changes, so a renewal reschedules cleanly.
+    useEffect(() => {
+        timersRef.current.forEach(clearTimeout);
+        timersRef.current = [];
+        setWarningMinutes(null);
+
+        if (!token) return;
+        const expiresAt = getTokenExpiryMs(token);
+        if (expiresAt === null) return;
+
+        for (const minutes of WARNING_THRESHOLDS_MINUTES) {
+            const delay = expiresAt - Date.now() - minutes * 60_000;
+            if (delay > 0) {
+                timersRef.current.push(setTimeout(() => setWarningMinutes(minutes), delay));
+            }
+        }
+
+        const untilExpiry = expiresAt - Date.now();
+        if (untilExpiry > 0) {
+            timersRef.current.push(setTimeout(() => logout(), untilExpiry));
+        }
+
+        return () => {
+            timersRef.current.forEach(clearTimeout);
+            timersRef.current = [];
+        };
+    }, [token]);
+
+    const renewSession = useCallback(async () => {
+        try {
+            const { access_token } = await renewToken();
+            localStorage.setItem('bank_token', access_token);
+            setToken(access_token);
+            setWarningMinutes(null);
+        } catch (err) {
+            console.error("Failed to renew session", err);
+            logout();
+        }
+    }, []);
+
+    const dismissWarning = useCallback(() => setWarningMinutes(null), []);
+
     return (
         <AuthContext.Provider value={{ user, token, login, logout, isLoading, settings, updateSettings }}>
+            {warningMinutes !== null && (
+                <SessionExpiryWarning
+                    minutes={warningMinutes}
+                    onRenew={renewSession}
+                    onDismiss={dismissWarning}
+                />
+            )}
             {children}
         </AuthContext.Provider>
     );

@@ -28,6 +28,12 @@ export async function logout(): Promise<{ status: string }> {
   return api.post<{ status: string }>("/api/v1/logout", {});
 }
 
+export async function renewToken(): Promise<{ access_token: string }> {
+  // retry: false — a 401 here means the session is already gone, and the
+  // client's 401 handler would otherwise recurse back into this call.
+  return api.post<{ access_token: string }>("/api/v1/token/renew", {}, { retry: false });
+}
+
 export async function updatePreferences(preferences: {
   time_format: "12h" | "24h";
   date_format: "EU" | "US";
