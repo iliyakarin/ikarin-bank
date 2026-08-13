@@ -51,7 +51,7 @@ export async function getAccounts(): Promise<Account[]> {
 }
 
 export async function getAccountSummary(userId: number): Promise<AccountSummary> {
-  return api.get<AccountSummary>(`/api/v1/accounts/${userId}`, {
+  return api.get<AccountSummary>(`/api/v1/accounts`, {
     schema: AccountSummarySchema
   });
 }
