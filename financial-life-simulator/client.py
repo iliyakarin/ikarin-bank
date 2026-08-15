@@ -59,9 +59,16 @@ class ApiClient:
         except httpx.HTTPStatusError as e:
             if e.response.status_code != 401:
                 raise
-            logger.info("Account %s not found, registering", email)
-            await self.register(email, password, first_name, last_name)
-            return await self.login(email, password)
+            logger.info("Account %s login failed (401), attempting to register", email)
+            try:
+                await self.register(email, password, first_name, last_name)
+                return await self.login(email, password)
+            except httpx.HTTPStatusError as reg_err:
+                if reg_err.response.status_code == 400 and "already registered" in reg_err.response.text:
+                    fallback_email = f"sim_{email}"
+                    logger.warning("Account %s exists with different password, attempting fallback %s", email, fallback_email)
+                    return await self.ensure_logged_in(fallback_email, password, first_name, last_name)
+                raise
 
     async def get_main_account_info(self, token: str) -> dict:
         resp = await self._http.get("/v1/accounts", headers=_auth(token))
