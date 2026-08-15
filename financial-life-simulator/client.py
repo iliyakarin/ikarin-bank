@@ -30,7 +30,7 @@ class ApiClient:
 
     async def login(self, email: str, password: str) -> str:
         resp = await self._http.post(
-            "/v1/auth/login",
+            "/v1/login",
             data={"username": email, "password": password},
             headers=SERVICE_HEADERS,
         )
@@ -39,7 +39,7 @@ class ApiClient:
 
     async def register(self, email: str, password: str, first_name: str, last_name: str) -> None:
         resp = await self._http.post(
-            "/v1/auth/register",
+            "/v1/register",
             json={
                 "first_name": first_name,
                 "last_name": last_name,
