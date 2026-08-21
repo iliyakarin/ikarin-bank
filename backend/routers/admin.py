@@ -35,7 +35,7 @@ from idempotency import check_idempotency, complete_idempotency
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Admin"])
+router = APIRouter(prefix="/admin", tags=["Admin"])
 admin_only = RoleChecker(["admin"])
 
 @router.post("/credit")

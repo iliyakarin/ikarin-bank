@@ -24,4 +24,4 @@ class Transaction(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False) # 'CLEARED', 'FAILED'
     trace_id: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     failure_reason: Mapped[str] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
