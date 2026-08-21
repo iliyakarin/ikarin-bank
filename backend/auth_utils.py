@@ -10,6 +10,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from passlib.exc import UnknownHashError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -35,7 +36,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         bool: True if the passwords match, False otherwise.
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    if not hashed_password or not plain_password:
+        return False
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except (UnknownHashError, ValueError, TypeError):
+        return False
 
 def get_password_hash(password: str) -> str:
     """Generates a bcrypt hash for a plain text password.

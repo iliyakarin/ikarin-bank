@@ -79,15 +79,19 @@ async def test_delete_user_full_cleanup(mock_fastapi_dependency):
         mock_emit.assert_called_once()
         assert mock_emit.call_args[0][1] == admin_user.id # current_user.id
 
-        # Verify ClickHouse Comands
+        # Verify ClickHouse Commands
         # command 1: transactions purge
         # command 2: activity_events purge
         assert mock_ch.command.call_count == 2
         args1 = mock_ch.command.call_args_list[0][0][0]
-        assert "DELETE WHERE account_id IN (101,102)" in args1
+        params1 = mock_ch.command.call_args_list[0][1].get("parameters", {})
+        assert "DELETE WHERE account_id IN :ids" in args1
+        assert params1.get("ids") == [101, 102]
 
         args2 = mock_ch.command.call_args_list[1][0][0]
-        assert "DELETE WHERE user_id = 10" in args2
+        params2 = mock_ch.command.call_args_list[1][1].get("parameters", {})
+        assert "DELETE WHERE user_id = :uid" in args2
+        assert params2.get("uid") == 10
 
         # Verify DB commit
         db.commit.assert_called_once()

@@ -156,6 +156,6 @@ async def test_confirm_payment_intent(mock_fastapi_dependency, mock_user, mock_d
             current_user=mock_user
         )
         
-    assert response.status == "succeeded"
-    assert response.id == "pi_123"
+    assert response["status"] == "succeeded"
+    assert response["id"] == "pi_123"
     mock_handle.assert_called_once()

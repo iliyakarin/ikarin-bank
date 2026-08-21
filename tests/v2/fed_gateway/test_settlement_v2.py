@@ -11,7 +11,7 @@ class TestSettlementEngine(unittest.IsolatedAsyncioTestCase):
         transaction_id = "FEDNOW-123"
         amount = 100.0
         
-        result = self.engine.process_fednow_payment(transaction_id, amount)
+        result = await self.engine.process_fednow_payment(transaction_id, amount)
         
         self.assertEqual(result["status"], SettlementStatus.SETTLED.value)
         self.assertEqual(self.engine.get_account_balance(), 4900.0)
@@ -20,7 +20,7 @@ class TestSettlementEngine(unittest.IsolatedAsyncioTestCase):
         transaction_id = "FEDNOW-ERR"
         amount = 10000.0  # Exceeds 5000.0 reserve
         
-        result = self.engine.process_fednow_payment(transaction_id, amount)
+        result = await self.engine.process_fednow_payment(transaction_id, amount)
         
         self.assertEqual(result["status"], SettlementStatus.REJECTED.value)
         self.assertEqual(result["reason"], "Insufficient liquidity in Fed account")
@@ -29,7 +29,7 @@ class TestSettlementEngine(unittest.IsolatedAsyncioTestCase):
         transaction_id = "FEDWIRE-123"
         amount = 5500.0 # Within 5000 + 1000 overdraft limit
         
-        result = self.engine.process_fedwire_payment(transaction_id, amount)
+        result = await self.engine.process_fedwire_payment(transaction_id, amount)
         
         self.assertEqual(result["status"], SettlementStatus.SETTLED.value)
         # Balance becomes 5000 - 5500 = -500 (allowed via daylight overdraft)
@@ -39,7 +39,7 @@ class TestSettlementEngine(unittest.IsolatedAsyncioTestCase):
         transaction_id = "FEDWIRE-FAIL"
         amount = 7000.0 # Exceeds 5000 + 1000 limit
         
-        result = self.engine.process_fedwire_payment(transaction_id, amount)
+        result = await self.engine.process_fedwire_payment(transaction_id, amount)
         
         self.assertEqual(result["status"], SettlementStatus.REJECTED.value)
         self.assertEqual(result["reason"], "Exceeds daylight overdraft limit")
@@ -49,8 +49,8 @@ class TestSettlementEngine(unittest.IsolatedAsyncioTestCase):
         amount = -50.0
         
         # Test both FedNow and Fedwire
-        result_now = self.engine.process_fednow_payment(transaction_id, amount)
-        result_wire = self.engine.process_fedwire_payment(transaction_id, amount)
+        result_now = await self.engine.process_fednow_payment(transaction_id, amount)
+        result_wire = await self.engine.process_fedwire_payment(transaction_id, amount)
         
         self.assertEqual(result_now["status"], SettlementStatus.REJECTED.value)
         self.assertEqual(result_wire["status"], SettlementStatus.REJECTED.value)

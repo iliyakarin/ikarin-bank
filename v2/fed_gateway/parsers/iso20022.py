@@ -88,6 +88,8 @@ class ISO20022Parser:
         # Extracting key fields using the namespace
         grp_id_elem = root.find(".//ns:OrgnlGrpId", ns) if ns else root.find(".//OrgnlGrpId")
         grp_sts_elem = root.find(".//ns:GrpSts", ns) if ns else root.find(".//GrpSts")
+        if grp_sts_elem is None:
+            grp_sts_elem = root.find(".//ns:Status", ns) if ns else root.find(".//Status")
 
         return {
             "original_group_id": grp_id_elem.text if grp_id_elem is not None else None,

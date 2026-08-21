@@ -51,7 +51,7 @@ class TestFedGatewayPipeline(unittest.IsolatedAsyncioTestCase):
         amt_val = float(amt_elem.text)
         
         # Process via Settlement Engine
-        settlement_result = self.engine.process_fedwire_payment(instr_cmd_id := instr_id, amt_val)
+        settlement_result = await self.engine.process_fedwire_payment(instr_id, amt_val)
         
         # 4. Generate the response (pacs.002)
         pacs_002_payload = self.parser.create_pacs_002_payload(

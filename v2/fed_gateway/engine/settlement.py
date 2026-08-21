@@ -25,16 +25,13 @@ class SettlementEngine:
         self, 
         transaction_id: str, 
         amount: float, 
-        parser: any,
+        parser: any = None,
         currency: str = "USD"
     ) -> Dict:
         """
         Simulates FedNow Instant Settlement.
         Provides sub-second finality and immediate status return via async loop.
         """
-        # Simulate sub-second network/processing delay
-        await asyncio.sleep(0.1)
-
         if amount <= 0:
             result = self._finalize_transaction(transaction_id, SettlementStatus.REJECTED, "Amount must be positive")
         elif amount > self.active_reserves:
@@ -44,7 +41,7 @@ class SettlementEngine:
             result = self._finalize_transaction(transaction_id, SettlementStatus.SETTLED)
 
         # Generate and send the pacs.002 response via the MQ Client
-        if self.mq_client:
+        if self.mq_client and parser:
             pacs_002_payload = parser.create_pacs_002_payload(
                 transaction_id,
                 result["status"],
@@ -59,16 +56,13 @@ class SettlementEngine:
         self, 
         transaction_id: str, 
         amount: float, 
-        parser: any,
+        parser: any = None,
         currency: str = "USD"
     ) -> Dict:
         """
         Simulates Fedwire Funds Service (RTGS).
         Handles high-value gross settlements with potential for daylight overdrafts.
         """
-        # Simulate processing delay for RTGS
-        await asyncio.sleep(0.3)
-
         if amount <= 0:
             result = self._finalize_transaction(transaction_id, SettlementStatus.REJECTED, "Amount must be positive")
         elif amount > (self.active_reserves + self.max_overdraft_limit):
@@ -78,12 +72,12 @@ class SettlementEngine:
             result = self._finalize_transaction(transaction_id, SettlementStatus.SETTLED)
 
         # Generate and send the pacs.002 response via the MQ Client
-        if self.mq_client:
+        if self.mq_client and parser:
             pacs_002_payload = parser.create_pacs_002_payload(
                 transaction_id,
                 result["status"],
                 transaction_id,
-                result.get("for_reason", "")
+                result.get("for_reason", result.get("reason", ""))
             )
             await self.mq_client.send_message(pacs_002_payload, correlation_id=transaction_id)
 

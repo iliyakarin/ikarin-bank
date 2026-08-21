@@ -20,29 +20,31 @@ class TestISO20022Parser(unittest.TestCase):
         # Verify XML structure
         root = ET.fromstring(xml_payload)
         self.assertTrue(root.tag.endswith("Document"))
-        self.assertIn("urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08", root.attrib.get("xmlns", ""))
+        self.assertTrue(
+            "urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08" in root.tag or
+            "urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08" in root.attrib.get("xmlns", "") or
+            "urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08" in xml_payload
+        )
 
-
-        self.assertIn("urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08", root.attrib.get("xmlns", ""))
-
-        # Find elements (using simplified XPath for simulation)
-        instr_id_elem = root.find(".//InstrId")
+        # Find elements using namespace
+        ns = {'ns': 'urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08'}
+        instr_id_elem = root.find(".//ns:InstrId", ns)
         self.assertIsNotNone(instr_id_elem)
         self.assertEqual(instr_id_elem.text, instruction_id)
 
-        amt_elem = root.find(".//Amt")
+        amt_elem = root.find(".//ns:Amt", ns)
         self.assertIsNotNone(amt_elem)
         self.assertEqual(amt_elem.text, "1500.50")
 
-        curr_elem = root.find(".//Ccy")
+        curr_elem = root.find(".//ns:Ccy", ns)
         self.assertIsNotNone(curr_elem)
         self.assertEqual(curr_elem.text, currency)
 
-        dbtr_acct_elem = root.find(".//Dbtr/Acct/Id")
+        dbtr_acct_elem = root.find(".//ns:Dbtr/ns:Acct/ns:Id", ns)
         self.assertIsNotNone(dbtr_acct_elem)
         self.assertEqual(dbtr_acct_elem.text, debtor_account)
 
-        cdtr_acct_elem = root.find(".//Cdtr/Acct/Id")
+        cdtr_acct_elem = root.find(".//ns:Cdtr/ns:Acct/ns:Id", ns)
         self.assertIsNotNone(cdtr_acct_elem)
         self.assertEqual(cdtr_acct_elem.text, creditor_account)
 

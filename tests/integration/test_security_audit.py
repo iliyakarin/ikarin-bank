@@ -33,38 +33,27 @@ def test_role_checker_admin_only():
     assert excinfo.value.status_code == 403
 
 def test_account_ownership_check():
-    from routers.accounts import check_account_owner
-    from database import Account
+    from services.account_service import get_owned_account
+    from models.account import Account
     import asyncio
 
     db = MagicMock()
-    # Mocking the query
     account = Account(id=10, user_id=1, name="My Account")
 
-    # Provide the mock lock method
-    mock_lock_context = MagicMock()
-    mock_lock_context.__aenter__.return_value = None
-    mock_lock_context.__aexit__.return_value = None
-    db.query().filter().first.return_value = account
-
-    # Needs to match exactly how sqlalchemy async querying expects the result to be returned in check_account_owner.
-    # We will simulate the async execution wrapper.
     async def run_test():
-        # Actually check_account_owner calls await db.execute(select(Account)...)
-        # So we mock db.execute
         from unittest.mock import AsyncMock
         res = MagicMock()
         res.scalars().first.return_value = account
         db.execute = AsyncMock(return_value=res)
 
-        result = await check_account_owner(10, 1, db)
+        result = await get_owned_account(db, 10, 1)
         assert result == account
 
         # Wrong owner (mock query to return None)
         res.scalars().first.return_value = None
         db.execute = AsyncMock(return_value=res)
         try:
-            await check_account_owner(10, 2, db)
+            await get_owned_account(db, 10, 2)
             pytest.fail("Expected exception")
         except HTTPException as e:
             assert e.status_code == 404
