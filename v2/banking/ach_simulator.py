@@ -1,13 +1,13 @@
 import datetime
-import pytz
+from zoneinfo import ZoneInfo
 
 class ACHSimulator:
     """
-    Simulates ACH (Automendum Clearing House) settlement windows and deadlines.
+    Simulates ACH (Automated Clearing House) settlement windows and deadlines.
     """
     
     def __init__(self, timezone: str = "US/Eastern"):
-        self.tz = pytz.timezone(timezone)
+        self.tz = ZoneInfo(timezone)
         self.cutoff_time = datetime.time(17, 0)  # 5:00 PM ET
 
     def is_within_settlement_window(self, dt: datetime.datetime) -> bool:

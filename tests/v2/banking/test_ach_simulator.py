@@ -1,14 +1,14 @@
 import pytest
 import datetime
-import pytz
+from zoneinfo import ZoneInfo
 from v2.banking.ach_simulator import ACHSimulator
 
 def test_ach_settlement_window():
     sim = ACHSimulator()
     # 10:00 AM ET
-    dt_morning = datetime.datetime(2024, 1, 1, 10, 0, tzinfo=pytz.timezone("US/Eastern"))
+    dt_morning = datetime.datetime(2024, 1, 1, 10, 0, tzinfo=ZoneInfo("US/Eastern"))
     # 6:00 PM ET
-    dt_evening = datetime.datetime(2024, 1, 1, 18, 0, tzinfo=pytz.timezone("US/Eastern"))
+    dt_evening = datetime.datetime(2024, 1, 1, 18, 0, tzinfo=ZoneInfo("US/Eastern"))
     
     assert sim.is_within_settlement_window(dt_morning) is True
     assert sim.is_within_settlement_window(dt_evening) is False
