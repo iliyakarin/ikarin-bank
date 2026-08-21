@@ -58,4 +58,34 @@ class TransferRequest(BaseModel):
     amount: int = Field(..., gt=0, description="Amount in cents")
     category: str
     idempotency_key: Optional[str] = None
-    merchant: str
+    merchant: str = "External Transfer"
+
+# --- Federal Reserve External Payment Rails ---
+class WireTransferRequest(BaseModel):
+    account_id: int
+    amount: int = Field(..., gt=0, description="Amount in cents")
+    receiver_routing: str = Field(..., min_length=9, max_length=9, description="9-digit ABA Routing Number")
+    receiver_account: str
+    receiver_name: str
+    payment_reference: Optional[str] = None
+    business_function_code: str = "CTR"
+    idempotency_key: Optional[str] = None
+
+class FedNowTransferRequest(BaseModel):
+    account_id: int
+    amount: int = Field(..., gt=0, description="Amount in cents")
+    creditor_routing: str = Field(..., min_length=9, max_length=9, description="9-digit ABA Routing Number")
+    creditor_account: str
+    creditor_name: str
+    remittance_info: Optional[str] = None
+    idempotency_key: Optional[str] = None
+
+class ExternalACHTransferRequest(BaseModel):
+    account_id: int
+    amount: int = Field(..., gt=0, description="Amount in cents")
+    receiver_routing: str = Field(..., min_length=9, max_length=9, description="9-digit ABA Routing Number")
+    receiver_account: str
+    receiver_name: str
+    payment_description: Optional[str] = "ACH Payment"
+    sec_code: str = "PPD"
+    idempotency_key: Optional[str] = None

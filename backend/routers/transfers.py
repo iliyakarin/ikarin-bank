@@ -19,14 +19,20 @@ from models.transaction import Transaction, PaymentRequest, IdempotencyKey
 from models.management import Outbox, ScheduledPayment
 from schemas.transfers import (
     TransferRequest, P2PTransferRequest, PaymentRequestCreate, 
-    PaymentRequestCounter, ScheduledTransferCreate, ScheduledPaymentResponse
+    PaymentRequestCounter, ScheduledTransferCreate, ScheduledPaymentResponse,
+    WireTransferRequest, FedNowTransferRequest, ExternalACHTransferRequest
 )
 from auth_utils import get_db, get_current_user
+from services.account_service import get_owned_account
 from services.transfer_service import process_p2p_transfer, get_vendors
 from services.event_emitter import emit_transactional_event
 from activity import emit_activity, emit_transaction_status_update
 from money_utils import from_cents
 from idempotency import check_idempotency, complete_idempotency
+from config import settings
+import httpx
+
+FED_GATEWAY_URL = getattr(settings, "MOCK_FED_GATEWAY_URL", "http://mock-fed-gateway:8002")
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Transfers"])
@@ -299,4 +305,273 @@ async def cancel_scheduled_payment(
     payment.next_run_at = None
     await db.commit()
     return {"status": "cancelled", "payment_id": payment_id}
+
+
+@router.post("/transfers/wire")
+async def create_wire_transfer(
+    payload: WireTransferRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Executes an outgoing Fedwire Funds Service (RTGS) high-value transfer."""
+    if payload.idempotency_key:
+        saved = await check_idempotency(db, payload.idempotency_key, current_user.id)
+        if saved is not None:
+            return saved
+
+    account = await get_owned_account(db, payload.account_id, current_user.id)
+    if account.balance_cents < payload.amount:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Insufficient funds for Fedwire transfer",
+        )
+
+    # Call Mock Fed Gateway Fedwire endpoint
+    async with httpx.AsyncClient() as client:
+        try:
+            fed_res = await client.post(
+                f"{FED_GATEWAY_URL}/fed/wire/originate",
+                json={
+                    "sender_routing": account.routing_number or "123456780",
+                    "sender_name": f"{current_user.first_name} {current_user.last_name}".strip() or current_user.email,
+                    "sender_account": account.account_number_last_4,
+                    "receiver_routing": payload.receiver_routing,
+                    "receiver_name": payload.receiver_name,
+                    "receiver_account": payload.receiver_account,
+                    "amount_cents": payload.amount,
+                    "business_function_code": payload.business_function_code,
+                    "payment_reference": payload.payment_reference,
+                },
+                headers={"X-API-KEY": settings.GATEWAY_API_KEY},
+                timeout=8.0,
+            )
+            if fed_res.status_code != 200:
+                err = fed_res.json().get("detail", "Fedwire transfer rejected by Federal Reserve")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err)
+            wire_data = fed_res.json()
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Fedwire communication failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Federal Reserve Fedwire gateway unavailable",
+            )
+
+    client_ip = request.client.host if request.client else "0.0.0.0"
+    user_agent = request.headers.get("user-agent", "unknown")
+
+    tx_id = await emit_transactional_event(
+        db=db,
+        user_id=current_user.id,
+        account_id=payload.account_id,
+        amount=payload.amount,
+        category="Wire Transfer",
+        merchant=payload.receiver_name,
+        transaction_type="wire",
+        transaction_side="DEBIT",
+        sender_email=current_user.email,
+        recipient_email=f"wire@{payload.receiver_routing}.fed",
+        internal_account_last_4=account.account_number_last_4,
+        event_type="transaction.created",
+        idempotency_key=payload.idempotency_key or str(uuid.uuid4()),
+        ip_address=client_ip,
+        user_agent=user_agent,
+        status="cleared",
+        activity_category="transfer",
+        activity_action="sent",
+    )
+
+    response_body = {
+        "status": "success",
+        "imad": wire_data.get("imad"),
+        "omad": wire_data.get("omad"),
+        "settlement_timestamp": wire_data.get("settlement_timestamp"),
+        "transaction_id": tx_id,
+    }
+    if payload.idempotency_key:
+        await complete_idempotency(db, payload.idempotency_key, response_body)
+
+    await db.commit()
+    return response_body
+
+
+@router.post("/transfers/fednow")
+async def create_fednow_transfer(
+    payload: FedNowTransferRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Executes a 24/7/365 FedNow instant credit transfer."""
+    if payload.idempotency_key:
+        saved = await check_idempotency(db, payload.idempotency_key, current_user.id)
+        if saved is not None:
+            return saved
+
+    account = await get_owned_account(db, payload.account_id, current_user.id)
+    if account.balance_cents < payload.amount:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Insufficient funds for FedNow instant transfer",
+        )
+
+    # Call Mock Fed Gateway FedNow endpoint
+    async with httpx.AsyncClient() as client:
+        try:
+            fed_res = await client.post(
+                f"{FED_GATEWAY_URL}/fed/fednow/transfer",
+                json={
+                    "debtor_routing": account.routing_number or "123456780",
+                    "debtor_name": f"{current_user.first_name} {current_user.last_name}".strip() or current_user.email,
+                    "debtor_account": account.account_number_last_4,
+                    "creditor_routing": payload.creditor_routing,
+                    "creditor_name": payload.creditor_name,
+                    "creditor_account": payload.creditor_account,
+                    "amount_cents": payload.amount,
+                    "remittance_info": payload.remittance_info,
+                },
+                headers={"X-API-KEY": settings.GATEWAY_API_KEY},
+                timeout=8.0,
+            )
+            if fed_res.status_code != 200:
+                err = fed_res.json().get("detail", "FedNow transfer rejected")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err)
+            now_data = fed_res.json()
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"FedNow communication failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Federal Reserve FedNow network unavailable",
+            )
+
+    client_ip = request.client.host if request.client else "0.0.0.0"
+    user_agent = request.headers.get("user-agent", "unknown")
+
+    tx_id = await emit_transactional_event(
+        db=db,
+        user_id=current_user.id,
+        account_id=payload.account_id,
+        amount=payload.amount,
+        category="Instant Payment",
+        merchant=payload.creditor_name,
+        transaction_type="fednow",
+        transaction_side="DEBIT",
+        sender_email=current_user.email,
+        recipient_email=f"fednow@{payload.creditor_routing}.fed",
+        internal_account_last_4=account.account_number_last_4,
+        event_type="transaction.created",
+        idempotency_key=payload.idempotency_key or str(uuid.uuid4()),
+        ip_address=client_ip,
+        user_agent=user_agent,
+        status="cleared",
+        activity_category="transfer",
+        activity_action="sent",
+    )
+
+    response_body = {
+        "status": "success",
+        "end_to_end_id": now_data.get("end_to_end_id"),
+        "settlement_timestamp": now_data.get("settlement_timestamp"),
+        "transaction_id": tx_id,
+    }
+    if payload.idempotency_key:
+        await complete_idempotency(db, payload.idempotency_key, response_body)
+
+    await db.commit()
+    return response_body
+
+
+@router.post("/transfers/ach")
+async def create_ach_transfer(
+    payload: ExternalACHTransferRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Executes an outgoing FedACH transfer."""
+    if payload.idempotency_key:
+        saved = await check_idempotency(db, payload.idempotency_key, current_user.id)
+        if saved is not None:
+            return saved
+
+    account = await get_owned_account(db, payload.account_id, current_user.id)
+    if account.balance_cents < payload.amount:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Insufficient funds for ACH transfer",
+        )
+
+    # Call Mock Fed Gateway ACH endpoint
+    async with httpx.AsyncClient() as client:
+        try:
+            fed_res = await client.post(
+                f"{FED_GATEWAY_URL}/fed/ach/originate",
+                json={
+                    "originator_routing": account.routing_number or "123456780",
+                    "originator_name": f"{current_user.first_name} {current_user.last_name}".strip() or current_user.email,
+                    "originator_account": account.account_number_last_4,
+                    "receiver_routing": payload.receiver_routing,
+                    "receiver_name": payload.receiver_name,
+                    "receiver_account": payload.receiver_account,
+                    "amount": payload.amount,
+                    "sec_code": payload.sec_code,
+                    "entry_class": "DEBIT",
+                    "payment_description": payload.payment_description,
+                },
+                headers={"X-API-KEY": settings.GATEWAY_API_KEY},
+                timeout=8.0,
+            )
+            if fed_res.status_code != 200:
+                err = fed_res.json().get("detail", "ACH transfer returned by FedACH")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err)
+            ach_data = fed_res.json()
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"ACH communication failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="FedACH network unavailable",
+            )
+
+    client_ip = request.client.host if request.client else "0.0.0.0"
+    user_agent = request.headers.get("user-agent", "unknown")
+
+    tx_id = await emit_transactional_event(
+        db=db,
+        user_id=current_user.id,
+        account_id=payload.account_id,
+        amount=payload.amount,
+        category="ACH Transfer",
+        merchant=payload.receiver_name,
+        transaction_type="ach",
+        transaction_side="DEBIT",
+        sender_email=current_user.email,
+        recipient_email=f"ach@{payload.receiver_routing}.fed",
+        internal_account_last_4=account.account_number_last_4,
+        event_type="transaction.created",
+        idempotency_key=payload.idempotency_key or str(uuid.uuid4()),
+        ip_address=client_ip,
+        user_agent=user_agent,
+        status="cleared",
+        activity_category="transfer",
+        activity_action="sent",
+    )
+
+    response_body = {
+        "status": "success",
+        "trace_number": ach_data.get("trace_number"),
+        "settlement_date": ach_data.get("settlement_date"),
+        "transaction_id": tx_id,
+    }
+    if payload.idempotency_key:
+        await complete_idempotency(db, payload.idempotency_key, response_body)
+
+    await db.commit()
+    return response_body
+
 

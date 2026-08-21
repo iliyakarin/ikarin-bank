@@ -16,6 +16,7 @@ from sqlalchemy import select, and_, or_, func, text
 from confluent_kafka.admin import AdminClient
 from confluent_kafka import Consumer, KafkaException
 import clickhouse_connect
+import httpx
 
 from database import SessionLocal
 from models.user import User
@@ -279,3 +280,46 @@ async def get_kafka_status(current_user: User = Depends(admin_only)):
     except Exception as e:
         logger.error(f"Kafka status error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/fed/reserves")
+async def get_fed_reserves(current_user: User = Depends(admin_only)):
+    """Fetch Karin Bank Master Account reserve balance from Federal Reserve Gateway."""
+    fed_url = getattr(settings, "MOCK_FED_GATEWAY_URL", "http://mock-fed-gateway:8002")
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.get(f"{fed_url}/fed/master-account/123456780", timeout=5.0)
+            if res.status_code == 200:
+                return res.json()
+            return {"error": "Failed to fetch master account", "status_code": res.status_code}
+        except Exception as e:
+            logger.error(f"Error fetching Fed reserves: {e}")
+            raise HTTPException(status_code=502, detail="Federal Reserve Gateway unavailable")
+
+@router.get("/fed/statement")
+async def get_fed_daily_statement(current_user: User = Depends(admin_only)):
+    """Fetch Karin Bank Daily Statement of Operations from Federal Reserve Gateway."""
+    fed_url = getattr(settings, "MOCK_FED_GATEWAY_URL", "http://mock-fed-gateway:8002")
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.get(f"{fed_url}/fed/statements/123456780", timeout=5.0)
+            if res.status_code == 200:
+                return res.json()
+            return {"error": "Failed to fetch statement", "status_code": res.status_code}
+        except Exception as e:
+            logger.error(f"Error fetching Fed daily statement: {e}")
+            raise HTTPException(status_code=502, detail="Federal Reserve Gateway unavailable")
+
+@router.get("/fed/status")
+async def get_fed_status(current_user: User = Depends(admin_only)):
+    """Fetch Federal Reserve Core Banking Simulator health and operational metrics."""
+    fed_url = getattr(settings, "MOCK_FED_GATEWAY_URL", "http://mock-fed-gateway:8002")
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.get(f"{fed_url}/fed/status", timeout=5.0)
+            if res.status_code == 200:
+                return res.json()
+            return {"status": "UNKNOWN"}
+        except Exception as e:
+            logger.error(f"Error fetching Fed status: {e}")
+            return {"status": "UNAVAILABLE", "error": str(e)}
+
