@@ -63,21 +63,21 @@ class KafkaConsumerApp:
 
         logger.info(f"📊 Flushing {len(self.tx_buffer)} tx + {len(self.activity_buffer)} activity")
         
-        tasks = []
+        tx_success = True
         if self.tx_buffer:
             data = prepare_transaction_data(self.tx_buffer)
-            tasks.append(flush_batch_to_clickhouse("transactions", TRANSACTION_COLUMNS, data))
+            tx_success = await flush_batch_to_clickhouse("transactions", TRANSACTION_COLUMNS, data)
             
+        activity_success = True
         if self.activity_buffer:
             data = prepare_activity_data(self.activity_buffer)
-            tasks.append(flush_batch_to_clickhouse("activity_events", ACTIVITY_COLUMNS, data))
+            activity_success = await flush_batch_to_clickhouse("activity_events", ACTIVITY_COLUMNS, data)
 
         if self.malformed_batch:
             self._log_malformed_batch()
             self.malformed_batch = []
 
-        results = await asyncio.gather(*tasks)
-        if all(results):
+        if tx_success and activity_success:
             self.consumer.commit()
             self.tx_buffer = []
             self.activity_buffer = []

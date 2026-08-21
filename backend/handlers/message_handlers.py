@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime
 from typing import List, Dict, Any
 from config import settings
-from clickhouse_utils import get_ch_client
+from clickhouse_utils import get_ch_client, _ch_lock
 from constants import (
     NULL_UUID,
     TRANSACTION_TYPE_EXPENSE,
@@ -21,6 +21,15 @@ def parse_iso_timestamp(ts_str: str) -> datetime:
         return ts_str
     return datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
 
+def _sync_insert(table: str, column_names: List[str], data: List[List[Any]]):
+    with _ch_lock:
+        client = get_ch_client()
+        client.insert(
+            f"{settings.CLICKHOUSE_DB}.{table}",
+            data,
+            column_names=column_names
+        )
+
 async def flush_batch_to_clickhouse(table: str, column_names: List[str], data: List[List[Any]]) -> bool:
     """Generic batch flusher for ClickHouse."""
     if not data:
@@ -28,16 +37,10 @@ async def flush_batch_to_clickhouse(table: str, column_names: List[str], data: L
 
     try:
         start_time = time.time()
-        client = get_ch_client()
-        
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
             None,
-            lambda: client.insert(
-                f"{settings.CLICKHOUSE_DB}.{table}",
-                data,
-                column_names=column_names
-            )
+            lambda: _sync_insert(table, column_names, data)
         )
         logger.info(f"🚀 Flush to {table} completed in {time.time() - start_time:.2f}s ({len(data)} rows)")
         return True

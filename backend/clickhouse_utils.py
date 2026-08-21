@@ -1,5 +1,6 @@
 import clickhouse_connect
 import logging
+import threading
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -12,28 +13,29 @@ CH_PASSWORD = settings.CLICKHOUSE_PASSWORD
 CH_DB = settings.CLICKHOUSE_DB
 
 _ch_client = None
+_ch_lock = threading.RLock()
 
 
 def get_ch_client():
     """Returns a ClickHouse client instance with reconnect logic.
 
-    Returns a singleton client. If the client becomes unresponsive,
-    it is recreated on the next call.
+    Thread-safe client getter.
     """
     global _ch_client
-    if _ch_client is None:
-        _ch_client = _create_ch_client()
-        return _ch_client
+    with _ch_lock:
+        if _ch_client is None:
+            _ch_client = _create_ch_client()
+            return _ch_client
 
-    # Health check: try a lightweight query to verify the connection is alive
-    try:
-        _ch_client.command("SELECT 1")
-        return _ch_client
-    except Exception as e:
-        logger.warning(f"ClickHouse connection health check failed: {e}. Reconnecting...")
-        _ch_client = None
-        _ch_client = _create_ch_client()
-        return _ch_client
+        # Health check: try a lightweight query to verify the connection is alive
+        try:
+            _ch_client.command("SELECT 1")
+            return _ch_client
+        except Exception as e:
+            logger.warning(f"ClickHouse connection health check failed: {e}. Reconnecting...")
+            _ch_client = None
+            _ch_client = _create_ch_client()
+            return _ch_client
 
 
 def _create_ch_client():
