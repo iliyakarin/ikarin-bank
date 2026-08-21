@@ -57,6 +57,10 @@ app.include_router(fedwire.router)
 app.include_router(fednow.router)
 app.include_router(settlement.router)
 
+@app.get("/")
+async def root():
+    return {"status": "ok", "service": "mock-fed-gateway"}
+
 @app.get("/health", response_model=HealthResponse)
 async def health(db: AsyncSession = Depends(get_db)):
     dist_count = (await db.execute(select(func.count()).select_from(FederalReserveDistrict))).scalar_one()

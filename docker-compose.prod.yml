@@ -294,7 +294,7 @@ services:
     healthcheck:
       test:
       - CMD-SHELL
-      - wget --spider -q localhost:8000 || exit 1
+      - wget --spider -q localhost:8001 || exit 1
       interval: 30s
       timeout: 5s
       retries: 3
@@ -381,7 +381,7 @@ services:
     healthcheck:
       test:
       - CMD-SHELL
-      - wget --spider -q localhost:8002 || exit 1
+      - wget --spider -q localhost:8002/health || exit 1
       interval: 30s
       timeout: 5s
       retries: 3
@@ -519,7 +519,7 @@ services:
     healthcheck:
       test:
       - CMD-SHELL
-      - wget --spider -q localhost:8000 || exit 1
+      - wget --spider -q localhost:8004/status || exit 1
       interval: 30s
       timeout: 5s
       retries: 3
