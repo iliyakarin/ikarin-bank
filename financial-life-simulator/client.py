@@ -234,3 +234,85 @@ class ApiClient:
         )
         resp.raise_for_status()
         return resp.json()
+
+    async def wire_transfer(
+        self,
+        token: str,
+        account_id: int,
+        amount: int,
+        receiver_routing: str,
+        receiver_name: str,
+        receiver_account: str,
+        payment_reference: str,
+        idempotency_key: str,
+    ) -> Dict[str, Any]:
+        resp = await self._http.post(
+            "/v1/transfers/wire",
+            json={
+                "account_id": account_id,
+                "amount": amount,
+                "receiver_routing": receiver_routing,
+                "receiver_name": receiver_name,
+                "receiver_account": receiver_account,
+                "payment_reference": payment_reference,
+                "idempotency_key": idempotency_key,
+            },
+            headers=_auth(token),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def fednow_transfer(
+        self,
+        token: str,
+        account_id: int,
+        amount: int,
+        creditor_routing: str,
+        creditor_name: str,
+        creditor_account: str,
+        remittance_info: str,
+        idempotency_key: str,
+    ) -> Dict[str, Any]:
+        resp = await self._http.post(
+            "/v1/transfers/fednow",
+            json={
+                "account_id": account_id,
+                "amount": amount,
+                "creditor_routing": creditor_routing,
+                "creditor_name": creditor_name,
+                "creditor_account": creditor_account,
+                "remittance_info": remittance_info,
+                "idempotency_key": idempotency_key,
+            },
+            headers=_auth(token),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def ach_transfer(
+        self,
+        token: str,
+        account_id: int,
+        amount: int,
+        receiver_routing: str,
+        receiver_name: str,
+        receiver_account: str,
+        payment_description: str,
+        idempotency_key: str,
+    ) -> Dict[str, Any]:
+        resp = await self._http.post(
+            "/v1/transfers/ach",
+            json={
+                "account_id": account_id,
+                "amount": amount,
+                "receiver_routing": receiver_routing,
+                "receiver_name": receiver_name,
+                "receiver_account": receiver_account,
+                "payment_description": payment_description,
+                "idempotency_key": idempotency_key,
+            },
+            headers=_auth(token),
+        )
+        resp.raise_for_status()
+        return resp.json()
+

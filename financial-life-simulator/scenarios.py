@@ -109,3 +109,81 @@ def random_amount(merchant: dict, multiplier: float = 1.0) -> int:
     base = random.randint(merchant["min_cents"], merchant["max_cents"])
     return int(base * multiplier)
 
+
+# Fedwire RTGS Scenarios (High-value real estate, investments, business settlements)
+FEDWIRE_SCENARIOS = [
+    {
+        "receiver_name": "First American Title Escrow",
+        "receiver_routing": "121000358",  # Bank of America CA
+        "receiver_account": "8899001122",
+        "payment_reference": "ESCROW-CLOSING-SF-LOT4",
+        "min_cents": 500000,   # $5,000.00
+        "max_cents": 2500000,  # $25,000.00
+    },
+    {
+        "receiver_name": "Charles Schwab Custody",
+        "receiver_routing": "121202211",  # Charles Schwab TX
+        "receiver_account": "7766554433",
+        "payment_reference": "IRA-ROLLOVER-CONTRIBUTION",
+        "min_cents": 300000,   # $3,000.00
+        "max_cents": 1000000,  # $10,000.00
+    },
+    {
+        "receiver_name": "Vanguard Brokerage Settlement (BNY Mellon)",
+        "receiver_routing": "021000018",  # The Bank of New York Mellon
+        "receiver_account": "9900112233",
+        "payment_reference": "EQUITY-INDEX-DEPOSIT",
+        "min_cents": 200000,   # $2,000.00
+        "max_cents": 800000,   # $8,000.00
+    },
+]
+
+# FedNow Instant Payments Scenarios (24/7 immediate money movement)
+FEDNOW_SCENARIOS = [
+    {
+        "creditor_name": "Marcus Vance",
+        "creditor_routing": "021000021",  # JPMorgan Chase NY
+        "creditor_account": "4455667788",
+        "remittance_info": "Instant dinner split & drinks",
+        "min_cents": 1500,  # $15.00
+        "max_cents": 8500,  # $85.00
+    },
+    {
+        "creditor_name": "Elena Rostova",
+        "creditor_routing": "111000012",  # Bank of America Dallas
+        "creditor_account": "3344556677",
+        "remittance_info": "Emergency concert ticket reimbursement",
+        "min_cents": 4500,  # $45.00
+        "max_cents": 15000, # $150.00
+    },
+    {
+        "creditor_name": "David Chen",
+        "creditor_routing": "121000248",  # Wells Fargo SF
+        "creditor_account": "1122334455",
+        "remittance_info": "Weekend road trip gas and toll split",
+        "min_cents": 2500,  # $25.00
+        "max_cents": 6000,  # $60.00
+    },
+]
+
+# FedACH External Transfer Scenarios
+FEDACH_SCENARIOS = [
+    {
+        "receiver_name": "PG&E Electric Utility Direct Debit",
+        "receiver_routing": "121000248",  # Wells Fargo
+        "receiver_account": "6677889900",
+        "payment_description": "MONTHLY ELECTRIC BILL",
+        "min_cents": 8500,   # $85.00
+        "max_cents": 19500,  # $195.00
+    },
+    {
+        "receiver_name": "Geico Auto Insurance AutoPay",
+        "receiver_routing": "051405515",  # Capital One VA
+        "receiver_account": "5566778899",
+        "payment_description": "AUTO INSURANCE PREMIUM",
+        "min_cents": 12000,  # $120.00
+        "max_cents": 17500,  # $175.00
+    },
+]
+
+

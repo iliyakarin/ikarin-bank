@@ -54,6 +54,9 @@ async def trigger(event_type: str):
         "deposit_card": sim.trigger_deposit_card,
         "utility_bills": sim.trigger_utility_bills,
         "payment_request": sim.trigger_payment_request,
+        "wire": sim.trigger_wire,
+        "fednow": sim.trigger_fednow,
+        "ach": sim.trigger_ach,
         "full_cycle": sim.trigger_full_cycle,
     }
     handler = handlers.get(event_type)

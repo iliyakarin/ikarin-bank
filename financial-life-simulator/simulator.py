@@ -16,7 +16,7 @@ from state import EventState
 from scenarios import (
     random_merchant, random_amount, RENT_MERCHANT, CAR_INSURANCE_MERCHANT,
     SALARY_SOURCE, UTILITY_BILLS, CARD_DEPOSIT_SCENARIOS, P2P_MEMOS,
-    PAYMENT_REQUEST_SCENARIOS,
+    PAYMENT_REQUEST_SCENARIOS, FEDWIRE_SCENARIOS, FEDNOW_SCENARIOS, FEDACH_SCENARIOS,
 )
 
 logger = logging.getLogger(__name__)
@@ -386,6 +386,57 @@ class FinancialLifeSimulator:
         await self._fire_p2p(admin_token, settings.SIM_USER2_EMAIL, amount, key)
         return {"key": key, "amount_cents": amount, "recipient": settings.SIM_USER2_EMAIL}
 
+    async def trigger_wire(self) -> dict:
+        admin_token, _, admin_main, _ = await self._sessions()
+        scen = random.choice(FEDWIRE_SCENARIOS)
+        amount = random.randint(scen["min_cents"], scen["max_cents"])
+        key = f"fedwire-manual-{uuid.uuid4()}"
+        res = await self.client.wire_transfer(
+            token=admin_token,
+            account_id=admin_main["id"],
+            amount=amount,
+            receiver_routing=scen["receiver_routing"],
+            receiver_name=scen["receiver_name"],
+            receiver_account=scen["receiver_account"],
+            payment_reference=scen["payment_reference"],
+            idempotency_key=key,
+        )
+        return {"key": key, "imad": res.get("imad"), "amount_cents": amount, "receiver": scen["receiver_name"]}
+
+    async def trigger_fednow(self) -> dict:
+        admin_token, _, admin_main, _ = await self._sessions()
+        scen = random.choice(FEDNOW_SCENARIOS)
+        amount = random.randint(scen["min_cents"], scen["max_cents"])
+        key = f"fednow-manual-{uuid.uuid4()}"
+        res = await self.client.fednow_transfer(
+            token=admin_token,
+            account_id=admin_main["id"],
+            amount=amount,
+            creditor_routing=scen["creditor_routing"],
+            creditor_name=scen["creditor_name"],
+            creditor_account=scen["creditor_account"],
+            remittance_info=scen["remittance_info"],
+            idempotency_key=key,
+        )
+        return {"key": key, "end_to_end_id": res.get("end_to_end_id"), "amount_cents": amount, "creditor": scen["creditor_name"]}
+
+    async def trigger_ach(self) -> dict:
+        admin_token, _, admin_main, _ = await self._sessions()
+        scen = random.choice(FEDACH_SCENARIOS)
+        amount = random.randint(scen["min_cents"], scen["max_cents"])
+        key = f"ach-manual-{uuid.uuid4()}"
+        res = await self.client.ach_transfer(
+            token=admin_token,
+            account_id=admin_main["id"],
+            amount=amount,
+            receiver_routing=scen["receiver_routing"],
+            receiver_name=scen["receiver_name"],
+            receiver_account=scen["receiver_account"],
+            payment_description=scen["payment_description"],
+            idempotency_key=key,
+        )
+        return {"key": key, "trace_number": res.get("trace_number"), "amount_cents": amount, "receiver": scen["receiver_name"]}
+
     async def trigger_full_cycle(self) -> dict:
         """Simulates an entire month's comprehensive financial journey in sequence."""
         salary_res = await self.trigger_salary()
@@ -396,6 +447,9 @@ class FinancialLifeSimulator:
         purch_res = await self.trigger_purchase()
         req_res = await self.trigger_payment_request()
         p2p_res = await self.trigger_p2p()
+        wire_res = await self.trigger_wire()
+        now_res = await self.trigger_fednow()
+        ach_res = await self.trigger_ach()
 
         return {
             "cycle_status": "completed",
@@ -408,5 +462,8 @@ class FinancialLifeSimulator:
                 "retail_purchase": purch_res,
                 "social_payment_request": req_res,
                 "p2p_transfer": p2p_res,
+                "fedwire_rtgs": wire_res,
+                "fednow_instant": now_res,
+                "fedach_transfer": ach_res,
             }
         }
