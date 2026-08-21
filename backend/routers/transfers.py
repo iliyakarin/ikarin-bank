@@ -321,7 +321,7 @@ async def create_wire_transfer(
             return saved
 
     account = await get_owned_account(db, payload.account_id, current_user.id)
-    if account.balance_cents < payload.amount:
+    if account.balance < payload.amount:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Insufficient funds for Fedwire transfer",
@@ -333,7 +333,7 @@ async def create_wire_transfer(
             fed_res = await client.post(
                 f"{FED_GATEWAY_URL}/fed/wire/originate",
                 json={
-                    "sender_routing": account.routing_number or "123456780",
+                    "sender_routing": "123456780",
                     "sender_name": f"{current_user.first_name} {current_user.last_name}".strip() or current_user.email,
                     "sender_account": account.account_number_last_4,
                     "receiver_routing": payload.receiver_routing,
@@ -411,7 +411,7 @@ async def create_fednow_transfer(
             return saved
 
     account = await get_owned_account(db, payload.account_id, current_user.id)
-    if account.balance_cents < payload.amount:
+    if account.balance < payload.amount:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Insufficient funds for FedNow instant transfer",
@@ -423,7 +423,7 @@ async def create_fednow_transfer(
             fed_res = await client.post(
                 f"{FED_GATEWAY_URL}/fed/fednow/transfer",
                 json={
-                    "debtor_routing": account.routing_number or "123456780",
+                    "debtor_routing": "123456780",
                     "debtor_name": f"{current_user.first_name} {current_user.last_name}".strip() or current_user.email,
                     "debtor_account": account.account_number_last_4,
                     "creditor_routing": payload.creditor_routing,
@@ -499,7 +499,7 @@ async def create_ach_transfer(
             return saved
 
     account = await get_owned_account(db, payload.account_id, current_user.id)
-    if account.balance_cents < payload.amount:
+    if account.balance < payload.amount:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Insufficient funds for ACH transfer",
@@ -511,7 +511,7 @@ async def create_ach_transfer(
             fed_res = await client.post(
                 f"{FED_GATEWAY_URL}/fed/ach/originate",
                 json={
-                    "originator_routing": account.routing_number or "123456780",
+                    "originator_routing": "123456780",
                     "originator_name": f"{current_user.first_name} {current_user.last_name}".strip() or current_user.email,
                     "originator_account": account.account_number_last_4,
                     "receiver_routing": payload.receiver_routing,
