@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime
-from typing import Dict, List, Optional
+from decimal import Decimal
+from typing import Dict, List, Optional, Union
 from enum import Enum
 
 class SettlementStatus(Enum):
@@ -15,7 +16,7 @@ class SettlementEngine:
     Handles transaction finality, daylight overdraft checks, and status reporting.
     """
 
-    def __init__(self, mq_client: any = None, max_overdraft_limit: float = 1000000.0, initial_reserve_balance: float = 5.0e6):
+    def __init__(self, mq_client: any = None, max_overdraft_limit: Union[int, float, Decimal] = 1000000.0, initial_reserve_balance: Union[int, float, Decimal] = 5.0e6):
         self.mq_client = mq_client
         self.max_overdraft_limit = max_overdraft_limit
         self.active_reserves = initial_reserve_balance  # Simulated Fed Reserve Account balance
@@ -24,7 +25,7 @@ class SettlementEngine:
     async def process_fednow_payment(
         self, 
         transaction_id: str, 
-        amount: float, 
+        amount: Union[int, float, Decimal], 
         parser: any = None,
         currency: str = "USD"
     ) -> Dict:
@@ -55,7 +56,7 @@ class SettlementEngine:
     async def process_fedwire_payment(
         self, 
         transaction_id: str, 
-        amount: float, 
+        amount: Union[int, float, Decimal], 
         parser: any = None,
         currency: str = "USD"
     ) -> Dict:

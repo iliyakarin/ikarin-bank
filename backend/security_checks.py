@@ -7,7 +7,7 @@ from database import Transaction, Account
 from activity import emit_activity
 from money_utils import from_cents
 import logging
-from clickhouse_utils import get_ch_client, CH_DB
+from clickhouse_utils import execute_ch_query, CH_DB
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +38,10 @@ async def check_anomaly(db: AsyncSession, user_id: int, amount: int) -> bool:
         acc_ids = (await db.execute(select(Account.id).where(Account.user_id == user_id))).scalars().all()
         if not acc_ids: return False
 
-        ch = get_ch_client()
-        res = ch.query(f"SELECT avg(abs(amount)), count() FROM {CH_DB}.transactions FINAL WHERE account_id IN {{ids:Array(Int64)}} AND event_time >= now() - INTERVAL 90 DAY", parameters={'ids': acc_ids})
+        res = await execute_ch_query(
+            f"SELECT avg(abs(amount)), count() FROM {CH_DB}.transactions FINAL WHERE account_id IN {{ids:Array(Int64)}} AND event_time >= now() - INTERVAL 90 DAY",
+            parameters={'ids': acc_ids}
+        )
         if not res.result_rows or res.result_rows[0][1] < 5: return False
 
         avg_val = int(res.result_rows[0][0])

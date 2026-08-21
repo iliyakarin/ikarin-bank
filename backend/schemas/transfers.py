@@ -4,7 +4,7 @@ import datetime
 
 class P2PTransferRequest(BaseModel):
     recipient_email: str
-    amount: int = Field(..., description="Amount in cents")
+    amount: int = Field(..., gt=0, description="Amount in cents")
     source_account_id: Optional[int] = None
     idempotency_key: Optional[str] = None
     commentary: Optional[str] = None
@@ -13,15 +13,15 @@ class P2PTransferRequest(BaseModel):
 
 class PaymentRequestCreate(BaseModel):
     target_email: str
-    amount: int = Field(..., description="Amount in cents")
+    amount: int = Field(..., gt=0, description="Amount in cents")
     purpose: Optional[str] = None
 
 class PaymentRequestCounter(BaseModel):
-    amount: int = Field(..., description="Amount in cents")
+    amount: int = Field(..., gt=0, description="Amount in cents")
 
 class ScheduledTransferCreate(BaseModel):
     recipient_email: str
-    amount: int = Field(..., description="Amount in cents")
+    amount: int = Field(..., gt=0, description="Amount in cents")
     frequency: str
     frequency_interval: Optional[str] = None
     start_date: datetime.datetime
@@ -37,7 +37,7 @@ class ScheduledPaymentResponse(BaseModel):
     id: int
     user_id: int
     recipient_email: str
-    amount: int = Field(..., description="Amount in cents")
+    amount: int = Field(..., gt=0, description="Amount in cents")
     frequency: str
     frequency_interval: Optional[str] = None
     start_date: datetime.datetime
@@ -55,7 +55,7 @@ class ScheduledPaymentResponse(BaseModel):
 
 class TransferRequest(BaseModel):
     account_id: int
-    amount: int = Field(..., description="Amount in cents")
+    amount: int = Field(..., gt=0, description="Amount in cents")
     category: str
     idempotency_key: Optional[str] = None
     merchant: str

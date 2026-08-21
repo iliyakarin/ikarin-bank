@@ -15,7 +15,7 @@ def _luhn_check(card_number: str) -> bool:
 
 
 class CheckoutSessionCreate(BaseModel):
-    amount: int  # in cents
+    amount: int = Field(..., gt=0, description="Amount in cents")
     currency: str = "usd"
     mode: str = "payment"  # 'payment' or 'subscription'
     success_url: str
@@ -36,7 +36,7 @@ class PortalSessionResponse(BaseModel):
 
 
 class PaymentIntentCreate(BaseModel):
-    amount: int  # in cents
+    amount: int = Field(..., gt=0, description="Amount in cents")
     currency: str = "usd"
     description: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
@@ -97,6 +97,7 @@ class PaymentIntentConfirm(BaseModel):
 class SubscriptionResponse(BaseModel):
     active: bool
     plan_name: Optional[str] = None
-    amount: Optional[float] = None
+    amount: Optional[int] = None
     current_period_end: Optional[str] = None
     status: Optional[str] = None
+

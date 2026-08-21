@@ -42,7 +42,8 @@ export default function InstantTransferTab({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!recipient.trim() || !amount || parseFloat(amount) <= 0) {
+    const cents = toCents(amount);
+    if (!recipient.trim() || !amount || cents <= 0) {
       onError("Please provide a valid recipient and amount.");
       return;
     }
@@ -52,7 +53,7 @@ export default function InstantTransferTab({
       const cleanCommentary = DOMPurify.sanitize(commentary);
       const data = await createP2PTransfer({
         recipient_email: recipient,
-        amount: toCents(amount),
+        amount: cents,
         commentary: cleanCommentary || null,
         source_account_id: sourceAccountId || undefined,
         subscriber_id: subscriberId || undefined,

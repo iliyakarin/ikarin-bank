@@ -1,5 +1,5 @@
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, List
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Optional, List, Union
 from datetime import date, datetime
 
 class BillPayValidationRequest(BaseModel):
@@ -9,7 +9,8 @@ class BillPayValidationRequest(BaseModel):
 class BillPayExecuteRequest(BaseModel):
     merchant_id: str
     subscriber_id: str
-    amount: float
+    amount: Union[int, float] = Field(..., gt=0)
+
 
 class StatusResponse(BaseModel):
     status: str

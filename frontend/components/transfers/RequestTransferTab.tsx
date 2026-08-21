@@ -27,7 +27,8 @@ export default function RequestTransferTab({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!recipient.trim() || !amount || parseFloat(amount) <= 0) {
+    const cents = toCents(amount);
+    if (!recipient.trim() || !amount || cents <= 0) {
       onError("Please provide a valid email and amount.");
       return;
     }
@@ -37,7 +38,7 @@ export default function RequestTransferTab({
       const cleanPurpose = DOMPurify.sanitize(purpose);
       const res = await postRequest({
         target_email: recipient,
-        amount: toCents(amount),
+        amount: cents,
         purpose: cleanPurpose || "Payment request",
       });
       onSuccess(res.request_id);

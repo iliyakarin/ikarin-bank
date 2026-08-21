@@ -1,6 +1,8 @@
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime
+from decimal import Decimal
+from typing import Union
 
 class ISO20022Parser:
     """
@@ -11,13 +13,14 @@ class ISO20022Parser:
     def create_pacs_008_payload(
         self, 
         instruction_id: str, 
-        amount: float, 
+        amount: Union[int, float, Decimal], 
         currency: str, 
         debtor_account: str, 
         creditor_account: str
     ) -> str:
         if amount <= 0:
             raise ValueError("Amount must be positive")
+
 
         # Root element for pacs.008
         root = ET.Element("Document", xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08")

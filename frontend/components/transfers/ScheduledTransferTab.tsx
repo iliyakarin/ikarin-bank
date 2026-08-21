@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Calendar, ArrowRight, ChevronDown, Clock, Search } from "lucide-react";
 import DatePicker from "@/components/ui/DatePicker";
-import { formatCurrency } from "@/lib/transactionUtils";
+import { formatCurrency, toCents } from "@/lib/transactionUtils";
 import { Account } from "@/lib/api/accounts";
 import { Contact } from "@/lib/api/contacts";
 import { createScheduledTransfer } from "@/lib/api/transfers";
@@ -47,13 +47,13 @@ export default function ScheduledTransferTab({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const amt = parseFloat(amount);
-    if (!recipient.trim() || !amount || amt <= 0) {
+    const cents = toCents(amount);
+    if (!recipient.trim() || !amount || cents <= 0) {
       onError("Please provide a valid recipient and amount.");
       return;
     }
 
-    if (amt > 5000) {
+    if (cents > 500000) {
       onError("Amount exceeds the maximum scheduled transfer limit of $5000.");
       return;
     }
@@ -74,7 +74,7 @@ export default function ScheduledTransferTab({
 
       const payload = {
         recipient_email: recipient,
-        amount: Math.round(amt * 100),
+        amount: cents,
         frequency: freqMap[frequency] || "monthly",
         frequency_interval: freqInterval,
         start_date: new Date(startDate).toISOString(),

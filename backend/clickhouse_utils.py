@@ -1,6 +1,8 @@
+import asyncio
 import clickhouse_connect
 import logging
 import threading
+from typing import Optional, List, Any, Dict
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -52,3 +54,41 @@ def _create_ch_client():
     except Exception as e:
         logger.error(f"Failed to connect to ClickHouse: {e}")
         raise
+
+
+async def execute_ch_query(query: str, parameters: Optional[dict] = None, client_getter=None):
+    """Executes a query asynchronously in a threadpool executor under the client lock."""
+    getter = client_getter or get_ch_client
+    def _run():
+        with _ch_lock:
+            client = getter()
+            return client.query(query, parameters=parameters)
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _run)
+
+
+async def execute_ch_command(command: str, parameters: Optional[dict] = None, client_getter=None):
+    """Executes a command asynchronously in a threadpool executor under the client lock."""
+    getter = client_getter or get_ch_client
+    def _run():
+        with _ch_lock:
+            client = getter()
+            return client.command(command, parameters=parameters)
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _run)
+
+
+async def execute_ch_insert(table: str, data: list, column_names: list, client_getter=None):
+    """Executes a batch insert asynchronously in a threadpool executor under the client lock."""
+    getter = client_getter or get_ch_client
+    def _run():
+        with _ch_lock:
+            client = getter()
+            return client.insert(f"{CH_DB}.{table}", data, column_names=column_names)
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _run)
+
+

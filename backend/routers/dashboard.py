@@ -14,7 +14,7 @@ from database import SessionLocal
 from models.user import User
 from models.account import Account
 from auth_utils import get_db, get_current_user
-from clickhouse_utils import get_ch_client, CH_DB
+from clickhouse_utils import execute_ch_query, CH_DB
 from clickhouse_queries import (
     build_balance_history_query,
     build_recent_transactions_query,
@@ -36,12 +36,6 @@ async def get_summary(
     # 1. Total Balance
     result = await db.execute(select(func.sum(Account.balance)).where(Account.user_id == current_user.id))
     total_balance = result.scalar() or 0
-
-    # 2. Monthly Spending/Income (from ClickHouse)
-    ch = get_ch_client()
-    now = datetime.datetime.now(datetime.timezone.utc)
-    this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    last_month_start = (this_month_start - datetime.timedelta(days=1)).replace(day=1)
 
     # Simplified mock/placeholder for complex metrics until further logic added
     return DashboardMetrics(
@@ -68,7 +62,6 @@ async def get_activity(
 ):
     """Query the activity log from ClickHouse with Final deduplication."""
     try:
-        ch = get_ch_client()
         params = {"user_id": current_user.id, "limit": limit, "offset": offset}
         conditions = ["user_id = {user_id:Int64}"]
 
@@ -95,9 +88,9 @@ async def get_activity(
             ORDER BY event_time {sort_dir}
             LIMIT {{limit:UInt32}} OFFSET {{offset:UInt32}}
         """
-        result = ch.query(query, parameters=params)
+        result = await execute_ch_query(query, parameters=params)
         
-        count_res = ch.query(f"SELECT count() FROM {CH_DB}.activity_events FINAL WHERE {where_clause}", parameters=params)
+        count_res = await execute_ch_query(f"SELECT count() FROM {CH_DB}.activity_events FINAL WHERE {where_clause}", parameters=params)
         total = count_res.result_rows[0][0] if count_res.result_rows else 0
 
         events = [
@@ -123,9 +116,9 @@ async def get_balance_history(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
 
     try:
-        ch = get_ch_client()
         query, params = build_balance_history_query(CH_DB, account.id, days)
-        result = ch.query(query, parameters=params).named_results()
+        ch_res = await execute_ch_query(query, parameters=params)
+        result = ch_res.named_results()
         
         # Build history (simplified)
         history = [{"date": str(row["date"]), "daily_change": int(row["daily_change"])} for row in result]
@@ -158,9 +151,9 @@ async def get_recent_transactions(
     # ClickHouse ONLY
     final_txs = []
     try:
-        ch = get_ch_client()
         query, params = build_recent_transactions_query(CH_DB, target_ids, hours)
-        ch_rows = ch.query(query, parameters=params).named_results()
+        ch_res = await execute_ch_query(query, parameters=params)
+        ch_rows = ch_res.named_results()
         for row in ch_rows:
             final_txs.append({
                 "id": row["toString(transaction_id)"], "amount": int(row["amount"]),
@@ -195,13 +188,13 @@ async def get_transactions(
         return {"transactions": []}
 
     try:
-        ch = get_ch_client()
         query, params = build_transactions_query(
             CH_DB, list(account_ids), days,
             tx_type=tx_type, min_amount=min_amount,
             max_amount=max_amount, sort=sort,
         )
-        ch_rows = ch.query(query, parameters=params).named_results()
+        ch_res = await execute_ch_query(query, parameters=params)
+        ch_rows = ch_res.named_results()
         
         return {
             "transactions": [

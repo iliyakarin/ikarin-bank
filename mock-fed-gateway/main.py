@@ -62,7 +62,13 @@ async def originate_ach(payload: ACHOriginateRequest, db: AsyncSession = Depends
         )
 
     # 2. Failure Injection (R01 - NSF)
-    if abs(payload.amount % 1.0 - 0.01) < 0.0001:
+    is_nsf = False
+    if isinstance(payload.amount, int):
+        is_nsf = (payload.amount % 100 == 1)
+    else:
+        is_nsf = (abs(payload.amount % 1.0 - 0.01) < 0.0001 or int(round(payload.amount * 100)) % 100 == 1)
+
+    if is_nsf:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error_code": "R01", "message": "Insufficient Funds"}

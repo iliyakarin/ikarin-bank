@@ -25,7 +25,7 @@ from models.management import Outbox
 from schemas.users import UserResponse
 from schemas.admin import SimulationRequest, QueryRequest, AdminCreditRequest
 from auth_utils import get_db, get_current_user, RoleChecker
-from clickhouse_utils import get_ch_client, CH_DB
+from clickhouse_utils import get_ch_client, execute_ch_query, CH_DB
 from activity import emit_activity
 from sync_checker import run_sync_check
 from config import settings
@@ -143,9 +143,8 @@ async def get_stats(db: AsyncSession = Depends(get_db), current_user: User = Dep
         dict: Stats including transaction counts, Kafka lag, and sync status.
     """
     pg_count = (await db.execute(select(func.count(Transaction.id)))).scalar() or 0
-    ch_client = get_ch_client()
-    ch_result = ch_client.query(f"SELECT count() FROM {settings.CLICKHOUSE_DB}.transactions")
-    ch_count = ch_result.result_rows[0][0]
+    ch_result = await execute_ch_query(f"SELECT count() FROM {settings.CLICKHOUSE_DB}.transactions", client_getter=get_ch_client)
+    ch_count = ch_result.result_rows[0][0] if ch_result.result_rows else 0
     lag = -1
     try:
         admin = AdminClient({"bootstrap.servers": settings.KAFKA_BOOTSTRAP_SERVERS})
@@ -201,9 +200,9 @@ async def get_traces(db: AsyncSession = Depends(get_db), current_user: User = De
     tx_ids = [tx.id for tx in pg_txs]
     ch_map = {}
     try:
-        ch_client = get_ch_client()
         query = f"SELECT transaction_id, event_time FROM {settings.CLICKHOUSE_DB}.transactions WHERE transaction_id IN :tx_ids"
-        ch_txs = ch_client.query(query, parameters={'tx_ids': tx_ids}).named_results()
+        ch_res = await execute_ch_query(query, parameters={'tx_ids': tx_ids}, client_getter=get_ch_client)
+        ch_txs = ch_res.named_results()
         ch_map = {row["transaction_id"]: row["event_time"] for row in ch_txs}
     except Exception as e: logger.warning(f"ClickHouse trace failed: {e}")
     traces = []
@@ -236,8 +235,7 @@ async def get_postgres_logs(db: AsyncSession = Depends(get_db), current_user: Us
 
 @router.get("/clickhouse-logs")
 async def get_ch_logs(current_user: User = Depends(admin_only)):
-    client = get_ch_client()
-    result = client.query(f"SELECT * FROM {settings.CLICKHOUSE_DB}.transactions ORDER BY event_time DESC LIMIT 10")
+    result = await execute_ch_query(f"SELECT * FROM {settings.CLICKHOUSE_DB}.transactions ORDER BY event_time DESC LIMIT 10", client_getter=get_ch_client)
     logs = result.named_results()
     for log in logs:
         # log["sender_email"] = mask_email(log.get("sender_email"))
@@ -259,8 +257,7 @@ async def execute_admin_query(request: QueryRequest, db: AsyncSession = Depends(
     else:
         query_template = PREDEFINED_QUERIES["clickhouse"].get(request.query)
         if not query_template: raise HTTPException(status_code=400, detail="Invalid clickhouse query")
-        client = get_ch_client()
-        res = client.query(query_template, parameters=request.params)
+        res = await execute_ch_query(query_template, parameters=request.params, client_getter=get_ch_client)
         data, columns = res.named_results(), res.column_names
     for row in data:
         # for key in ["email", "sender_email", "recipient_email", "target_email"]:

@@ -2,11 +2,9 @@ import time
 import logging
 from datetime import datetime, timezone, timedelta
 import asyncio
-import clickhouse_connect
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from database import Transaction, Outbox, engine
 from config import settings
+from clickhouse_utils import execute_ch_query
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
@@ -18,7 +16,6 @@ async def run_sync_check():
     logger.info("Checking Postgres <-> ClickHouse Sync...")
     async with AsyncSession(engine) as db:
         try:
-            ch = clickhouse_connect.get_client(host=settings.CLICKHOUSE_HOST, port=settings.CLICKHOUSE_PORT, username=settings.CLICKHOUSE_USER, password=settings.CLICKHOUSE_PASSWORD)
             cutoff = datetime.now(timezone.utc) - timedelta(days=7)
             pg_txs = (await db.execute(select(Transaction).where(Transaction.created_at >= cutoff))).scalars().all()
             if not pg_txs: return
@@ -28,8 +25,11 @@ async def run_sync_check():
             ch_status = {}
             for i in range(0, len(pg_ids), 1000):
                 chunk = pg_ids[i:i+1000]
-                res = ch.query(f"SELECT toString(transaction_id), status FROM {settings.CLICKHOUSE_DB}.transactions WHERE transaction_id IN {{ids:Array(String)}} ORDER BY event_time DESC", parameters={'ids': chunk}).result_rows
-                for row in res:
+                query_res = await execute_ch_query(
+                    f"SELECT toString(transaction_id), status FROM {settings.CLICKHOUSE_DB}.transactions WHERE transaction_id IN {{ids:Array(String)}} ORDER BY event_time DESC",
+                    parameters={'ids': chunk}
+                )
+                for row in query_res.result_rows:
                     if row[0] not in ch_status: ch_status[row[0]] = row[1]
 
             to_sync = []
