@@ -50,6 +50,11 @@ async def trigger(event_type: str):
         "insurance": sim.trigger_insurance,
         "purchase": sim.trigger_purchase,
         "p2p": sim.trigger_p2p,
+        "savings": sim.trigger_savings,
+        "deposit_card": sim.trigger_deposit_card,
+        "utility_bills": sim.trigger_utility_bills,
+        "payment_request": sim.trigger_payment_request,
+        "full_cycle": sim.trigger_full_cycle,
     }
     handler = handlers.get(event_type)
     if not handler:

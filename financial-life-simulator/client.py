@@ -8,6 +8,7 @@ and the outbox/ClickHouse pipeline all fire exactly as they would for a human
 user.
 """
 import logging
+from typing import Optional, List, Dict, Any
 import httpx
 
 from config import settings
@@ -70,16 +71,73 @@ class ApiClient:
                     return await self.ensure_logged_in(fallback_email, password, first_name, last_name)
                 raise
 
-    async def get_main_account_info(self, token: str) -> dict:
+    async def get_accounts(self, token: str) -> List[Dict[str, Any]]:
         resp = await self._http.get("/v1/accounts", headers=_auth(token))
         resp.raise_for_status()
-        accounts = resp.json()["accounts"]
-        main = next((a for a in accounts if a["is_main"]), accounts[0])
+        return resp.json().get("accounts", [])
+
+    async def get_main_account_info(self, token: str) -> Dict[str, Any]:
+        accounts = await self.get_accounts(token)
+        main = next((a for a in accounts if a.get("is_main")), accounts[0])
         return main
+
+    async def ensure_savings_account(self, token: str, name: str = "High Yield Savings") -> Dict[str, Any]:
+        accounts = await self.get_accounts(token)
+        savings = next((a for a in accounts if a.get("name", "").lower() == name.lower() or "saving" in a.get("name", "").lower()), None)
+        if savings:
+            return savings
+        try:
+            resp = await self._http.post(
+                "/v1/accounts/sub",
+                json={"name": name},
+                headers=_auth(token),
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception:
+            logger.exception("Failed to create savings account %s", name)
+            accounts = await self.get_accounts(token)
+            return accounts[0]
+
+    async def internal_transfer(
+        self, token: str, from_account_id: int, to_account_id: int, amount: int, commentary: str, idempotency_key: str
+    ) -> Dict[str, Any]:
+        resp = await self._http.post(
+            "/v1/accounts/transfer/internal",
+            json={
+                "from_account_id": from_account_id,
+                "to_account_id": to_account_id,
+                "amount": amount,
+                "commentary": commentary,
+                "idempotency_key": idempotency_key,
+            },
+            headers=_auth(token),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def create_card_deposit(self, token: str, amount: int, idempotency_key: str) -> Dict[str, Any]:
+        """Simulates an external card deposit via Payment Intent + Confirm."""
+        pi_resp = await self._http.post(
+            "/v1/payment_intents",
+            json={"amount": amount, "currency": "usd", "metadata": {"source": "simulator_card_deposit"}},
+            headers=_auth(token),
+        )
+        pi_resp.raise_for_status()
+        intent = pi_resp.json()
+        intent_id = intent["id"]
+
+        confirm_resp = await self._http.post(
+            f"/v1/payment_intents/{intent_id}/confirm",
+            json={"payment_method": "pm_card_visa"},
+            headers={**_auth(token), "Idempotency-Key": idempotency_key},
+        )
+        confirm_resp.raise_for_status()
+        return confirm_resp.json()
 
     async def expense(
         self, token: str, account_id: int, amount: int, category: str, merchant: str, idempotency_key: str
-    ) -> dict:
+    ) -> Dict[str, Any]:
         resp = await self._http.post(
             "/v1/transfer",
             json={
@@ -92,16 +150,23 @@ class ApiClient:
         return resp.json()
 
     async def p2p_transfer(
-        self, token: str, recipient_email: str, amount: int, commentary: str, idempotency_key: str
-    ) -> dict:
+        self, token: str, recipient_email: str, amount: int, commentary: str, idempotency_key: str,
+        subscriber_id: Optional[str] = None, payment_request_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "recipient_email": recipient_email,
+            "amount": amount,
+            "commentary": commentary,
+            "idempotency_key": idempotency_key,
+        }
+        if subscriber_id:
+            payload["subscriber_id"] = subscriber_id
+        if payment_request_id:
+            payload["payment_request_id"] = payment_request_id
+
         resp = await self._http.post(
             "/v1/p2p-transfer",
-            json={
-                "recipient_email": recipient_email,
-                "amount": amount,
-                "commentary": commentary,
-                "idempotency_key": idempotency_key,
-            },
+            json=payload,
             headers=_auth(token),
         )
         resp.raise_for_status()
@@ -110,7 +175,7 @@ class ApiClient:
     async def admin_credit(
         self, token: str, recipient_email: str, amount: int, category: str,
         source_name: str, commentary: str, idempotency_key: str,
-    ) -> dict:
+    ) -> Dict[str, Any]:
         resp = await self._http.post(
             "/v1/admin/credit",
             json={
@@ -121,6 +186,50 @@ class ApiClient:
                 "commentary": commentary,
                 "idempotency_key": idempotency_key,
             },
+            headers=_auth(token),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_contacts(self, token: str) -> List[Dict[str, Any]]:
+        resp = await self._http.get("/v1/contacts", headers=_auth(token))
+        resp.raise_for_status()
+        return resp.json()
+
+    async def ensure_contact(self, token: str, name: str, email: str, contact_type: str = "karin") -> Dict[str, Any]:
+        contacts = await self.get_contacts(token)
+        for c in contacts:
+            if c.get("contact_email", "").lower() == email.lower():
+                return c
+        try:
+            resp = await self._http.post(
+                "/v1/contacts",
+                json={"contact_name": name, "contact_email": email, "contact_type": contact_type},
+                headers=_auth(token),
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception:
+            logger.warning("Could not add contact %s (%s)", name, email)
+            return {}
+
+    async def create_payment_request(self, token: str, target_email: str, amount: int, purpose: str) -> Dict[str, Any]:
+        resp = await self._http.post(
+            "/v1/requests/create",
+            json={"target_email": target_email, "amount": amount, "purpose": purpose},
+            headers=_auth(token),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_payment_requests(self, token: str) -> List[Dict[str, Any]]:
+        resp = await self._http.get("/v1/requests", headers=_auth(token))
+        resp.raise_for_status()
+        return resp.json()
+
+    async def decline_payment_request(self, token: str, request_id: int) -> Dict[str, Any]:
+        resp = await self._http.post(
+            f"/v1/requests/{request_id}/decline",
             headers=_auth(token),
         )
         resp.raise_for_status()

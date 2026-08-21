@@ -33,41 +33,12 @@ async def emit_transactional_event(
     payment_request_id: Optional[int] = None,
     status: str = "cleared",
     parent_id: Optional[str] = None,
+    subscriber_id: Optional[str] = None,
+    failure_reason: Optional[str] = None,
     activity_category: str = "p2p",
     activity_action: Optional[str] = None
 ):
-    """Unified function to create a Transaction, an Outbox entry, and an Activity log.
-
-    Ensures all related systems (DB, Kafka, Activity Feed) are notified of a core
-    financial event in an atomic-like fashion (within the same DB transaction).
-
-    Args:
-        db (AsyncSession): The database session.
-        user_id (int): The ID of the owner user.
-        account_id (int): The ID of the account involved.
-        amount (int): The transaction amount in cents.
-        category (str): The transaction category (e.g., 'P2P', 'Top-up').
-        merchant (str): The merchant or counterparty name.
-        transaction_type (str): The type (e.g., 'transfer', 'deposit').
-        transaction_side (str): Either 'DEBIT' or 'CREDIT'.
-        sender_email (str): Email of the sender.
-        recipient_email (str): Email of the recipient.
-        internal_account_last_4 (str): Last 4 digits of the internal account involved.
-        event_type (str): The type used for Kafka outbox (e.g., 'transfer.success').
-        idempotency_key (str): Key to prevent duplicate processing.
-        commentary (str, optional): Optional notes for the transaction.
-        ip_address (str): IP address of the requester.
-        user_agent (str): User agent of the requester.
-        payload_extra (dict, optional): Additional data to include in the Kafka payload.
-        payment_request_id (int, optional): ID of the associated payment request.
-        status (str): Status of the transaction (default 'cleared').
-        parent_id (str, optional): Parent transaction ID for grouped transactions.
-        activity_category (str): Category for the activity feed.
-        activity_action (str, optional): Action for the activity feed (overrides default).
-
-    Returns:
-        str: The newly generated transaction ID (UUID).
-    """
+    """Unified function to create a Transaction, an Outbox entry, and an Activity log."""
     tx_id = str(uuid.uuid4())
     final_parent_id = parent_id or tx_id
     timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -90,7 +61,9 @@ async def emit_transactional_event(
         recipient_email=recipient_email,
         commentary=commentary,
         internal_account_last_4=internal_account_last_4,
-        payment_request_id=payment_request_id
+        payment_request_id=payment_request_id,
+        subscriber_id=subscriber_id,
+        failure_reason=failure_reason
     )
     db.add(transaction)
     
@@ -110,6 +83,8 @@ async def emit_transactional_event(
         "status": status,
         "timestamp": timestamp,
         "commentary": commentary,
+        "subscriber_id": subscriber_id,
+        "failure_reason": failure_reason,
         **(payload_extra or {})
     }
     db.add(Outbox(event_type=event_type, payload=outbox_payload))
