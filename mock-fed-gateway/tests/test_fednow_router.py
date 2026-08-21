@@ -20,6 +20,18 @@ async def test_fednow_transfer_accp():
         data = res.json()
         assert data["status"] == "ACCP"
         assert data["end_to_end_id"] is not None
+        e2e_id = data["end_to_end_id"]
+
+        # Verify querying FedNow transfer
+        get_res = await ac.get(f"/fed/fednow/transfers/{e2e_id}")
+        assert get_res.status_code == 200
+        assert get_res.json()["end_to_end_id"] == e2e_id
+
+@pytest.mark.asyncio
+async def test_fednow_get_transfer_404():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        res = await ac.get("/fed/fednow/transfers/NONEXISTENT-E2E-ID")
+        assert res.status_code == 404
 
 @pytest.mark.asyncio
 async def test_fednow_transfer_rjct():
@@ -38,3 +50,20 @@ async def test_fednow_transfer_rjct():
         data = res.json()["detail"]
         assert data["status"] == "RJCT"
         assert data["status_reason_code"] == "AC04"
+
+@pytest.mark.asyncio
+async def test_fednow_rfp():
+    payload = {
+        "debtor_routing": "123456780",
+        "debtor_name": "Ikarin",
+        "creditor_routing": "021000021",
+        "creditor_name": "Supplier Corp",
+        "amount_cents": 150000,
+        "remittance_info": "Invoice #9001",
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        res = await ac.post("/fed/fednow/rfp", json=payload, headers={"X-API-KEY": "dev_gateway_key_123"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "PRESENTED_TO_DEBTOR"
+        assert data["amount_cents"] == 150000
