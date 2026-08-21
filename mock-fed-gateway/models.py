@@ -126,8 +126,8 @@ class FedwireTransfer(Base):
 class FedNowTransfer(Base):
     __tablename__ = "fednow_transfers"
 
-    end_to_end_id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    instruction_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    end_to_end_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    instruction_id: Mapped[str] = mapped_column(String(64), nullable=False)
     message_type: Mapped[str] = mapped_column(String(30), default="CREDIT_TRANSFER")  # CREDIT_TRANSFER, RFP
     debtor_routing: Mapped[str] = mapped_column(String(9), nullable=False)
     debtor_name: Mapped[str] = mapped_column(String(100), nullable=False)

@@ -274,6 +274,8 @@ services:
       - GATEWAY_API_KEY=${GATEWAY_API_KEY}
     ports:
       - "8002:8002"
+    volumes:
+      - ./mock-fed-gateway:/app
     depends_on:
       fed-gateway-db:
         condition: service_healthy

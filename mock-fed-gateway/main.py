@@ -1,31 +1,37 @@
 import os
-from fastapi import FastAPI, HTTPException, Header, Depends, status
+import contextlib
+import logging
+from fastapi import FastAPI, HTTPException, Header, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 
-from models import Base, Bank
-from schemas import (
-    ACHOriginateRequest,
-    StatusResponse
+from database import init_db, AsyncSessionLocal, get_db
+from seed_data import seed_all_data
+from models import FederalReserveDistrict, Institution, ACHTransaction, FedwireTransfer, FedNowTransfer
+from routers import directory, ach, fedwire, fednow, settlement
+from schemas import HealthResponse
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+GATEWAY_API_KEY = os.getenv("GATEWAY_API_KEY", "dev_gateway_key_123")
+
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Initializing Fed Gateway database...")
+    await init_db()
+    async with AsyncSessionLocal() as session:
+        seed_res = await seed_all_data(session)
+        logger.info(f"Seeded Federal Reserve Directory: {seed_res}")
+    yield
+
+app = FastAPI(
+    title="Karin Bank Mock Federal Reserve Gateway",
+    description="High-fidelity Federal Reserve banking simulation (FedACH, Fedwire RTGS, FedNow 24/7, E-Payments Directory)",
+    version="2.0.0",
+    lifespan=lifespan,
 )
-
-# Configuration
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    user = os.getenv("FED_GATEWAY_DB_USER")
-    password = os.getenv("FED_GATEWAY_DB_PASSWORD")
-    host = os.getenv("FED_GATEWAY_DB_HOST")
-    db_name = os.getenv("FED_GATEWAY_DB_NAME")
-    DATABASE_URL = f"postgresql+asyncpg://{user}:{password}@{host}:5432/{db_name}"
-
-GATEWAY_API_KEY = os.getenv("GATEWAY_API_KEY")
-
-# Engine & Session
-engine = create_async_engine(DATABASE_URL)
-AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
-
-app = FastAPI(title="Karin Bank Mock Fed Gateway")
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,65 +41,52 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Middleware for API Key Auth
+# API Key security dependency for sensitive mutation operations
 async def verify_api_key(x_api_key: str = Header(...)):
     if x_api_key != GATEWAY_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API Key"
+            detail="Invalid Gateway API Key",
         )
     return x_api_key
 
-# DB Dependency
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        yield session
+# Include Routers
+app.include_router(directory.router)
+app.include_router(ach.router)
+app.include_router(fedwire.router)
+app.include_router(fednow.router)
+app.include_router(settlement.router)
 
-@app.post("/fed/ach/originate", response_model=StatusResponse, dependencies=[Depends(verify_api_key)])
-async def originate_ach(payload: ACHOriginateRequest, db: AsyncSession = Depends(get_db)):
-    # 1. Validate RTN
-    result = await db.execute(select(Bank).where(Bank.routing_number == payload.routing_number))
-    bank = result.scalar_one_or_none()
+@app.get("/health", response_model=HealthResponse)
+async def health(db: AsyncSession = Depends(get_db)):
+    dist_count = (await db.execute(select(func.count()).select_from(FederalReserveDistrict))).scalar_one()
+    inst_count = (await db.execute(select(func.count()).select_from(Institution))).scalar_one()
+    return HealthResponse(
+        status="ok",
+        districts_count=dist_count,
+        institutions_count=inst_count,
+    )
 
-    if not bank:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error_code": "INVALID_RTN", "message": "Routing number not found"}
-        )
+@app.get("/fed/status")
+async def fed_status(db: AsyncSession = Depends(get_db)):
+    dist_count = (await db.execute(select(func.count()).select_from(FederalReserveDistrict))).scalar_one()
+    inst_count = (await db.execute(select(func.count()).select_from(Institution))).scalar_one()
+    ach_count = (await db.execute(select(func.count()).select_from(ACHTransaction))).scalar_one()
+    wire_count = (await db.execute(select(func.count()).select_from(FedwireTransfer))).scalar_one()
+    fednow_count = (await db.execute(select(func.count()).select_from(FedNowTransfer))).scalar_one()
+    return {
+        "status": "OPERATIONAL",
+        "system": "Federal Reserve Core Banking Simulator",
+        "statistics": {
+            "districts": dist_count,
+            "institutions": inst_count,
+            "ach_transactions": ach_count,
+            "fedwire_transfers": wire_count,
+            "fednow_transfers": fednow_count,
+        },
+    }
 
-    # 2. Failure Injection (R01 - NSF)
-    is_nsf = False
-    if isinstance(payload.amount, int):
-        is_nsf = (payload.amount % 100 == 1)
-    else:
-        is_nsf = (abs(payload.amount % 1.0 - 0.01) < 0.0001 or int(round(payload.amount * 100)) % 100 == 1)
-
-    if is_nsf:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"error_code": "R01", "message": "Insufficient Funds"}
-        )
-
-    return StatusResponse(status="SUCCESS", message=f"ACH Transferred to {bank.name}")
-
-@app.get("/banks")
-async def get_banks(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Bank))
-    banks = result.scalars().all()
-    return {"banks": [{"name": b.name, "routing_number": b.routing_number} for b in banks]}
-
-@app.on_event("startup")
-async def startup_event():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    # Seeding banks if empty
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(select(Bank))
-        if not result.scalars().first():
-            session.add_all([
-                Bank(name="Chase", routing_number="021000021"),
-                Bank(name="Wells Fargo", routing_number="987654321"),
-                Bank(name="Bank of America", routing_number="111222333"),
-            ])
-            await session.commit()
+@app.post("/fed/seed/reset")
+async def reset_seed(db: AsyncSession = Depends(get_db)):
+    seed_res = await seed_all_data(db)
+    return {"status": "re-seeded", "result": seed_res}
