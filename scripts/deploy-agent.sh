@@ -16,7 +16,7 @@ ENVIRONMENT="production"
 DEPLOY_DIR="/home/ikarin/karin-bank"
 TOKEN_FILE="/home/ikarin/karin-bank/github-deploy"
 HEALTH_URL="http://localhost/api/health"
-HEALTH_RETRIES=12
+HEALTH_RETRIES=30
 HEALTH_DELAY=5
 
 # Paths pulled from the repo at the deployed SHA. .env.prod is deliberately
