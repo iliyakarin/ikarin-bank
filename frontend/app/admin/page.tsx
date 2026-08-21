@@ -7,6 +7,7 @@ import QueryBuilder from '@/components/admin/QueryBuilder';
 import BankingDashboard from '@/components/admin/BankingDashboard';
 import DatabaseConfig from '@/components/admin/DatabaseConfig';
 import UserManagement from '@/components/admin/UserManagement';
+import FedReserveCard from '@/components/admin/FedReserveCard';
 import { DataErrorBoundary } from '@/components/ErrorBoundaryWrapper';
 
 interface QueryResults {
@@ -316,7 +317,9 @@ export default function AdminPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.3 }}
+                className="space-y-8"
               >
+                <FedReserveCard />
                 <BankingDashboard metrics={bankingMetrics!} loading={!bankingMetrics} />
               </motion.div>
             ) : activeTab === 'users' ? (

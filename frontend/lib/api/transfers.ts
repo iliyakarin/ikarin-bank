@@ -103,3 +103,72 @@ export async function handlePaymentRequestAction(
   const body = action === "counter" ? { amount } : null;
   return api.post<{ status: string }>(`/api/v1/requests/${requestId}/${action}`, body);
 }
+
+// Federal Reserve Payment Rails
+export async function createWireTransfer(payload: {
+  account_id: number;
+  amount: number;
+  receiver_routing: string;
+  receiver_name: string;
+  receiver_account: string;
+  payment_reference?: string;
+}): Promise<{ status: string; imad?: string; omad?: string; transaction_id: string; settlement_timestamp?: string }> {
+  return api.post("/api/v1/transfers/wire", payload);
+}
+
+export async function createFedNowTransfer(payload: {
+  account_id: number;
+  amount: number;
+  creditor_routing: string;
+  creditor_name: string;
+  creditor_account: string;
+  remittance_info?: string;
+}): Promise<{ status: string; end_to_end_id?: string; transaction_id: string; settlement_timestamp?: string }> {
+  return api.post("/api/v1/transfers/fednow", payload);
+}
+
+export async function createACHTransfer(payload: {
+  account_id: number;
+  amount: number;
+  receiver_routing: string;
+  receiver_name: string;
+  receiver_account: string;
+  payment_description?: string;
+}): Promise<{ status: string; trace_number?: string; transaction_id: string; settlement_date?: string }> {
+  return api.post("/api/v1/transfers/ach", payload);
+}
+
+export async function lookupFedRouting(routingNumber: string): Promise<{
+  valid: boolean;
+  routing_number: string;
+  formatted?: string;
+  institution?: {
+    name: string;
+    short_name: string;
+    city: string;
+    state: string;
+    fedwire_participant: boolean;
+    fednow_participant: boolean;
+    fedach_participant: boolean;
+  };
+  district?: {
+    name: string;
+    district_letter: string;
+  };
+  errors?: string[];
+}> {
+  return api.get(`/api/v1/fed/directory/${routingNumber}`);
+}
+
+export async function getFedDistricts(): Promise<any[]> {
+  return api.get("/api/v1/fed/districts");
+}
+
+export async function getFedReserves(): Promise<any> {
+  return api.get("/api/v1/admin/fed/reserves");
+}
+
+export async function getFedStatement(): Promise<any> {
+  return api.get("/api/v1/admin/fed/statement");
+}
+

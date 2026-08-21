@@ -9,7 +9,8 @@ import {
   ChevronRight, 
   Info,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Landmark
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { getAccounts, Account } from "@/lib/api/accounts";
@@ -26,6 +27,7 @@ import { getActivity, ActivityEvent } from "@/lib/api/activity";
 
 // Modular Components
 import InstantTransferTab from "@/components/transfers/InstantTransferTab";
+import FedTransferTab from "@/components/transfers/FedTransferTab";
 import ScheduledTransferTab from "@/components/transfers/ScheduledTransferTab";
 import RequestTransferTab from "@/components/transfers/RequestTransferTab";
 import ScheduledHistoryTable from "@/components/transfers/ScheduledHistoryTable";
@@ -34,7 +36,8 @@ import RecentTransactionsTable from "@/components/transfers/RecentTransactionsTa
 import DetailModal from "@/components/transfers/DetailModal";
 
 const TABS = [
-  { id: "instant", label: "Instant Transfer", icon: Send, color: "from-purple-500 to-indigo-600" },
+  { id: "instant", label: "Instant P2P", icon: Send, color: "from-purple-500 to-indigo-600" },
+  { id: "fed", label: "Fedwire & FedNow", icon: Landmark, color: "from-blue-500 to-teal-500" },
   { id: "scheduled", label: "Schedule Payment", icon: Calendar, color: "from-indigo-500 to-blue-600" },
   { id: "request", label: "Request Money", icon: Handshake, color: "from-rose-500 to-orange-600" },
 ];
@@ -222,6 +225,16 @@ export default function SendMoneyPage() {
                         contacts={contacts} 
                         vendors={vendors}
                         onSuccess={handleTransferSuccess}
+                        onError={(msg) => showNotification('error', msg)}
+                      />
+                    )}
+                    {activeTab === "fed" && (
+                      <FedTransferTab 
+                        accounts={accounts} 
+                        onSuccess={(txId, msg) => {
+                          handleTransferSuccess(txId);
+                          if (msg) showNotification('success', msg);
+                        }}
                         onError={(msg) => showNotification('error', msg)}
                       />
                     )}
