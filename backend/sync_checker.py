@@ -2,6 +2,8 @@ import time
 import logging
 from datetime import datetime, timezone, timedelta
 import asyncio
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from database import Transaction, Outbox, engine
 from config import settings
 from clickhouse_utils import execute_ch_query
