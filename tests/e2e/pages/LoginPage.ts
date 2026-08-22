@@ -26,8 +26,7 @@ export class LoginPage {
   async login(email: string, pass: string) {
     await this.emailInput.fill(email);
     await this.passwordInput.fill(pass);
-    // Wait briefly for local captcha token to populate
-    await this.page.waitForTimeout(500);
+    await expect(this.loginButton).toBeEnabled({ timeout: 10000 });
     await this.loginButton.click();
   }
 

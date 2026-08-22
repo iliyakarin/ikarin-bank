@@ -1,4 +1,4 @@
-import { Page, Locator, expect } from '@playwright/test';
+import { Page, Locator } from '@playwright/test';
 
 export class TransferPage {
   readonly page: Page;
@@ -6,19 +6,17 @@ export class TransferPage {
   readonly amountInput: Locator;
   readonly descriptionInput: Locator;
   readonly sendButton: Locator;
-  readonly confirmationModal: Locator;
-  readonly confirmButton: Locator;
   readonly successMessage: Locator;
+  readonly errorMessage: Locator;
 
   constructor(page: Page) {
     this.page = page;
-    this.recipientInput = page.locator('input[type="email"]');
-    this.amountInput = page.locator('input[type="number"]');
+    this.recipientInput = page.locator('input[placeholder="name@example.com"]');
+    this.amountInput = page.locator('input[placeholder="0.00"]');
     this.descriptionInput = page.locator('textarea[placeholder="What is this for?"]');
     this.sendButton = page.locator('button:has-text("Send Instantly")');
-    this.confirmationModal = page.locator('h3:has-text("Confirm Instant Transfer")');
-    this.confirmButton = page.locator('button:has-text("Send Now")');
-    this.successMessage = page.locator('text=Transaction ID:');
+    this.successMessage = page.locator('text=Transfer initiated successfully').or(page.locator('text=Transfer completed'));
+    this.errorMessage = page.locator('text=Transfer failed').or(page.locator('text=Insufficient funds')).or(page.locator('text=Error'));
   }
 
   async goto() {
@@ -28,11 +26,9 @@ export class TransferPage {
   async initiateTransfer(recipient: string, amount: string, desc: string) {
     await this.recipientInput.fill(recipient);
     await this.amountInput.fill(amount);
-    await this.descriptionInput.fill(desc);
+    if (desc) {
+      await this.descriptionInput.fill(desc);
+    }
     await this.sendButton.click();
-  }
-
-  async confirmTransfer() {
-    await this.confirmButton.click();
   }
 }

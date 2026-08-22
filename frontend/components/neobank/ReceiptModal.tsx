@@ -18,7 +18,7 @@ import {
   Printer,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/transactionUtils';
-import { formatFedRailBadge, formatMerchantName } from '@/lib/neobank/utils';
+import { formatFedRailBadge, formatMerchantName, isTransactionIncome } from '@/lib/neobank/utils';
 
 interface ReceiptModalProps {
   transaction: any | null;
@@ -48,7 +48,7 @@ export default function ReceiptModal({
   };
 
   const rawAmount = typeof transaction.amount === 'number' ? transaction.amount : 0;
-  const isIncome = rawAmount > 0;
+  const isIncome = isTransactionIncome(transaction);
   const formattedAmount = formatCurrency(Math.abs(rawAmount));
   const rawDate = transaction.created_at || transaction.event_time || new Date().toISOString();
   const dateObj = new Date(rawDate.endsWith('Z') ? rawDate : rawDate + 'Z');

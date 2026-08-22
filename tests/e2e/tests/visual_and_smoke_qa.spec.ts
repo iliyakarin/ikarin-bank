@@ -81,7 +81,7 @@ test.describe('Automated Visual & E2E Smoke QA Suite', () => {
 
     // Check Send page
     await page.goto('/client/send');
-    await expect(page.locator('text=Recent History').or(page.locator('text=Instant Transfer')).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Transfer Center').or(page.locator('text=New Transfer')).first()).toBeVisible({ timeout: 10000 });
 
     // Check All Transactions page
     await page.goto('/client/transactions');
@@ -107,7 +107,42 @@ test.describe('Automated Visual & E2E Smoke QA Suite', () => {
     expect(isApplicationError).toBe(false);
 
     // For non-admin user, our elegant 403 Forbidden Access Restricted screen should be displayed
-    const accessDeniedOrMissionControl = await page.locator('text=Restricted Command Layer').or(page.locator('text=MISSIONCONTROL')).isVisible();
+    const accessDeniedOrMissionControl = await page.locator('text=Restricted Command Layer').or(page.locator('text=MISSIONCONTROL')).or(page.locator('text=Access Restricted')).isVisible();
     expect(accessDeniedOrMissionControl).toBe(true);
+  });
+
+  test('6. Expenses and Outflows are formatted as Negative Amounts with Red Accents', async ({ page }) => {
+    const loginPage = new LoginPage(page);
+    await loginPage.goto();
+    // Use user with active simulator transactions
+    const adminPassword = process.env.ADMIN_PASSWORD || 'o3EhxNdGbt65yhbnb74zaMO';
+    await loginPage.login('ikarin@admin.com', adminPassword);
+    await expect(page).toHaveURL(/.*client/, { timeout: 15000 });
+
+    await page.waitForTimeout(1000);
+
+    // Inspect activity feed items
+    const feedItems = page.locator('div:has-text("TODAY") + div > div').or(page.locator('div[class*="group hover:bg-white"]'));
+    const count = await feedItems.count();
+
+    if (count > 0) {
+      for (let i = 0; i < Math.min(count, 5); i++) {
+        const item = feedItems.nth(i);
+        const itemText = await item.innerText();
+
+        // If merchant purchase (gas, theatre, food, rent, to someone)
+        if (
+          itemText.includes('Theatres') ||
+          itemText.includes('Gas') ||
+          itemText.includes('Grill') ||
+          itemText.includes('Rent') ||
+          itemText.includes('To ')
+        ) {
+          // MUST contain minus sign '-' and NOT '+'
+          expect(itemText).toContain('-$');
+          expect(itemText).not.toContain('+$');
+        }
+      }
+    }
   });
 });

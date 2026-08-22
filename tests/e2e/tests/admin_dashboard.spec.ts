@@ -11,14 +11,13 @@ test.describe('Admin Dashboard Verification', () => {
 
   test('Admin should see dashboard with balance after login', async ({ page }) => {
     // 1. Login as admin
-    // Note: seed_admin.py uses 'password123' as default password
-    await loginPage.login('ikarin@admin.com', 'password123');
+    const adminPassword = process.env.ADMIN_PASSWORD || 'o3EhxNdGbt65yhbnb74zaMO';
+    await loginPage.login('ikarin@admin.com', adminPassword);
 
     // 2. Wait for dashboard redirection
-    // Increased timeout for initial data loading
     await expect(page).toHaveURL(/.*client/, { timeout: 10000 });
 
-    // 5. Verify balance or dashboard is displayed
+    // 3. Verify balance or dashboard is displayed
     await expect(page.locator('text=$10,000.00').or(page.locator('text=Total Wealth')).or(page.locator('text=Primary Checking')).first()).toBeVisible();
   });
 });

@@ -38,6 +38,7 @@ import RecentTransactionsTable from "@/components/transfers/RecentTransactionsTa
 import DetailModal from "@/components/transfers/DetailModal";
 
 const TABS = [
+  { id: "instant", label: "Instant Transfer", icon: Send, color: "from-blue-500 to-indigo-600" },
   { id: "smart", label: "Smart Multi-Rail", icon: Zap, color: "from-purple-500 to-indigo-600" },
   { id: "fed", label: "Fedwire & FedNow", icon: Landmark, color: "from-blue-500 to-teal-500" },
   { id: "scheduled", label: "Schedule Payment", icon: Calendar, color: "from-indigo-500 to-blue-600" },

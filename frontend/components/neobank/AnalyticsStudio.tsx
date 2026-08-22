@@ -23,6 +23,7 @@ import {
   formatMerchantName,
   filterTransactionsByTimeRange,
   generateChartBuckets,
+  isTransactionIncome,
   TimeRange,
 } from '@/lib/neobank/utils';
 import {
@@ -63,25 +64,24 @@ export default function AnalyticsStudio({ transactions = [], loading = false }: 
     };
 
     for (const tx of filteredTransactions) {
-      const amt = typeof tx.amount === 'number' ? tx.amount : 0;
-      if (amt > 0) {
+      const amt = typeof tx.amount === 'number' ? Math.abs(tx.amount) : 0;
+      if (isTransactionIncome(tx)) {
         totalInflow += amt;
       } else {
-        const absAmt = Math.abs(amt);
-        totalOutflow += absAmt;
+        totalOutflow += amt;
 
         const cat = tx.category || 'General Spending';
-        categoryMap[cat] = (categoryMap[cat] || 0) + absAmt;
+        categoryMap[cat] = (categoryMap[cat] || 0) + amt;
 
         const rawMerchant = tx.merchant || tx.counterparty || tx.recipient_email || 'Merchant';
         const brand = formatMerchantName(rawMerchant);
-        merchantMap[brand] = (merchantMap[brand] || 0) + absAmt;
+        merchantMap[brand] = (merchantMap[brand] || 0) + amt;
 
         const rail = (tx.transaction_type || tx.event_type || 'internal').toLowerCase();
-        if (rail.includes('now')) railMap.fednow = (railMap.fednow || 0) + absAmt;
-        else if (rail.includes('wire')) railMap.wire = (railMap.wire || 0) + absAmt;
-        else if (rail.includes('ach')) railMap.ach = (railMap.ach || 0) + absAmt;
-        else railMap.internal = (railMap.internal || 0) + absAmt;
+        if (rail.includes('now')) railMap.fednow = (railMap.fednow || 0) + amt;
+        else if (rail.includes('wire')) railMap.wire = (railMap.wire || 0) + amt;
+        else if (rail.includes('ach')) railMap.ach = (railMap.ach || 0) + amt;
+        else railMap.internal = (railMap.internal || 0) + amt;
       }
     }
 

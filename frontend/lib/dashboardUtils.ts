@@ -1,4 +1,5 @@
 import { Transaction } from "@/lib/types";
+import { isTransactionIncome, isTransactionExpense } from "@/lib/neobank/utils";
 
 export interface DashboardStats {
   totalIncome: number;
@@ -14,12 +15,12 @@ export function calculateStats(transactions: Transaction[]): DashboardStats {
   const nonInternal = transactions.filter(t => t.category !== "Internal Transfer");
 
   const totalIncome = nonInternal
-    .filter(t => t.transaction_type === "income")
-    .reduce((sum, t) => sum + t.amount, 0);
+    .filter(t => isTransactionIncome(t))
+    .reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
 
   const totalExpenses = nonInternal
-    .filter(t => (t.transaction_type === "expense" || t.transaction_type === "transfer") && t.amount < 0)
-    .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    .filter(t => isTransactionExpense(t))
+    .reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
 
   return {
     totalIncome,
@@ -43,14 +44,10 @@ export function calculateSpendingByCategory(
   limit?: number
 ): CategorySpending[] {
   const byCategory = transactions
-    .filter(t =>
-      (t.transaction_type === "expense" || t.transaction_type === "transfer") &&
-      t.category !== "Internal Transfer" &&
-      t.amount < 0
-    )
+    .filter(t => isTransactionExpense(t) && t.category !== "Internal Transfer")
     .reduce((acc, t) => {
-      const category = t.transaction_type === "transfer" ? "Transfers" : t.category;
-      acc[category] = (acc[category] || 0) + Math.abs(t.amount);
+      const category = (t.transaction_type === "transfer" || t.category === "transfer") ? "Transfers" : (t.category || "General Spending");
+      acc[category] = (acc[category] || 0) + Math.abs(t.amount || 0);
       return acc;
     }, {} as Record<string, number>);
 

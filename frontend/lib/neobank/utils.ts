@@ -212,6 +212,99 @@ export function groupTransactionsByDate<T extends { created_at?: string; event_t
   return groups;
 }
 
+/**
+ * Determines whether a transaction is an income (inflow) or expense (outflow).
+ * Handles ClickHouse records, Postgres models, and simulator activities.
+ */
+export function isTransactionIncome(tx: any, userEmail?: string): boolean {
+  if (!tx) return false;
+
+  // 1. Explicit transaction_side from ClickHouse / backend
+  if (tx.transaction_side === 'CREDIT') return true;
+  if (tx.transaction_side === 'DEBIT') return false;
+
+  // 2. Explicit transaction_type
+  const txType = (tx.transaction_type || '').toLowerCase();
+  if (
+    txType === 'income' ||
+    txType === 'salary' ||
+    txType === 'deposit' ||
+    txType === 'interest' ||
+    txType === 'cashback'
+  ) {
+    return true;
+  }
+  if (
+    txType === 'expense' ||
+    txType === 'payment' ||
+    txType === 'purchase' ||
+    txType === 'withdrawal' ||
+    txType === 'fee'
+  ) {
+    return false;
+  }
+
+  // 3. Counterparty / merchant text markers
+  const merchant = (tx.merchant || tx.counterparty || '').toLowerCase();
+  if (merchant.startsWith('from ')) return true;
+  if (merchant.startsWith('to ')) return false;
+
+  // 4. Email check for P2P
+  if (userEmail) {
+    const cleanUser = userEmail.toLowerCase();
+    if (
+      tx.recipient_email &&
+      tx.recipient_email.toLowerCase() === cleanUser &&
+      tx.sender_email &&
+      tx.sender_email.toLowerCase() !== cleanUser
+    ) {
+      return true;
+    }
+    if (tx.sender_email && tx.sender_email.toLowerCase() === cleanUser) {
+      return false;
+    }
+  }
+
+  // 5. Merchant presence check: If a merchant is present (Shell, AMC, Chipotle, etc.), it is an expense!
+  if (
+    tx.merchant &&
+    !merchant.includes('deposit') &&
+    !merchant.includes('salary') &&
+    !merchant.includes('payroll')
+  ) {
+    return false;
+  }
+
+  // 6. Category heuristics
+  const cat = (tx.category || '').toLowerCase();
+  if (cat.includes('income') || cat.includes('salary') || cat.includes('deposit')) {
+    return true;
+  }
+  if (
+    cat.includes('dining') ||
+    cat.includes('transport') ||
+    cat.includes('entertainment') ||
+    cat.includes('groceries') ||
+    cat.includes('utilities') ||
+    cat.includes('shopping') ||
+    cat.includes('rent') ||
+    cat.includes('insurance')
+  ) {
+    return false;
+  }
+
+  // 7. Fallback to amount sign if explicitly negative
+  if (typeof tx.amount === 'number' && tx.amount < 0) {
+    return false;
+  }
+
+  return false;
+}
+
+export function isTransactionExpense(tx: any, userEmail?: string): boolean {
+  return !isTransactionIncome(tx, userEmail);
+}
+
 export type TimeRange = '24h' | '7d' | '30d' | '90d' | '1y';
 
 export function getTimeRangeHours(range: TimeRange): number {
