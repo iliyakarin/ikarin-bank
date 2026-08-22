@@ -10,7 +10,8 @@ import {
   Info,
   CheckCircle2,
   AlertCircle,
-  Landmark
+  Landmark,
+  Zap
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { getAccounts, Account } from "@/lib/api/accounts";
@@ -26,6 +27,7 @@ import {
 import { getActivity, ActivityEvent } from "@/lib/api/activity";
 
 // Modular Components
+import SmartTransferHub from "@/components/transfers/SmartTransferHub";
 import InstantTransferTab from "@/components/transfers/InstantTransferTab";
 import FedTransferTab from "@/components/transfers/FedTransferTab";
 import ScheduledTransferTab from "@/components/transfers/ScheduledTransferTab";
@@ -36,7 +38,7 @@ import RecentTransactionsTable from "@/components/transfers/RecentTransactionsTa
 import DetailModal from "@/components/transfers/DetailModal";
 
 const TABS = [
-  { id: "instant", label: "Instant P2P", icon: Send, color: "from-purple-500 to-indigo-600" },
+  { id: "smart", label: "Smart Multi-Rail", icon: Zap, color: "from-purple-500 to-indigo-600" },
   { id: "fed", label: "Fedwire & FedNow", icon: Landmark, color: "from-blue-500 to-teal-500" },
   { id: "scheduled", label: "Schedule Payment", icon: Calendar, color: "from-indigo-500 to-blue-600" },
   { id: "request", label: "Request Money", icon: Handshake, color: "from-rose-500 to-orange-600" },
@@ -219,6 +221,15 @@ export default function SendMoneyPage() {
                     exit={{ opacity: 0, x: -20 }}
                     transition={{ duration: 0.2 }}
                   >
+                    {activeTab === "smart" && (
+                      <SmartTransferHub
+                        accounts={accounts}
+                        onSuccess={(txResult) => {
+                          fetchData(true);
+                          showNotification('success', 'Transfer completed successfully!');
+                        }}
+                      />
+                    )}
                     {activeTab === "instant" && (
                       <InstantTransferTab 
                         accounts={accounts} 
