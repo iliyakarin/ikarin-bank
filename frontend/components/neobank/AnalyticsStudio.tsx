@@ -18,7 +18,13 @@ import {
   Filter,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/transactionUtils';
-import { formatFedRailBadge, formatMerchantName, filterTransactionsByTimeRange, TimeRange } from '@/lib/neobank/utils';
+import {
+  formatFedRailBadge,
+  formatMerchantName,
+  filterTransactionsByTimeRange,
+  generateChartBuckets,
+  TimeRange,
+} from '@/lib/neobank/utils';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -99,28 +105,8 @@ export default function AnalyticsStudio({ transactions = [], loading = false }: 
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5);
 
-    // Chart trend data points
-    const chartData = filteredTransactions.length > 0
-      ? filteredTransactions
-          .map((tx, idx) => {
-            const d = new Date(tx.created_at || tx.event_time || new Date());
-            let dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            if (timeRange === '24h') {
-              dateLabel = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-            } else if (timeRange === '7d') {
-              dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-            } else if (timeRange === '1y') {
-              dateLabel = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-            }
-
-            return {
-              date: dateLabel,
-              amount: Math.abs(typeof tx.amount === 'number' ? tx.amount : 0),
-              netBalance: Math.max(0, totalInflow - totalOutflow * ((idx + 1) / filteredTransactions.length)),
-            };
-          })
-          .reverse()
-      : [{ date: timeRange.toUpperCase(), amount: 0, netBalance: 0 }];
+    // Interval-based dynamic chart points
+    const chartData = generateChartBuckets(filteredTransactions, timeRange);
 
     return {
       totalInflow,

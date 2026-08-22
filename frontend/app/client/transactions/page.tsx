@@ -274,34 +274,38 @@ export default function TransactionsPage() {
                     </th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-white/5">
                   {transactions.map((tx) => (
                     <tr
                       key={tx.id}
-                      className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                      className="hover:bg-white/[0.04] transition-colors group"
                     >
                       <td className="px-6 py-4 text-white font-medium">
-                        {tx.merchant || "—"}
+                        {tx.merchant || (tx.amount > 0 ? "Deposit / Transfer" : "Payment / Transfer")}
                       </td>
-                      <td className="px-6 py-4 text-white/70 text-sm">
-                        {tx.category}
+                      <td className="px-6 py-4">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                          {tx.category || "General"}
+                        </span>
                       </td>
-                      <td className="px-6 py-4 text-white/70 text-sm">
-                        {tx.sender_email || "—"}
+                      <td className="px-6 py-4 text-white/50 text-xs font-mono">
+                        {tx.sender_email || (tx.amount < 0 ? "My Account" : "External / FedRail")}
                       </td>
-                      <td className="px-6 py-4 text-white/70 text-sm">
-                        {tx.recipient_email || "—"}
+                      <td className="px-6 py-4 text-white/50 text-xs font-mono">
+                        {tx.recipient_email || (tx.amount > 0 ? "My Account" : "Counterparty")}
                       </td>
                       <td
-                        className={`px-6 py-4 text-right font-mono font-semibold ${tx.amount > 0 ? "text-emerald-400" : "text-red-400"
-                          }`}
+                        className={`px-6 py-4 text-right font-mono font-black text-sm ${
+                          tx.amount > 0 ? "text-emerald-400" : "text-rose-400"
+                        }`}
                       >
                         {tx.amount > 0 ? "+" : ""}{formatCurrency(tx.amount)}
                       </td>
-                      <td className="px-6 py-4 text-white/60 text-sm text-right">
+                      <td className="px-6 py-4 text-white/40 text-xs text-right font-mono">
                         {(() => {
                           try {
-                            const date = new Date(tx.timestamp + "Z");
+                            const raw = tx.timestamp || '';
+                            const date = new Date(raw.endsWith('Z') ? raw : raw + 'Z');
                             return date.toLocaleString(
                               settings?.useEUDates ? "en-GB" : "en-US",
                               {
@@ -310,18 +314,18 @@ export default function TransactionsPage() {
                                 day: "2-digit",
                                 hour: "2-digit",
                                 minute: "2-digit",
-                                second: "2-digit",
                                 hour12: !settings?.use24Hour
                               }
                             );
                           } catch (e) {
-                            console.error("[TransactionsPage] Error formatting date:", e);
                             return tx.timestamp;
                           }
                         })()}
                       </td>
-                      <td className="px-6 py-4 text-white/60 text-sm text-right">
-                        {tx.status || "Cleared"}
+                      <td className="px-6 py-4 text-right">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                          {tx.status || "Cleared"}
+                        </span>
                       </td>
                     </tr>
                   ))}
@@ -330,21 +334,21 @@ export default function TransactionsPage() {
             </div>
 
             {/* Stats Footer */}
-            <div className="border-t border-white/10 bg-white/5 px-6 py-6 grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="border-t border-white/10 bg-white/[0.02] px-6 py-6 grid grid-cols-1 md:grid-cols-3 gap-8">
               <div>
-                <p className="text-white/60 text-sm mb-2">Total Transactions</p>
-                <p className="text-white text-2xl font-bold">{stats.total}</p>
+                <p className="text-white/40 text-xs font-bold uppercase tracking-widest mb-1">Total Transactions</p>
+                <p className="text-white text-2xl font-black">{stats.total}</p>
               </div>
               <div>
-                <p className="text-white/60 text-sm mb-2">Total Sent</p>
-                <p className="text-white text-2xl font-bold">
-                  ${(stats.sent / 100).toFixed(2)}
+                <p className="text-white/40 text-xs font-bold uppercase tracking-widest mb-1">Total Outflow</p>
+                <p className="text-rose-400 text-2xl font-black">
+                  {formatCurrency(stats.sent)}
                 </p>
               </div>
               <div>
-                <p className="text-white/60 text-sm mb-2">Total Received</p>
-                <p className="text-emerald-400 text-2xl font-bold">
-                  ${(stats.received / 100).toFixed(2)}
+                <p className="text-white/40 text-xs font-bold uppercase tracking-widest mb-1">Total Inflow</p>
+                <p className="text-emerald-400 text-2xl font-black">
+                  {formatCurrency(stats.received)}
                 </p>
               </div>
             </div>

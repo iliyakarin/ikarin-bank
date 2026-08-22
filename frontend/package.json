@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "npx -y tsx --test lib/*.test.ts __tests__/**/*.test.ts"
+    "test": "npx -y tsx --test lib/*.test.ts __tests__/**/*.test.ts",
+    "test:qa": "cd ../tests/e2e && npx playwright test"
   },
   "dependencies": {
     "framer-motion": "^11.0.8",

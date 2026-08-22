@@ -250,3 +250,112 @@ export function filterTransactionsByTimeRange<T extends { created_at?: string; e
   });
 }
 
+export interface ChartDataPoint {
+  date: string;
+  amount: number;
+  count: number;
+}
+
+/**
+ * Aggregates transactions into discrete time intervals (hours, days, weeks, months)
+ * matching the selected timeframe so the curve dynamically transforms.
+ */
+export function generateChartBuckets<T extends { amount?: number; created_at?: string; event_time?: string }>(
+  transactions: T[],
+  range: TimeRange,
+  refDate: Date = new Date()
+): ChartDataPoint[] {
+  const points: ChartDataPoint[] = [];
+
+  if (range === '24h') {
+    for (let i = 23; i >= 0; i--) {
+      const bucketTime = new Date(refDate.getTime() - i * 3600 * 1000);
+      const label = bucketTime.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+      const bucketStart = bucketTime.getTime() - 1800 * 1000;
+      const bucketEnd = bucketTime.getTime() + 1800 * 1000;
+
+      const matching = transactions.filter((tx) => {
+        const rawDate = tx.created_at || tx.event_time;
+        if (!rawDate) return false;
+        const t = new Date(rawDate.endsWith('Z') ? rawDate : rawDate + 'Z').getTime();
+        return t >= bucketStart && t < bucketEnd;
+      });
+
+      const totalCents = matching.reduce((sum, tx) => sum + Math.abs(tx.amount || 0), 0);
+      points.push({ date: label, amount: Math.round(totalCents / 100), count: matching.length });
+    }
+  } else if (range === '7d') {
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(refDate);
+      d.setDate(d.getDate() - i);
+      const label = d.toLocaleDateString('en-US', { weekday: 'short' });
+      const dateStr = d.toDateString();
+
+      const matching = transactions.filter((tx) => {
+        const rawDate = tx.created_at || tx.event_time;
+        if (!rawDate) return false;
+        const t = new Date(rawDate.endsWith('Z') ? rawDate : rawDate + 'Z');
+        return t.toDateString() === dateStr;
+      });
+
+      const totalCents = matching.reduce((sum, tx) => sum + Math.abs(tx.amount || 0), 0);
+      points.push({ date: label, amount: Math.round(totalCents / 100), count: matching.length });
+    }
+  } else if (range === '30d') {
+    for (let i = 14; i >= 0; i--) {
+      const d = new Date(refDate);
+      d.setDate(d.getDate() - i * 2);
+      const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const startMs = d.getTime() - 24 * 3600 * 1000;
+      const endMs = d.getTime() + 24 * 3600 * 1000;
+
+      const matching = transactions.filter((tx) => {
+        const rawDate = tx.created_at || tx.event_time;
+        if (!rawDate) return false;
+        const t = new Date(rawDate.endsWith('Z') ? rawDate : rawDate + 'Z').getTime();
+        return t >= startMs && t < endMs;
+      });
+
+      const totalCents = matching.reduce((sum, tx) => sum + Math.abs(tx.amount || 0), 0);
+      points.push({ date: label, amount: Math.round(totalCents / 100), count: matching.length });
+    }
+  } else if (range === '90d') {
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(refDate);
+      d.setDate(d.getDate() - i * 7);
+      const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const startMs = d.getTime() - 3.5 * 24 * 3600 * 1000;
+      const endMs = d.getTime() + 3.5 * 24 * 3600 * 1000;
+
+      const matching = transactions.filter((tx) => {
+        const rawDate = tx.created_at || tx.event_time;
+        if (!rawDate) return false;
+        const t = new Date(rawDate.endsWith('Z') ? rawDate : rawDate + 'Z').getTime();
+        return t >= startMs && t < endMs;
+      });
+
+      const totalCents = matching.reduce((sum, tx) => sum + Math.abs(tx.amount || 0), 0);
+      points.push({ date: label, amount: Math.round(totalCents / 100), count: matching.length });
+    }
+  } else {
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(refDate.getFullYear(), refDate.getMonth() - i, 1);
+      const label = d.toLocaleDateString('en-US', { month: 'short' });
+      const targetMonth = d.getMonth();
+      const targetYear = d.getFullYear();
+
+      const matching = transactions.filter((tx) => {
+        const rawDate = tx.created_at || tx.event_time;
+        if (!rawDate) return false;
+        const t = new Date(rawDate.endsWith('Z') ? rawDate : rawDate + 'Z');
+        return t.getMonth() === targetMonth && t.getFullYear() === targetYear;
+      });
+
+      const totalCents = matching.reduce((sum, tx) => sum + Math.abs(tx.amount || 0), 0);
+      points.push({ date: label, amount: Math.round(totalCents / 100), count: matching.length });
+    }
+  }
+
+  return points;
+}
+

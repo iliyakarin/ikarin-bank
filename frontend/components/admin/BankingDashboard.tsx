@@ -15,24 +15,24 @@ import {
 import { formatCurrency } from '@/lib/transactionUtils';
 
 interface BankingMetrics {
-  totalVolume: number;
-  transactionCount: number;
-  totalBalance: number;
-  activeUsers: number;
-  avgTransactionSize: number;
-  topTransactions: any[];
-  hourlyVolume: any[];
-  merchantStats: any[];
-  userGrowth: any[];
+  totalVolume?: number;
+  transactionCount?: number;
+  totalBalance?: number;
+  activeUsers?: number;
+  avgTransactionSize?: number;
+  topTransactions?: any[];
+  hourlyVolume?: any[];
+  merchantStats?: any[];
+  userGrowth?: any[];
 }
 
 interface BankingDashboardProps {
-  metrics: BankingMetrics;
+  metrics: BankingMetrics | null;
   loading: boolean;
 }
 
 export default function BankingDashboard({ metrics, loading }: BankingDashboardProps) {
-  if (loading) {
+  if (loading || !metrics) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[...Array(4)].map((_, i) => (
@@ -42,15 +42,20 @@ export default function BankingDashboard({ metrics, loading }: BankingDashboardP
     );
   }
 
-
-  const formatNumber = (num: number) => {
-    return new Intl.NumberFormat('en-US').format(num);
+  const formatNumber = (num?: number) => {
+    return new Intl.NumberFormat('en-US').format(num || 0);
   };
+
+  const topTransactions = metrics.topTransactions || [];
+  const hourlyVolume = metrics.hourlyVolume || [];
+  const merchantStats = metrics.merchantStats || [];
+  const userGrowth = metrics.userGrowth || [];
+  const maxHourlyCount = Math.max(1, ...hourlyVolume.map(h => h.count || 0));
 
   const metricCards = [
     {
       label: "24h Volume",
-      value: formatCurrency(metrics.totalVolume),
+      value: formatCurrency(metrics.totalVolume || 0),
       change: "+12.5%",
       icon: <DollarSign className="w-6 h-6 text-purple-400" />,
       color: "from-purple-500/20 to-indigo-500/20",
@@ -66,7 +71,7 @@ export default function BankingDashboard({ metrics, loading }: BankingDashboardP
     },
     {
       label: "Total Balance",
-      value: formatCurrency(metrics.totalBalance),
+      value: formatCurrency(metrics.totalBalance || 0),
       change: "+5.7%",
       icon: <Database className="w-6 h-6 text-fuchsia-400" />,
       color: "from-fuchsia-500/20 to-purple-500/20",
@@ -133,25 +138,37 @@ export default function BankingDashboard({ metrics, loading }: BankingDashboardP
           </div>
 
           <div className="space-y-4">
-            {metrics.topTransactions.slice(0, 5).map((tx, idx) => (
-              <div key={idx} className="group flex items-center justify-between p-4 bg-white/5 hover:bg-white/[0.08] border border-white/5 rounded-2xl transition-all cursor-default">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-xl flex items-center justify-center border border-indigo-500/20">
-                    <Target className="w-4 h-4 text-indigo-400" />
+            {topTransactions.length > 0 ? (
+              topTransactions.slice(0, 5).map((tx, idx) => {
+                const rawDate = tx.created_at || '';
+                const dateObj = new Date(rawDate.endsWith('Z') ? rawDate : rawDate + 'Z');
+                const timeStr = !isNaN(dateObj.getTime())
+                  ? dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  : 'Recent';
+
+                return (
+                  <div key={idx} className="group flex items-center justify-between p-4 bg-white/5 hover:bg-white/[0.08] border border-white/5 rounded-2xl transition-all cursor-default">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-xl flex items-center justify-center border border-indigo-500/20">
+                        <Target className="w-4 h-4 text-indigo-400" />
+                      </div>
+                      <div>
+                        <p className="text-white font-bold text-sm tracking-tight">{tx.merchant || 'Transaction'}</p>
+                        <p className="text-white/30 text-[10px] font-medium uppercase tracking-widest mt-0.5">
+                          {timeStr} • ID: {tx.account_id || 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-white font-black text-lg tracking-tighter">{formatCurrency(tx.amount || 0)}</p>
+                      <p className="text-emerald-400/60 text-[10px] font-bold tracking-widest uppercase">Verified</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-white font-bold text-sm tracking-tight">{tx.merchant}</p>
-                    <p className="text-white/30 text-[10px] font-medium uppercase tracking-widest mt-0.5">
-                      {new Date(tx.created_at + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • ID: {tx.account_id}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-white font-black text-lg tracking-tighter">{formatCurrency(tx.amount)}</p>
-                  <p className="text-emerald-400/60 text-[10px] font-bold tracking-widest uppercase">Verified</p>
-                </div>
-              </div>
-            ))}
+                );
+              })
+            ) : (
+              <p className="text-xs text-white/30 text-center py-6">No recent high value activity</p>
+            )}
           </div>
         </motion.div>
 
@@ -171,23 +188,27 @@ export default function BankingDashboard({ metrics, loading }: BankingDashboardP
           </div>
 
           <div className="space-y-3">
-            {metrics.hourlyVolume.slice(-8).map((hour, i) => (
-              <div key={i} className="flex items-center gap-4">
-                <span className="text-white/30 font-bold text-[10px] uppercase tracking-tighter w-10">
-                  {hour.hour}:00
-                </span>
-                <div className="flex-1 h-3 bg-white/5 rounded-full overflow-hidden border border-white/5">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${(hour.count / Math.max(...metrics.hourlyVolume.map(h => h.count))) * 100}%` }}
-                    className="h-full bg-gradient-to-r from-purple-500 to-indigo-500"
-                  />
+            {hourlyVolume.length > 0 ? (
+              hourlyVolume.slice(-8).map((hour, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <span className="text-white/30 font-bold text-[10px] uppercase tracking-tighter w-10">
+                    {hour.hour}:00
+                  </span>
+                  <div className="flex-1 h-3 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${((hour.count || 0) / maxHourlyCount) * 100}%` }}
+                      className="h-full bg-gradient-to-r from-purple-500 to-indigo-500"
+                    />
+                  </div>
+                  <span className="text-white font-black text-xs tracking-tighter w-20 text-right">
+                    {formatCurrency(hour.total || 0)}
+                  </span>
                 </div>
-                <span className="text-white font-black text-xs tracking-tighter w-20 text-right">
-                  {formatCurrency(hour.total)}
-                </span>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-xs text-white/30 text-center py-6">No hourly velocity data recorded</p>
+            )}
           </div>
         </motion.div>
       </div>
@@ -195,9 +216,12 @@ export default function BankingDashboard({ metrics, loading }: BankingDashboardP
       {/* Secondary Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-4">
         {[
-          { label: "Avg Ticket Size", val: formatCurrency(metrics.avgTransactionSize), sub: "Last 24 hours", col: "text-indigo-400" },
-          { label: "Top Merchant", val: metrics.merchantStats[0]?.merchant || 'N/A', sub: `${formatCurrency(metrics.merchantStats[0]?.total_amount || 0)} Vol`, col: "text-purple-400" },
-          { label: "New Users", val: metrics.userGrowth.filter(u => new Date(u.date).toDateString() === new Date().toDateString())[0]?.count || 0, sub: "+18% Net/Growth", col: "text-fuchsia-400" },
+          { label: "Avg Ticket Size", val: formatCurrency(metrics.avgTransactionSize || 0), sub: "Last 24 hours", col: "text-indigo-400" },
+          { label: "Top Merchant", val: merchantStats[0]?.merchant || 'N/A', sub: `${formatCurrency(merchantStats[0]?.total_amount || 0)} Vol`, col: "text-purple-400" },
+          { label: "New Users", val: userGrowth.filter(u => {
+            const d = new Date(u.date);
+            return !isNaN(d.getTime()) && d.toDateString() === new Date().toDateString();
+          })[0]?.count || 0, sub: "+18% Net/Growth", col: "text-fuchsia-400" },
         ].map((m, i) => (
           <motion.div
             key={m.label}

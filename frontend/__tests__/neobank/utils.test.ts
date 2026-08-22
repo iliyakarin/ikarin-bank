@@ -7,7 +7,7 @@ import {
   calculateVaultYield,
   formatCardNumberMasked,
   formatMerchantName,
-} from '../../lib/neobank/utils';
+} from '@/lib/neobank/utils';
 
 describe('Neobank Pure Utilities - Task 1', () => {
   describe('validateAbaRouting', () => {

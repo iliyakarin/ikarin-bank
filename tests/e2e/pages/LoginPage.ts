@@ -13,7 +13,7 @@ export class LoginPage {
     this.page = page;
     this.emailInput = page.locator('input[type="email"]');
     this.passwordInput = page.locator('input[type="password"]');
-    this.loginButton = page.locator('button:has-text("Sign In")');
+    this.loginButton = page.locator('button[type="submit"]');
     this.registerLink = page.locator('a:has-text("Sign Up")');
     this.mfaInput = page.locator('input[name="mfa_code"]');
     this.verifyMfaButton = page.locator('button:has-text("Verify")');
@@ -26,6 +26,8 @@ export class LoginPage {
   async login(email: string, pass: string) {
     await this.emailInput.fill(email);
     await this.passwordInput.fill(pass);
+    // Wait briefly for local captcha token to populate
+    await this.page.waitForTimeout(500);
     await this.loginButton.click();
   }
 

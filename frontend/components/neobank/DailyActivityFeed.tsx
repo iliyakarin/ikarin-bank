@@ -100,11 +100,12 @@ export default function DailyActivityFeed({
     <div className="w-full space-y-6">
       {Object.entries(grouped).map(([dateGroup, items]) => (
         <div key={dateGroup} className="space-y-2.5">
-          {/* Date Header Badge */}
-          <div className="sticky top-0 z-10 py-1 bg-[#050510]/80 backdrop-blur-md">
-            <span className="text-xs font-bold uppercase tracking-wider text-white/40 px-1">
+          {/* Date Header Badge with subtle hairline */}
+          <div className="flex items-center gap-3 py-1.5 px-0.5">
+            <span className="text-[11px] font-extrabold uppercase tracking-widest text-purple-300/70 font-mono">
               {dateGroup}
             </span>
+            <div className="flex-1 h-px bg-gradient-to-r from-white/10 to-transparent" />
           </div>
 
           {/* Transaction Items */}
