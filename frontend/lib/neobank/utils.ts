@@ -211,3 +211,42 @@ export function groupTransactionsByDate<T extends { created_at?: string; event_t
 
   return groups;
 }
+
+export type TimeRange = '24h' | '7d' | '30d' | '90d' | '1y';
+
+export function getTimeRangeHours(range: TimeRange): number {
+  switch (range) {
+    case '24h':
+      return 24;
+    case '7d':
+      return 168;
+    case '30d':
+      return 720;
+    case '90d':
+      return 2160;
+    case '1y':
+      return 8760;
+    default:
+      return 720;
+  }
+}
+
+/**
+ * Filters transaction records by timestamp window relative to current time.
+ */
+export function filterTransactionsByTimeRange<T extends { created_at?: string; event_time?: string }>(
+  transactions: T[],
+  range: TimeRange,
+  refDate: Date = new Date()
+): T[] {
+  const hours = getTimeRangeHours(range);
+  const cutoffMs = refDate.getTime() - hours * 3600 * 1000;
+
+  return transactions.filter((tx) => {
+    const rawDate = tx.created_at || tx.event_time;
+    if (!rawDate) return true;
+    const txTime = new Date(rawDate.endsWith('Z') ? rawDate : rawDate + 'Z').getTime();
+    return isNaN(txTime) || txTime >= cutoffMs;
+  });
+}
+

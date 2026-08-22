@@ -5,7 +5,7 @@ import { useTransactions } from '@/hooks/useDashboard';
 import AnalyticsStudio from '@/components/neobank/AnalyticsStudio';
 
 export default function AnalyticsPage() {
-  const { transactions, loading } = useTransactions(720, true); // 30 days history
+  const { transactions, loading } = useTransactions(8760, true); // 1 year history for complete timeframe filtering
 
   return (
     <div className="pb-12">

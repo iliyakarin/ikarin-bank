@@ -18,7 +18,7 @@ import {
   Filter,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/transactionUtils';
-import { formatFedRailBadge, formatMerchantName } from '@/lib/neobank/utils';
+import { formatFedRailBadge, formatMerchantName, filterTransactionsByTimeRange, TimeRange } from '@/lib/neobank/utils';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -35,10 +35,15 @@ interface AnalyticsStudioProps {
 }
 
 export default function AnalyticsStudio({ transactions = [], loading = false }: AnalyticsStudioProps) {
-  const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d' | '90d' | '1y'>('30d');
+  const [timeRange, setTimeRange] = useState<TimeRange>('30d');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  // Compute metrics from transactions
+  // Filter transactions dynamically based on selected timeRange
+  const filteredTransactions = useMemo(() => {
+    return filterTransactionsByTimeRange(transactions, timeRange);
+  }, [transactions, timeRange]);
+
+  // Compute metrics from filtered transactions
   const metrics = useMemo(() => {
     let totalInflow = 0;
     let totalOutflow = 0;
@@ -51,7 +56,7 @@ export default function AnalyticsStudio({ transactions = [], loading = false }: 
       internal: 0,
     };
 
-    for (const tx of transactions) {
+    for (const tx of filteredTransactions) {
       const amt = typeof tx.amount === 'number' ? tx.amount : 0;
       if (amt > 0) {
         totalInflow += amt;
@@ -95,16 +100,27 @@ export default function AnalyticsStudio({ transactions = [], loading = false }: 
       .slice(0, 5);
 
     // Chart trend data points
-    const chartData = transactions
-      .map((tx, idx) => {
-        const d = new Date(tx.created_at || tx.event_time || new Date());
-        return {
-          date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          amount: Math.abs(typeof tx.amount === 'number' ? tx.amount : 0),
-          netBalance: 10000 + (tx.amount || 0) * (idx + 1) * 0.1,
-        };
-      })
-      .reverse();
+    const chartData = filteredTransactions.length > 0
+      ? filteredTransactions
+          .map((tx, idx) => {
+            const d = new Date(tx.created_at || tx.event_time || new Date());
+            let dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            if (timeRange === '24h') {
+              dateLabel = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            } else if (timeRange === '7d') {
+              dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+            } else if (timeRange === '1y') {
+              dateLabel = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+            }
+
+            return {
+              date: dateLabel,
+              amount: Math.abs(typeof tx.amount === 'number' ? tx.amount : 0),
+              netBalance: Math.max(0, totalInflow - totalOutflow * ((idx + 1) / filteredTransactions.length)),
+            };
+          })
+          .reverse()
+      : [{ date: timeRange.toUpperCase(), amount: 0, netBalance: 0 }];
 
     return {
       totalInflow,
@@ -114,9 +130,9 @@ export default function AnalyticsStudio({ transactions = [], loading = false }: 
       topCategories,
       topMerchants,
       railMap,
-      chartData: chartData.length > 0 ? chartData : [{ date: 'Today', amount: 0, netBalance: 10000 }],
+      chartData,
     };
-  }, [transactions]);
+  }, [filteredTransactions, timeRange]);
 
   return (
     <div className="w-full space-y-8 text-white">

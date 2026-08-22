@@ -28,25 +28,33 @@ describe('AnalyticsStudio Logic - Task 7', () => {
     assert.equal(diningPercent, 25);
   });
 
-  it('ranks top merchants by volume descending', () => {
+  it('dynamically recalculates metrics and filters transactions across time ranges (24h, 7d, 30d, 90d, 1y)', () => {
+    const now = new Date('2026-08-22T12:00:00Z');
     const transactions = [
-      { merchant: 'Uber', amount: 4500 },
-      { merchant: 'Starbucks', amount: 1200 },
-      { merchant: 'Uber', amount: 3500 },
-      { merchant: 'Netflix', amount: 2200 },
+      { id: '1', amount: 5000, category: 'Dining', created_at: new Date(now.getTime() - 2 * 3600 * 1000).toISOString() }, // 2h ago (24h)
+      { id: '2', amount: 12000, category: 'Shopping', created_at: new Date(now.getTime() - 48 * 3600 * 1000).toISOString() }, // 2d ago (7d)
+      { id: '3', amount: 35000, category: 'Travel', created_at: new Date(now.getTime() - 15 * 24 * 3600 * 1000).toISOString() }, // 15d ago (30d)
+      { id: '4', amount: 80000, category: 'Investment', created_at: new Date(now.getTime() - 60 * 24 * 3600 * 1000).toISOString() }, // 60d ago (90d)
+      { id: '5', amount: 200000, category: 'Real Estate', created_at: new Date(now.getTime() - 200 * 24 * 3600 * 1000).toISOString() }, // 200d ago (1y)
     ];
 
-    const merchantMap: Record<string, number> = {};
-    for (const tx of transactions) {
-      merchantMap[tx.merchant] = (merchantMap[tx.merchant] || 0) + tx.amount;
-    }
+    // Import helper from utils
+    const { filterTransactionsByTimeRange } = require('../../lib/neobank/utils');
 
-    const leaderboard = Object.entries(merchantMap)
-      .map(([name, amount]) => ({ name, amount }))
-      .sort((a, b) => b.amount - a.amount);
+    const res24h = filterTransactionsByTimeRange(transactions, '24h', now);
+    assert.equal(res24h.length, 1);
+    assert.equal(res24h[0].id, '1');
 
-    assert.equal(leaderboard[0].name, 'Uber');
-    assert.equal(leaderboard[0].amount, 8000);
-    assert.equal(leaderboard[1].name, 'Netflix');
+    const res7d = filterTransactionsByTimeRange(transactions, '7d', now);
+    assert.equal(res7d.length, 2);
+
+    const res30d = filterTransactionsByTimeRange(transactions, '30d', now);
+    assert.equal(res30d.length, 3);
+
+    const res90d = filterTransactionsByTimeRange(transactions, '90d', now);
+    assert.equal(res90d.length, 4);
+
+    const res1y = filterTransactionsByTimeRange(transactions, '1y', now);
+    assert.equal(res1y.length, 5);
   });
 });
