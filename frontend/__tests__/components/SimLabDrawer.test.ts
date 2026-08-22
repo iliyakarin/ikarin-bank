@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 describe('SimLabDrawer Role Gate - Task 9', () => {
   it('strictly isolates admin features from regular users', () => {
     const regularUser = { id: 1, email: 'user@example.com', role: 'user' };
-    const adminUser = { id: 2, email: 'admin@karinbank.com', role: 'admin' };
+    const adminUser = { id: 2, email: 'admin@example.com', role: 'admin' };
 
     const shouldRenderForUser = regularUser.role === 'admin';
     assert.equal(shouldRenderForUser, false);
