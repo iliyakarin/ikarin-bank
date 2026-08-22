@@ -162,7 +162,10 @@ export default function RegisterPage() {
 
                             <Turnstile
                                 key={turnstileKey}
-                                onVerify={(token) => setCaptchaToken(token)}
+                                onVerify={(token) => {
+                                    setCaptchaToken(token);
+                                    if (error === 'Captcha failed to load.') setError('');
+                                }}
                                 onError={() => setError('Captcha failed to load.')}
                                 onExpire={() => setCaptchaToken(null)}
                             />
