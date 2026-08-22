@@ -88,6 +88,12 @@ for path in "${SYNCED_PATHS[@]}"; do
     fi
 done
 
+if [ -e "$workdir/scripts/deploy-agent.sh" ]; then
+    log "Updating local deploy-agent.sh"
+    cp "$workdir/scripts/deploy-agent.sh" "$DEPLOY_DIR/deploy-agent.sh"
+    chmod +x "$DEPLOY_DIR/deploy-agent.sh"
+fi
+
 cd "$DEPLOY_DIR"
 if [ ! -f .env.prod ]; then
     log "ERROR: .env.prod missing in $DEPLOY_DIR - refusing to deploy"
