@@ -438,6 +438,7 @@ services:
     tmpfs:
     - /tmp
     - /run
+    - /app/.next/cache
     restart: always
     labels:
     - autoheal=true
