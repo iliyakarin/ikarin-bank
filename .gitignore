@@ -107,6 +107,7 @@ init-db/*.xml
 !README.md
 !README.MD
 !CLAUDE.md
+!docs/**
 !tasks/
 !task.md
 !implementation_plan.md
