@@ -76,7 +76,7 @@ workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
 log "Fetching repo tarball at $sha"
-curl -sSL "https://github.com/$REPO/archive/$sha.tar.gz" | tar -xz -C "$workdir" --strip-components=1
+api -L "https://api.github.com/repos/$REPO/tarball/$sha" | tar -xz -C "$workdir" --strip-components=1
 
 mkdir -p "$DEPLOY_DIR"
 for path in "${SYNCED_PATHS[@]}"; do
