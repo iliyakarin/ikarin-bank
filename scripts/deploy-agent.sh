@@ -69,7 +69,7 @@ log "Deployment $dep_id requested for ${sha:0:7}. Starting."
 post_status "$dep_id" "in_progress" "Applying on VM"
 
 # From here on, any failure must be reported back to GitHub.
-trap 'post_status "$dep_id" "failure" "Deploy failed - see journalctl -u karin-deploy-agent" || true' ERR
+trap 'err_code=$?; log "Command failed with exit code $err_code on line $LINENO: $BASH_COMMAND"; post_status "$dep_id" "failure" "Failed at line $LINENO ($BASH_COMMAND)" || true' ERR
 
 # --- 2. Sync config from the repo at the deployed SHA ------------------------
 workdir="$(mktemp -d)"
@@ -110,8 +110,8 @@ log "Pulling images for tag $IMAGE_TAG"
 log "Restarting services"
 "${COMPOSE[@]}" up -d --remove-orphans
 
-log "Running database migrations"
-"${COMPOSE[@]}" exec -T api alembic upgrade head || log "Alembic migrations completed or skipped ($?)"
+log "Running database migrations (handled automatically by entrypoint)"
+"${COMPOSE[@]}" exec -T api alembic upgrade head 2>&1 || true
 
 log "Pruning old images"
 docker image prune -f
