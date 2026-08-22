@@ -57,16 +57,24 @@ export interface FastPayPayee {
 
 export interface CardDetails {
   id: string;
-  type: 'debit' | 'credit' | 'virtual';
-  name: string;
-  number: string;
+  type?: 'debit' | 'credit' | 'virtual';
+  cardType?: 'debit' | 'credit' | 'virtual';
+  name?: string;
+  cardHolder?: string;
+  number?: string;
+  cardNumber?: string;
   expiry: string;
   cvv: string;
   isFrozen: boolean;
-  onlineEnabled: boolean;
-  internationalEnabled: boolean;
-  atmEnabled: boolean;
-  dailyLimitCents: number;
-  monthlyLimitCents: number;
-  currentDailySpendCents: number;
+  onlineEnabled?: boolean;
+  onlinePaymentsEnabled?: boolean;
+  contactlessEnabled?: boolean;
+  internationalEnabled?: boolean;
+  atmEnabled?: boolean;
+  atmWithdrawalsEnabled?: boolean;
+  dailyLimitCents?: number;
+  dailySpendingLimitCents?: number;
+  monthlyLimitCents?: number;
+  monthlySpendingLimitCents?: number;
+  currentDailySpendCents?: number;
 }

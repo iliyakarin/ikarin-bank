@@ -127,7 +127,7 @@ export default function ClientDashboardPage() {
       {/* 2. Interactive Multi-Product Hero Carousel */}
       <section className="w-full">
         <HeroProductCarousel
-          balance={balance}
+          balance={balance || 0}
           reservedBalance={reservedBalance}
           routingNumber={routingNum}
           accountNumber={accountNum}
@@ -180,7 +180,7 @@ export default function ClientDashboardPage() {
         {/* Right Column: Multi-Account Management & Analytics Teaser (5 cols) */}
         <div className="lg:col-span-5 space-y-6">
           {/* Sub-Accounts Manager */}
-          <SubAccountManager />
+          <SubAccountManager accounts={accounts} refresh={refreshBalance} />
 
           {/* Quick Analytics Teaser Card */}
           <motion.div

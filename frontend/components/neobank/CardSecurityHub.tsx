@@ -127,8 +127,8 @@ export default function CardSecurityHub({
             }`}
           >
             <CreditCard className="w-4 h-4" />
-            <span className="capitalize">{c.cardType} Card</span>
-            <span className="font-mono text-[10px] text-white/40">•••• {c.cardNumber.slice(-4)}</span>
+            <span className="capitalize">{c.cardType || c.type || 'debit'} Card</span>
+            <span className="font-mono text-[10px] text-white/40">•••• {(c.cardNumber || c.number || '0000').slice(-4)}</span>
           </button>
         ))}
       </div>
