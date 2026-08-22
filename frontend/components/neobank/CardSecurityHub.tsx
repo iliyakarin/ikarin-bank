@@ -182,7 +182,7 @@ export default function CardSecurityHub({
               <div className="flex justify-between items-center text-xs">
                 <span className="text-white/60 font-semibold">Daily Purchase Limit</span>
                 <span className="font-mono font-bold text-purple-300 text-sm">
-                  {formatCurrency((currentCard.dailySpendingLimitCents || 500000) / 100)}
+                  {formatCurrency(currentCard.dailySpendingLimitCents || 500000)}
                 </span>
               </div>
               <input
@@ -207,7 +207,7 @@ export default function CardSecurityHub({
               <div className="flex justify-between items-center text-xs">
                 <span className="text-white/60 font-semibold">Monthly Purchase Limit</span>
                 <span className="font-mono font-bold text-indigo-300 text-sm">
-                  {formatCurrency((currentCard.monthlySpendingLimitCents || 2000000) / 100)}
+                  {formatCurrency(currentCard.monthlySpendingLimitCents || 2000000)}
                 </span>
               </div>
               <input

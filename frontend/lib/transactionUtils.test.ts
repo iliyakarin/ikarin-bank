@@ -57,26 +57,32 @@ describe('toCents Precision Utility', () => {
 });
 
 describe('fromCents & formatCurrency Utilities', () => {
-    it('should convert cents to dollar strings', () => {
+    it('should convert cents to dollar strings with proper comma separators', () => {
         assert.equal(fromCents(1050), "10.50");
         assert.equal(fromCents(1000), "10.00");
         assert.equal(fromCents(1), "0.01");
         assert.equal(fromCents(0), "0.00");
+        assert.equal(fromCents(100000), "1,000.00");
+        assert.equal(fromCents(100000000), "1,000,000.00");
+        assert.equal(fromCents(13279922258), "132,799,222.58");
     });
 
     it('should handle negative cents in fromCents', () => {
         assert.equal(fromCents(-1050), "-10.50");
         assert.equal(fromCents(-1), "-0.01");
+        assert.equal(fromCents(-100000000), "-1,000,000.00");
     });
 
-    it('should format currency with symbols', () => {
+    it('should format currency with symbols and thousands commas', () => {
         assert.equal(formatCurrency(1050), "$10.50");
         assert.equal(formatCurrency(-1050), "-$10.50");
+        assert.equal(formatCurrency(13279922258), "$132,799,222.58");
     });
 
     it('should support disabling the currency symbol', () => {
         assert.equal(formatCurrency(1050, false), "10.50");
         assert.equal(formatCurrency(-1050, false), "-10.50");
+        assert.equal(formatCurrency(13279922258, false), "132,799,222.58");
     });
 
     it('should handle null/undefined gracefully', () => {

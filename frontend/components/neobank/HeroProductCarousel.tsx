@@ -209,8 +209,7 @@ export default function HeroProductCarousel({
               className="w-full h-full"
             >
               <VaultCard
-                balanceCents={Math.round(balance * 0.35 * 100)} // 35% of balance in high-yield vault
-                goalCents={1000000} // $10,000 target
+                balanceCents={Math.round(balance * 0.35)} // 35% of balance in high-yield vault
                 goalName="Treasury High-Yield Savings Vault"
                 apyPercent={4.85}
                 onDepositClick={onDepositClick}

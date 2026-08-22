@@ -67,15 +67,18 @@ export const toCents = (amount: string | number): number => {
  * Returns a string with exactly 2 decimal places.
  */
 export const fromCents = (cents: number): string => {
-    if (cents === undefined || cents === null) return '0.00';
+    if (cents === undefined || cents === null || isNaN(cents)) return '0.00';
 
     const isNegative = cents < 0;
-    const absCents = Math.abs(cents);
+    const absCents = Math.round(Math.abs(cents));
 
     const dollars = Math.floor(absCents / 100);
     const remainingCents = absCents % 100;
 
-    const result = `${dollars}.${remainingCents.toString().padStart(2, '0')}`;
+    const formattedDollars = dollars.toLocaleString('en-US');
+    const formattedCents = remainingCents.toString().padStart(2, '0');
+
+    const result = `${formattedDollars}.${formattedCents}`;
     return isNegative ? `-${result}` : result;
 };
 
