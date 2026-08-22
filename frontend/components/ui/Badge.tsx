@@ -7,7 +7,7 @@ interface BadgeProps {
     className?: string;
 }
 
-const Badge = React.memo(function Badge({
+export default function Badge({
     children,
     variant = 'neutral',
     icon,
@@ -32,5 +32,4 @@ const Badge = React.memo(function Badge({
             {children}
         </span>
     );
-}, (prev, next) => prev.variant === next.variant && prev.icon === next.icon && prev.className === next.className && prev.children === next.children);
-export default Badge;
+}

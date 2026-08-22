@@ -7,7 +7,7 @@ interface CardProps {
     noPadding?: boolean;
 }
 
-const Card = React.memo(function Card({ children, className = '', noPadding = false }: CardProps) {
+export default function Card({ children, className = '', noPadding = false }: CardProps) {
     return (
         <div className={`
             bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden
@@ -17,5 +17,4 @@ const Card = React.memo(function Card({ children, className = '', noPadding = fa
             {children}
         </div>
     );
-}, (prev, next) => prev.className === next.className && prev.noPadding === next.noPadding && prev.children === next.children);
-export default Card;
+}

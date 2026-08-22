@@ -109,7 +109,10 @@ export default function LoginPage() {
                                 required
                                 leftElement={<Mail className="w-4 h-4" />}
                                 value={formData.email}
-                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setFormData(prev => ({ ...prev, email: val }));
+                                }}
                             />
 
                             <Input
@@ -119,7 +122,10 @@ export default function LoginPage() {
                                 required
                                 leftElement={<Key className="w-4 h-4" />}
                                 value={formData.password}
-                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setFormData(prev => ({ ...prev, password: val }));
+                                }}
                             />
 
                             <Button

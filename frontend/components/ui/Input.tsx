@@ -9,7 +9,7 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   rightElement?: React.ReactNode;
 }
 
-const Input = React.memo(function Input({
+export default function Input({
   label,
   error,
   helperText,
@@ -47,15 +47,15 @@ const Input = React.memo(function Input({
         <input
           id={id}
           className={`
-                        w-full bg-gray-50 border-2 border-transparent rounded-xl px-4 py-3 
-                        text-black placeholder:text-gray-400 font-medium outline-none
-                        transition-all duration-200
-                        focus:bg-white focus:border-gray-400 focus:ring-4 focus:ring-gray-200
-                        ${leftElement ? "pl-11" : ""}
-                        ${rightElement ? "pr-11" : ""}
-                        ${error ? "border-red-200 focus:border-red-300 focus:ring-red-100 bg-red-50/30" : ""}
-                        ${className}
-                    `}
+            w-full bg-gray-50 border-2 border-transparent rounded-xl px-4 py-3 
+            text-black placeholder:text-gray-400 font-medium outline-none
+            transition-all duration-200
+            focus:bg-white focus:border-gray-400 focus:ring-4 focus:ring-gray-200
+            ${leftElement ? "pl-11" : ""}
+            ${rightElement ? "pr-11" : ""}
+            ${error ? "border-red-200 focus:border-red-300 focus:ring-red-100 bg-red-50/30" : ""}
+            ${className}
+          `}
           aria-invalid={!!error}
           aria-describedby={ariaDescribedBy || undefined}
           {...props}
@@ -84,5 +84,4 @@ const Input = React.memo(function Input({
       ) : null}
     </div>
   );
-}, (prev, next) => prev.label === next.label && prev.error === next.error && prev.helperText === next.helperText && prev.className === next.className && prev.leftElement === next.leftElement && prev.rightElement === next.rightElement);
-export default Input;
+}

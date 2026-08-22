@@ -8,12 +8,13 @@ interface ButtonProps extends HTMLMotionProps<'button'> {
     loading?: boolean;
 }
 
-const Button = React.memo(function Button({
+export default function Button({
     children,
     variant = 'primary',
     size = 'md',
     loading,
     className = '',
+    disabled,
     ...props
 }: ButtonProps) {
     const baseStyles = "relative inline-flex items-center justify-center gap-2 font-bold transition-all rounded-xl disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden shadow-sm active:shadow-inner";
@@ -36,7 +37,7 @@ const Button = React.memo(function Button({
         <motion.button
             whileTap={{ scale: 0.98 }}
             className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
-            disabled={loading}
+            disabled={loading || disabled}
             {...props}
         >
             {loading ? (
@@ -44,5 +45,4 @@ const Button = React.memo(function Button({
             ) : children}
         </motion.button>
     );
-}, (prev, next) => prev.variant === next.variant && prev.size === next.size && prev.loading === next.loading && prev.children === next.children);
-export default Button;
+}

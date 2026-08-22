@@ -106,14 +106,20 @@ export default function RegisterPage() {
                                     required
                                     leftElement={<User className="w-4 h-4" />}
                                     value={formData.first_name}
-                                    onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setFormData(prev => ({ ...prev, first_name: val }));
+                                    }}
                                 />
                                 <Input
                                     label="Last Name"
                                     placeholder="Doe"
                                     required
                                     value={formData.last_name}
-                                    onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setFormData(prev => ({ ...prev, last_name: val }));
+                                    }}
                                 />
                             </div>
 
@@ -124,7 +130,10 @@ export default function RegisterPage() {
                                 required
                                 leftElement={<Mail className="w-4 h-4" />}
                                 value={formData.email}
-                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setFormData(prev => ({ ...prev, email: val }));
+                                }}
                             />
 
                             <div className="relative group">
@@ -135,7 +144,10 @@ export default function RegisterPage() {
                                     required
                                     leftElement={<Key className="w-4 h-4" />}
                                     value={formData.password}
-                                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setFormData(prev => ({ ...prev, password: val }));
+                                    }}
                                     rightElement={
                                         <button
                                             type="button"
