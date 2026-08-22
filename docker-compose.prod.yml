@@ -432,8 +432,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 512M
+          cpus: '1.0'
+          memory: 1024M
     read_only: true
     tmpfs:
     - /tmp
@@ -445,11 +445,11 @@ services:
     healthcheck:
       test:
       - CMD-SHELL
-      - wget --spider -q localhost:3000 || exit 1
-      interval: 30s
+      - node -e "require('http').get('http://127.0.0.1:3000', (r) => { process.exit(r.statusCode < 500 ? 0 : 1); }).on('error', () => process.exit(1));" || exit 1
+      interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 30s
+      retries: 5
+      start_period: 40s
   scheduled-payments-worker:
     image: ghcr.io/iliyakarin/ikarin-bank-backend:${IMAGE_TAG:-latest}
     container_name: bank-scheduled-payments-worker
