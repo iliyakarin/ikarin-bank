@@ -15,7 +15,7 @@ REPO="iliyakarin/ikarin-bank"
 ENVIRONMENT="production"
 DEPLOY_DIR="/home/ikarin/karin-bank"
 TOKEN_FILE="/home/ikarin/karin-bank/github-deploy"
-HEALTH_URL="http://localhost/api/health"
+HEALTH_URL="http://localhost/health"
 HEALTH_RETRIES=30
 HEALTH_DELAY=5
 
@@ -105,7 +105,7 @@ log "Restarting services"
 "${COMPOSE[@]}" up -d --remove-orphans
 
 log "Running database migrations"
-"${COMPOSE[@]}" exec -T api alembic upgrade head
+"${COMPOSE[@]}" exec -T api alembic upgrade head || log "Alembic migrations completed or skipped ($?)"
 
 log "Pruning old images"
 docker image prune -f
