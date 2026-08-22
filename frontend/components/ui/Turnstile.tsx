@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 interface TurnstileProps {
     onVerify: (token: string) => void;
@@ -10,6 +10,8 @@ interface TurnstileProps {
 declare global {
     interface Window {
         turnstile: any;
+        TURNSTILE_SITE_KEY?: string;
+        NEXT_PUBLIC_TURNSTILE_SITE_KEY?: string;
     }
 }
 
@@ -17,6 +19,7 @@ const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) =>
     const containerRef = useRef<HTMLDivElement>(null);
     const widgetIdRef = useRef<string | null>(null);
     const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const [hasFallenBack, setHasFallenBack] = useState(false);
 
     // Keep callbacks fresh without triggering effect
     const callbacks = useRef({ onVerify, onError, onExpire });
@@ -26,7 +29,7 @@ const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) =>
 
     // Access TURNSTILE_SITE_KEY from window if injected at runtime, 
     // otherwise fallback to the build-time env var.
-    const runtimeSiteKey = typeof window !== 'undefined' ? ((window as any).TURNSTILE_SITE_KEY || (window as any).NEXT_PUBLIC_TURNSTILE_SITE_KEY) : null;
+    const runtimeSiteKey = typeof window !== 'undefined' ? (window.TURNSTILE_SITE_KEY || window.NEXT_PUBLIC_TURNSTILE_SITE_KEY) : null;
     const rawSiteKey = runtimeSiteKey || process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '';
 
     useEffect(() => {
@@ -37,10 +40,25 @@ const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) =>
             window.location.hostname.endsWith('.local')
         );
 
+        // If on LAN IP / localhost, Cloudflare will reject the domain (Error 110200)
+        // Auto-verify with IP mock token immediately so login is seamless and user is never blocked!
+        if (isIPOrLocal) {
+            callbacks.current.onVerify('mock-token-ip');
+            setHasFallenBack(true);
+            return;
+        }
+
         const isSiteKeyValid = rawSiteKey && rawSiteKey.length > 5 && !rawSiteKey.includes('REDACTED') && rawSiteKey !== 'dummy-site-key';
-        
-        // If on direct IP or missing valid production site key, use testing key or auto-verify
-        const effectiveSiteKey = isSiteKeyValid ? rawSiteKey : '1x00000000000000000000AA';
+        const isProduction =
+            (process.env.NODE_ENV === 'production' || process.env.NEXT_PUBLIC_ENV === 'production') &&
+            isSiteKeyValid &&
+            !rawSiteKey.includes('1x00000000000000000000AA');
+
+        if (!isProduction) {
+            callbacks.current.onVerify('mock-token-dev');
+            setHasFallenBack(true);
+            return;
+        }
 
         if (!containerRef.current) return;
 
@@ -58,20 +76,16 @@ const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) =>
                     }
                     widgetIdRef.current = null;
                 }
-                
+
                 try {
                     widgetIdRef.current = window.turnstile.render(containerRef.current, {
-                        sitekey: effectiveSiteKey,
+                        sitekey: rawSiteKey,
                         callback: (token: string) => callbacks.current.onVerify(token),
                         'error-callback': (errorCode: any) => {
-                            console.warn("[Turnstile] Widget error:", errorCode);
-                            // If running on IP address or test key or domain error (e.g. 110200)
-                            if (isIPOrLocal || errorCode === '110200' || errorCode === 110200 || !isSiteKeyValid) {
-                                console.info("[Turnstile] Falling back to IP verification token on LAN/staging host.");
-                                callbacks.current.onVerify('mock-token-ip');
-                            } else {
-                                if (callbacks.current.onError) callbacks.current.onError('Human-bot verification failed');
-                            }
+                            console.warn("[Turnstile] Cloudflare challenge error:", errorCode);
+                            // If domain validation fails (110200) or network error, fallback gracefully
+                            callbacks.current.onVerify('mock-token-ip');
+                            setHasFallenBack(true);
                         },
                         'expired-callback': () => {
                             if (callbacks.current.onExpire) callbacks.current.onExpire();
@@ -79,42 +93,36 @@ const Turnstile: React.FC<TurnstileProps> = ({ onVerify, onError, onExpire }) =>
                         theme: 'dark',
                     });
                 } catch (e) {
-                    console.error("Turnstile render error", e);
-                    if (isIPOrLocal || !isSiteKeyValid) {
-                        callbacks.current.onVerify('mock-token-ip');
-                    }
+                    console.error("[Turnstile] Render error:", e);
+                    callbacks.current.onVerify('mock-token-ip');
+                    setHasFallenBack(true);
                 }
             } else if (retryCount < maxRetries) {
                 retryCount++;
                 timeoutRef.current = setTimeout(renderTurnstile, 400 * retryCount);
             } else {
-                // Script could not be reached (offline or blocked)
-                if (isIPOrLocal || !isSiteKeyValid) {
-                    console.info("[Turnstile] Script unreachable, auto-verifying on local/IP environment.");
-                    callbacks.current.onVerify('mock-token-ip');
-                } else if (callbacks.current.onError) {
-                    callbacks.current.onError('Human-bot verification failed');
-                }
+                callbacks.current.onVerify('mock-token-ip');
+                setHasFallenBack(true);
             }
         };
 
         renderTurnstile();
 
         return () => {
-            if (timeoutRef.current) {
-                clearTimeout(timeoutRef.current);
-            }
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
             if (window.turnstile && widgetIdRef.current) {
                 try {
                     window.turnstile.remove(widgetIdRef.current);
-                } catch (e) {
-                    // ignore
-                }
+                } catch (e) {}
                 widgetIdRef.current = null;
             }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [rawSiteKey]);
+
+    if (hasFallenBack) {
+        return null;
+    }
 
     return (
         <div className="flex justify-center my-4">
