@@ -22,14 +22,14 @@ test.describe('Admin Mission Control & Banking Analytics Verification', () => {
     await expect(page).toHaveURL(/.*admin/, { timeout: 10000 });
 
     // 4. Verify Admin Header and Title
-    await expect(page.locator('text=MISSIONCONTROL').or(page.locator('text=SYS-ADMIN'))).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=MISSIONCONTROL').or(page.locator('text=SYS-ADMIN')).first()).toBeVisible({ timeout: 10000 });
 
     // 5. Verify Federal Reserve Settlement Card is visible and operational
     await expect(page.locator('text=Federal Reserve Settlement & Master Account')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('text=OPERATIONAL')).toBeVisible();
 
     // 6. Verify Key Banking Metrics (Non-zero balances and volume)
-    await expect(page.locator('text=24h Bank Volume').or(page.locator('text=Total Bank Balance'))).toBeVisible();
+    await expect(page.locator('text=24h Bank Volume').or(page.locator('text=Total Bank Balance')).first()).toBeVisible();
     
     // 7. Verify High Value Activity & Transaction Velocity sections
     await expect(page.locator('text=High Value Activity')).toBeVisible();
