@@ -94,10 +94,11 @@ export default function FedReserveCard() {
           <button
             onClick={handleManualRefresh}
             disabled={refreshing}
-            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white transition-all disabled:opacity-50"
+            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white transition-all disabled:opacity-50 flex items-center gap-1.5 text-xs font-bold"
             title="Refresh Fed Reserve Statement"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin text-blue-400" : ""}`} />
+            <span>Sync Fed</span>
           </button>
         </div>
       </div>
