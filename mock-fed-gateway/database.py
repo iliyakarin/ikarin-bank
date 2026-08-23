@@ -2,10 +2,10 @@ import os
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from models import Base
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("FED_GATEWAY_DATABASE_URL")
 if not DATABASE_URL:
-    user = os.getenv("FED_GATEWAY_DB_USER", "admin")
-    password = os.getenv("FED_GATEWAY_DB_PASSWORD", "admin123")
+    user = os.getenv("FED_GATEWAY_DB_USER", "fed_gateway_user")
+    password = os.getenv("FED_GATEWAY_DB_PASSWORD", "fed_gateway_pass_123")
     host = os.getenv("FED_GATEWAY_DB_HOST", "fed-gateway-db")
     db_name = os.getenv("FED_GATEWAY_DB_NAME", "fed_gateway_db")
     DATABASE_URL = f"postgresql+asyncpg://{user}:{password}@{host}:5432/{db_name}"

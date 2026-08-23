@@ -19,12 +19,12 @@ from schemas import (
 from typing import List
 
 # Configuration
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("VENDOR_SIMULATOR_DATABASE_URL") or os.getenv("VENDOR_DATABASE_URL")
 if not DATABASE_URL:
-    user = os.getenv("VENDOR_SIMULATOR_DB_USER")
-    password = os.getenv("VENDOR_SIMULATOR_DB_PASSWORD")
-    host = os.getenv("VENDOR_SIMULATOR_DB_HOST")
-    db_name = os.getenv("VENDOR_SIMULATOR_DB_NAME")
+    user = os.getenv("VENDOR_SIMULATOR_DB_USER", "vendor_simulator_user")
+    password = os.getenv("VENDOR_SIMULATOR_DB_PASSWORD", "vendor_simulator_pass")
+    host = os.getenv("VENDOR_SIMULATOR_DB_HOST", "vendor-simulator-db")
+    db_name = os.getenv("VENDOR_SIMULATOR_DB_NAME", "vendor_simulator_db")
     DATABASE_URL = f"postgresql+asyncpg://{user}:{password}@{host}:5432/{db_name}"
 
 SIMULATOR_API_KEY = os.getenv("SIMULATOR_API_KEY")

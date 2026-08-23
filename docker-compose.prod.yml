@@ -268,7 +268,7 @@ services:
     user: 1000:1000
     env_file: .env.prod
     environment:
-    - DATABASE_URL=postgresql+asyncpg://${VENDOR_SIMULATOR_DB_USER:-vendor_simulator_user}:${VENDOR_SIMULATOR_DB_PASSWORD:-vendor_simulator_pass}@vendor-simulator-db:5432/${VENDOR_SIMULATOR_DB_NAME:-vendor_simulator_db}
+    - VENDOR_SIMULATOR_DATABASE_URL=postgresql+asyncpg://${VENDOR_SIMULATOR_DB_USER:-vendor_simulator_user}:${VENDOR_SIMULATOR_DB_PASSWORD:-vendor_simulator_pass}@vendor-simulator-db:5432/${VENDOR_SIMULATOR_DB_NAME:-vendor_simulator_db}
     - SIMULATOR_API_KEY=${SIMULATOR_API_KEY:-dev_vendor_sim_key}
     security_opt:
     - no-new-privileges:true
@@ -355,7 +355,7 @@ services:
     user: 1000:1000
     env_file: .env.prod
     environment:
-    - DATABASE_URL=postgresql+asyncpg://${FED_GATEWAY_DB_USER:-fed_gateway_user}:${FED_GATEWAY_DB_PASSWORD:-fed_gateway_pass_123}@fed-gateway-db:5432/${FED_GATEWAY_DB_NAME:-fed_gateway_db}
+    - FED_GATEWAY_DATABASE_URL=postgresql+asyncpg://${FED_GATEWAY_DB_USER:-fed_gateway_user}:${FED_GATEWAY_DB_PASSWORD:-fed_gateway_pass_123}@fed-gateway-db:5432/${FED_GATEWAY_DB_NAME:-fed_gateway_db}
     - GATEWAY_API_KEY=${GATEWAY_API_KEY:-dev_gateway_key_123}
     security_opt:
     - no-new-privileges:true
