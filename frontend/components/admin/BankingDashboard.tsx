@@ -25,7 +25,7 @@ import {
   Check
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/transactionUtils';
-import { formatMerchantName, formatFedRailBadge, isTransactionIncome } from '@/lib/neobank/utils';
+import { formatMerchantName, formatFedRailBadge, isTransactionIncome, formatTransactionStatus } from '@/lib/neobank/utils';
 
 interface BankingMetrics {
   totalVolume?: number;

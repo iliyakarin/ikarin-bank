@@ -452,3 +452,57 @@ export function generateChartBuckets<T extends { amount?: number; created_at?: s
   return points;
 }
 
+/**
+ * Formats internal transaction status into consumer/banking friendly terminology and styling.
+ * Maps 'sent_to_kafka' / 'pending' -> 'Processing' (amber), 'cleared' / 'settled' -> 'Settled' (emerald), etc.
+ */
+export function formatTransactionStatus(status?: string): {
+  label: string;
+  badgeClass: string;
+  textClass: string;
+} {
+  if (!status) {
+    return {
+      label: 'Settled',
+      badgeClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+      textClass: 'text-emerald-400',
+    };
+  }
+
+  const s = status.toLowerCase().trim();
+  if (s === 'sent_to_kafka' || s === 'pending' || s === 'processing' || s === 'in_progress') {
+    return {
+      label: 'Processing',
+      badgeClass: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+      textClass: 'text-amber-400',
+    };
+  }
+  if (s === 'cleared' || s === 'settled' || s === 'completed' || s === 'success') {
+    return {
+      label: 'Settled',
+      badgeClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+      textClass: 'text-emerald-400',
+    };
+  }
+  if (s === 'failed' || s === 'rejected' || s === 'declined') {
+    return {
+      label: 'Declined',
+      badgeClass: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+      textClass: 'text-rose-400',
+    };
+  }
+  if (s === 'reversed' || s === 'refunded') {
+    return {
+      label: 'Refunded',
+      badgeClass: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+      textClass: 'text-blue-400',
+    };
+  }
+
+  return {
+    label: 'Settled',
+    badgeClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+    textClass: 'text-emerald-400',
+  };
+}
+

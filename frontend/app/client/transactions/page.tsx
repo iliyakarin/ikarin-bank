@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { Filter } from "lucide-react";
 import { formatCurrency } from "@/lib/transactionUtils";
+import { formatTransactionStatus } from "@/lib/neobank/utils";
 
 interface Transaction {
   id: string;
@@ -323,9 +324,14 @@ export default function TransactionsPage() {
                         })()}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                          {tx.status || "Cleared"}
-                        </span>
+                        {(() => {
+                          const st = formatTransactionStatus(tx.status);
+                          return (
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${st.badgeClass}`}>
+                              {st.label}
+                            </span>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))}

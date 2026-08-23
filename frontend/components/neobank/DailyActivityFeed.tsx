@@ -19,7 +19,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/transactionUtils';
-import { groupTransactionsByDate, formatFedRailBadge, formatMerchantName, isTransactionIncome } from '@/lib/neobank/utils';
+import { groupTransactionsByDate, formatFedRailBadge, formatMerchantName, isTransactionIncome, formatTransactionStatus } from '@/lib/neobank/utils';
 import ReceiptModal from './ReceiptModal';
 
 interface DailyActivityFeedProps {
@@ -168,9 +168,14 @@ export default function DailyActivityFeed({
                     >
                       {isIncome ? `+${formattedAmt}` : `-${formattedAmt}`}
                     </span>
-                    <span className="text-[10px] text-white/30 font-medium block capitalize">
-                      {tx.status || 'cleared'}
-                    </span>
+                    {(() => {
+                      const st = formatTransactionStatus(tx.status);
+                      return (
+                        <span className={`text-[10px] font-medium block font-mono ${st.textClass} opacity-80`}>
+                          {st.label}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </motion.div>
               );

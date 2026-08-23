@@ -18,7 +18,7 @@ import {
   Printer,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/transactionUtils';
-import { formatFedRailBadge, formatMerchantName, isTransactionIncome } from '@/lib/neobank/utils';
+import { formatFedRailBadge, formatMerchantName, isTransactionIncome, formatTransactionStatus } from '@/lib/neobank/utils';
 
 interface ReceiptModalProps {
   transaction: any | null;
@@ -105,7 +105,9 @@ export default function ReceiptModal({
             </div>
 
             <span className="text-xs font-bold uppercase tracking-widest text-emerald-400 block">
-              Payment Cleared & Settled
+              {formatTransactionStatus(transaction.status).label === 'Processing'
+                ? 'Payment Processing & Settling'
+                : 'Payment Cleared & Settled'}
             </span>
 
             <h1
@@ -120,10 +122,10 @@ export default function ReceiptModal({
           </div>
 
           {/* Receipt Details Sheet */}
-          <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2.5 text-xs font-mono">
+          <div className="p-4 sm:p-5 rounded-2xl bg-black/40 border border-white/10 space-y-3 text-xs font-mono">
             <div className="flex justify-between items-center text-white/60">
               <span>Settlement Rail:</span>
-              <span className="px-2 py-0.5 rounded-md bg-white/10 text-white font-bold">
+              <span className="px-2.5 py-0.5 rounded-md bg-white/10 text-white font-bold text-[11px]">
                 {badgeInfo.label}
               </span>
             </div>
@@ -144,20 +146,23 @@ export default function ReceiptModal({
 
             <div className="flex justify-between items-center text-white/60">
               <span>Status:</span>
-              <span className="text-emerald-400 font-bold">CLEARED (ISO 20022)</span>
+              <span className={`font-bold uppercase ${formatTransactionStatus(transaction.status).textClass}`}>
+                {formatTransactionStatus(transaction.status).label} (ISO 20022)
+              </span>
             </div>
 
             {/* IMAD / OMAD (Fedwire) */}
             {transaction.imad && (
-              <div className="flex justify-between items-center text-white/60 pt-1 border-t border-white/5">
-                <span>Fedwire IMAD:</span>
-                <div className="flex items-center gap-1.5 text-white/90">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-white/60 pt-2 border-t border-white/5">
+                <span className="flex-shrink-0">Fedwire IMAD:</span>
+                <div className="flex items-center gap-1.5 text-white/90 font-mono text-[11px] select-all break-all">
                   <span>{transaction.imad}</span>
                   <button
                     onClick={() => handleCopy(transaction.imad, 'imad')}
-                    className="text-purple-400 hover:text-purple-300"
+                    className="text-purple-400 hover:text-purple-300 p-1 flex-shrink-0"
+                    title="Copy IMAD"
                   >
-                    {copiedKey === 'imad' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    {copiedKey === 'imad' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>
@@ -165,15 +170,16 @@ export default function ReceiptModal({
 
             {/* End to End ID (FedNow) */}
             {transaction.end_to_end_id && (
-              <div className="flex justify-between items-center text-white/60 pt-1 border-t border-white/5">
-                <span>End-to-End ID:</span>
-                <div className="flex items-center gap-1.5 text-white/90">
-                  <span className="truncate max-w-[140px]">{transaction.end_to_end_id}</span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-white/60 pt-2 border-t border-white/5">
+                <span className="flex-shrink-0">End-to-End ID:</span>
+                <div className="flex items-center gap-1.5 text-white/90 font-mono text-[11px] select-all break-all">
+                  <span>{transaction.end_to_end_id}</span>
                   <button
                     onClick={() => handleCopy(transaction.end_to_end_id, 'e2e')}
-                    className="text-purple-400 hover:text-purple-300"
+                    className="text-purple-400 hover:text-purple-300 p-1 flex-shrink-0"
+                    title="Copy End-to-End ID"
                   >
-                    {copiedKey === 'e2e' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    {copiedKey === 'e2e' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>
@@ -181,30 +187,32 @@ export default function ReceiptModal({
 
             {/* Trace Number (ACH) */}
             {transaction.trace_number && (
-              <div className="flex justify-between items-center text-white/60 pt-1 border-t border-white/5">
-                <span>ACH Trace Number:</span>
-                <div className="flex items-center gap-1.5 text-white/90">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-white/60 pt-2 border-t border-white/5">
+                <span className="flex-shrink-0">ACH Trace Number:</span>
+                <div className="flex items-center gap-1.5 text-white/90 font-mono text-[11px] select-all break-all">
                   <span>{transaction.trace_number}</span>
                   <button
                     onClick={() => handleCopy(transaction.trace_number, 'trace')}
-                    className="text-purple-400 hover:text-purple-300"
+                    className="text-purple-400 hover:text-purple-300 p-1 flex-shrink-0"
+                    title="Copy Trace Number"
                   >
-                    {copiedKey === 'trace' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    {copiedKey === 'trace' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Transaction Reference / Hash */}
-            <div className="flex justify-between items-center text-white/60 pt-1 border-t border-white/5">
-              <span>Ref ID:</span>
-              <div className="flex items-center gap-1.5 text-white/90">
-                <span className="truncate max-w-[140px]">{transaction.id || transaction.transaction_id || 'TX-948291'}</span>
+            {/* Transaction Reference / Hash (Full ID) */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-white/60 pt-2 border-t border-white/5">
+              <span className="flex-shrink-0">Ref ID:</span>
+              <div className="flex items-center gap-1.5 text-white/90 font-mono text-[11px] select-all break-all">
+                <span>{transaction.id || transaction.transaction_id || 'TX-948291'}</span>
                 <button
                   onClick={() => handleCopy(transaction.id || transaction.transaction_id || 'TX-948291', 'txid')}
-                  className="text-purple-400 hover:text-purple-300"
+                  className="text-purple-400 hover:text-purple-300 p-1 flex-shrink-0"
+                  title="Copy Reference ID"
                 >
-                  {copiedKey === 'txid' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  {copiedKey === 'txid' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
               </div>
             </div>
