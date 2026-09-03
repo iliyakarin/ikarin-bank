@@ -4,18 +4,23 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Copy, Check, Eye, EyeOff, ShieldCheck, TrendingUp, Landmark, PiggyBank, CreditCard, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatCurrency } from '@/lib/transactionUtils';
+import { Account } from '@/lib/api/accounts';
 import VaultCard from './VaultCard';
 import DigitalCardPreview from './DigitalCardPreview';
 
 interface HeroProductCarouselProps {
-  balance: number; // In dollars (e.g. 10000.50)
+  balance: number; // In cents
   reservedBalance?: number | null;
   routingNumber?: string;
   accountNumber?: string;
   userName?: string;
   growthPercent?: number;
   loading?: boolean;
+  accounts?: Account[];
+  activeTab?: 'checking' | 'vault' | 'card';
+  onTabChange?: (tab: 'checking' | 'vault' | 'card') => void;
   onDepositClick?: () => void;
+  onWithdrawClick?: () => void;
   onSendClick?: () => void;
 }
 
@@ -27,10 +32,29 @@ export default function HeroProductCarousel({
   userName = 'JOHN DOE',
   growthPercent = 2.5,
   loading = false,
+  accounts = [],
+  activeTab: controlledActiveTab,
+  onTabChange,
   onDepositClick,
+  onWithdrawClick,
   onSendClick,
 }: HeroProductCarouselProps) {
-  const [activeTab, setActiveTab] = useState<'checking' | 'vault' | 'card'>('checking');
+  const [internalActiveTab, setInternalActiveTab] = useState<'checking' | 'vault' | 'card'>('checking');
+  const activeTab = controlledActiveTab !== undefined ? controlledActiveTab : internalActiveTab;
+
+  const setActiveTab = (tab: 'checking' | 'vault' | 'card') => {
+    setInternalActiveTab(tab);
+    if (onTabChange) onTabChange(tab);
+  };
+
+  const savingsAccount = accounts.find(
+    (a) => !a.is_main && (a.name.toLowerCase().includes('savings') || a.name.toLowerCase().includes('vault'))
+  ) || accounts.find((a) => !a.is_main);
+
+  const effectiveVaultBalanceCents = savingsAccount != null
+    ? savingsAccount.balance
+    : Math.round(balance * 0.35);
+
   const [hideBalance, setHideBalance] = useState(false);
   const [copiedField, setCopiedField] = useState<'routing' | 'account' | null>(null);
 
@@ -209,10 +233,11 @@ export default function HeroProductCarousel({
               className="w-full h-full"
             >
               <VaultCard
-                balanceCents={Math.round(balance * 0.35)} // 35% of balance in high-yield vault
+                balanceCents={effectiveVaultBalanceCents}
                 goalName="Treasury High-Yield Savings Vault"
                 apyPercent={4.85}
                 onDepositClick={onDepositClick}
+                onWithdrawClick={onWithdrawClick}
               />
             </motion.div>
           )}

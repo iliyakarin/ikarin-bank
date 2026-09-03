@@ -2,12 +2,13 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Send, ArrowDownLeft, FileText, Lock, Plus } from 'lucide-react';
+import { Send, ArrowLeftRight, ArrowDownLeft, Lock, Plus } from 'lucide-react';
 import FastPayCarousel from './FastPayCarousel';
 import { FastPayPayee } from '@/lib/neobank/types';
 
 interface QuickActionHubProps {
   onSendClick?: () => void;
+  onTransferClick?: () => void;
   onDepositClick?: () => void;
   onPayBillsClick?: () => void;
   onCardControlsClick?: () => void;
@@ -16,6 +17,7 @@ interface QuickActionHubProps {
 
 export default function QuickActionHub({
   onSendClick,
+  onTransferClick,
   onDepositClick,
   onPayBillsClick,
   onCardControlsClick,
@@ -33,24 +35,24 @@ export default function QuickActionHub({
       onClick: onSendClick,
     },
     {
-      id: 'deposit',
-      label: 'Add Funds',
-      sublabel: 'Direct Deposit',
-      icon: ArrowDownLeft,
+      id: 'transfer',
+      label: 'Transfer',
+      sublabel: 'Between Accounts',
+      icon: ArrowLeftRight,
       gradient: 'from-emerald-500 to-teal-600',
       shadow: 'shadow-emerald-500/20',
       border: 'hover:border-emerald-400/50',
-      onClick: onDepositClick,
+      onClick: onTransferClick || onPayBillsClick,
     },
     {
-      id: 'bills',
-      label: 'Pay Bills',
-      sublabel: 'Utilities & Cards',
-      icon: FileText,
+      id: 'deposit',
+      label: 'Add Funds',
+      sublabel: 'Card Deposit',
+      icon: ArrowDownLeft,
       gradient: 'from-blue-500 to-indigo-600',
       shadow: 'shadow-blue-500/20',
       border: 'hover:border-blue-400/50',
-      onClick: onPayBillsClick,
+      onClick: onDepositClick,
     },
     {
       id: 'cards',

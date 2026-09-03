@@ -12,12 +12,17 @@ import QuickActionHub from '@/components/neobank/QuickActionHub';
 import DailyActivityFeed from '@/components/neobank/DailyActivityFeed';
 import SimLabDrawer from '@/components/neobank/SimLabDrawer';
 import SubAccountManager from '@/components/SubAccountManager';
+import VaultTransferModal from '@/components/neobank/VaultTransferModal';
 import { FastPayPayee } from '@/lib/neobank/types';
 
 export default function ClientDashboardPage() {
   const router = useRouter();
   const { user } = useAuth();
   const [showSuccess, setShowSuccess] = useState(false);
+  const [carouselTab, setCarouselTab] = useState<'checking' | 'vault' | 'card'>('checking');
+  const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
+  const [vaultModalMode, setVaultModalMode] = useState<'deposit' | 'withdraw'>('deposit');
+  const [vaultToastMsg, setVaultToastMsg] = useState<string | null>(null);
 
   const {
     transactions,
@@ -53,6 +58,10 @@ export default function ClientDashboardPage() {
   const handleStoryAction = (actionType: string) => {
     switch (actionType) {
       case 'savings':
+        setCarouselTab('vault');
+        setVaultModalMode('deposit');
+        setIsVaultModalOpen(true);
+        break;
       case 'deposit':
         router.push('/client/deposit');
         break;
@@ -114,7 +123,7 @@ export default function ClientDashboardPage() {
             className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-sm font-semibold flex items-center gap-3 shadow-lg"
           >
             <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-            <span>Operation completed and ledger balances updated successfully!</span>
+            <span>{vaultToastMsg || "Operation completed and ledger balances updated successfully!"}</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -134,7 +143,17 @@ export default function ClientDashboardPage() {
           userName={displayName}
           growthPercent={2.5}
           loading={balanceLoading}
-          onDepositClick={() => router.push('/client/deposit')}
+          accounts={accounts}
+          activeTab={carouselTab}
+          onTabChange={setCarouselTab}
+          onDepositClick={() => {
+            setVaultModalMode('deposit');
+            setIsVaultModalOpen(true);
+          }}
+          onWithdrawClick={() => {
+            setVaultModalMode('withdraw');
+            setIsVaultModalOpen(true);
+          }}
           onSendClick={() => router.push('/client/send')}
         />
       </section>
@@ -143,6 +162,10 @@ export default function ClientDashboardPage() {
       <section className="w-full">
         <QuickActionHub
           onSendClick={() => router.push('/client/send')}
+          onTransferClick={() => {
+            setVaultModalMode('deposit');
+            setIsVaultModalOpen(true);
+          }}
           onDepositClick={() => router.push('/client/deposit')}
           onPayBillsClick={() => router.push('/client/send')}
           onCardControlsClick={() => router.push('/client/cards')}
@@ -220,6 +243,21 @@ export default function ClientDashboardPage() {
 
       {/* 5. Developer & Simulator Floating Drawer (Strictly Admin Role Gated) */}
       <SimLabDrawer onScenarioInjected={handleRefreshAll} />
+
+      {/* 6. High-Yield Vault Deposit & Transfer Modal */}
+      <VaultTransferModal
+        isOpen={isVaultModalOpen}
+        onClose={() => setIsVaultModalOpen(false)}
+        accounts={accounts}
+        initialMode={vaultModalMode}
+        onSuccess={(msg) => {
+          setVaultToastMsg(msg);
+          setShowSuccess(true);
+          const timer = setTimeout(() => setVaultToastMsg(null), 5000);
+          return () => clearTimeout(timer);
+        }}
+        refreshBalance={handleRefreshAll}
+      />
     </div>
   );
 }

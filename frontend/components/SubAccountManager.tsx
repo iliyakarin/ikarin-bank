@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, ChevronDown, ChevronUp, Wallet, Settings, Send } from "lucide-react";
+import { Plus, ChevronDown, ChevronUp, Wallet, Settings, Send, ArrowLeftRight } from "lucide-react";
 import { Account } from "@/hooks/useDashboard";
 import { formatCurrency } from "@/lib/transactionUtils";
 import { createSubAccount } from "@/lib/api/accounts";
@@ -108,6 +108,15 @@ const SubAccountManager = React.memo(function SubAccountManager({ accounts, refr
                                     </div>
                                 </Link>
                             ))}
+
+                            {/* Quick Transfer Between Accounts */}
+                            <Link
+                                href="/client/send?tab=internal"
+                                className="w-full py-3 px-4 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-emerald-400 hover:text-emerald-300 flex items-center justify-center gap-2 text-xs font-bold transition-all"
+                            >
+                                <ArrowLeftRight size={16} />
+                                <span>Transfer Between Accounts</span>
+                            </Link>
 
                             {/* Create new sub-account logic */}
                             {subAccounts.length < 10 && !isCreating && (

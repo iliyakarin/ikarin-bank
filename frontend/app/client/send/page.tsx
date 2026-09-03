@@ -11,7 +11,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Landmark,
-  Zap
+  Zap,
+  ArrowLeftRight
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { getAccounts, Account } from "@/lib/api/accounts";
@@ -29,6 +30,7 @@ import { getActivity, ActivityEvent } from "@/lib/api/activity";
 // Modular Components
 import SmartTransferHub from "@/components/transfers/SmartTransferHub";
 import InstantTransferTab from "@/components/transfers/InstantTransferTab";
+import BetweenAccountsTab from "@/components/transfers/BetweenAccountsTab";
 import FedTransferTab from "@/components/transfers/FedTransferTab";
 import ScheduledTransferTab from "@/components/transfers/ScheduledTransferTab";
 import RequestTransferTab from "@/components/transfers/RequestTransferTab";
@@ -39,6 +41,7 @@ import DetailModal from "@/components/transfers/DetailModal";
 
 const TABS = [
   { id: "instant", label: "Instant Transfer", icon: Send, color: "from-blue-500 to-indigo-600" },
+  { id: "internal", label: "Between Accounts", icon: ArrowLeftRight, color: "from-emerald-500 to-teal-600" },
   { id: "smart", label: "Smart Multi-Rail", icon: Zap, color: "from-purple-500 to-indigo-600" },
   { id: "fed", label: "Fedwire & FedNow", icon: Landmark, color: "from-blue-500 to-teal-500" },
   { id: "scheduled", label: "Schedule Payment", icon: Calendar, color: "from-indigo-500 to-blue-600" },
@@ -62,6 +65,11 @@ export default function SendMoneyPage() {
   const [selectedDetail, setSelectedDetail] = useState<{ data: any, type: 'scheduled' | 'request' } | null>(null);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (tabParam && ['instant', 'internal', 'smart', 'fed', 'scheduled', 'request'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
     fetchData();
   }, []);
 
@@ -207,7 +215,7 @@ export default function SendMoneyPage() {
               <div className="relative space-y-8">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-black text-white uppercase tracking-tighter">
-                    New {activeTab === 'instant' ? 'Transfer' : activeTab === 'scheduled' ? 'Schedule' : 'Request'}
+                    New {activeTab === 'instant' ? 'Transfer' : activeTab === 'internal' ? 'Internal Transfer' : activeTab === 'scheduled' ? 'Schedule' : 'Request'}
                   </h2>
                   <div className="p-2 bg-white/5 rounded-lg text-white/40">
                     <Info size={18} />
@@ -229,6 +237,14 @@ export default function SendMoneyPage() {
                           fetchData(true);
                           showNotification('success', 'Transfer completed successfully!');
                         }}
+                      />
+                    )}
+                    {activeTab === "internal" && (
+                      <BetweenAccountsTab 
+                        accounts={accounts} 
+                        onSuccess={handleTransferSuccess}
+                        onError={(msg) => showNotification('error', msg)}
+                        onRefreshAccounts={() => fetchData(true)}
                       />
                     )}
                     {activeTab === "instant" && (

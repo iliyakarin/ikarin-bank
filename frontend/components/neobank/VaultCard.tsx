@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, ArrowUpRight, PiggyBank, ShieldCheck, TrendingUp, DollarSign, Clock } from 'lucide-react';
+import { Sparkles, ArrowUpRight, ArrowDownRight, PiggyBank, ShieldCheck, TrendingUp, DollarSign, Clock } from 'lucide-react';
 import { formatCurrency } from '@/lib/transactionUtils';
 import { calculateVaultYield } from '@/lib/neobank/utils';
 
@@ -67,6 +67,16 @@ export default function VaultCard({
         </div>
 
         <div className="flex items-center gap-2">
+          {onWithdrawClick && (
+            <button
+              onClick={onWithdrawClick}
+              className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/10 transition-all flex items-center gap-1.5"
+              title="Withdraw from Vault to Checking"
+            >
+              <span>Withdraw</span>
+              <ArrowDownRight className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             onClick={onDepositClick}
             className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-1.5"

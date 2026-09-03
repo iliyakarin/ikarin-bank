@@ -172,3 +172,25 @@ export async function getFedStatement(): Promise<any> {
   return api.get("/api/v1/admin/fed/statement");
 }
 
+// Internal Account Transfers
+export const InternalTransferResponseSchema = z.object({
+  status: z.string(),
+  message: z.string(),
+  sender_balance: z.number().optional(),
+  receiver_balance: z.number().optional(),
+});
+
+export type InternalTransferResponse = z.infer<typeof InternalTransferResponseSchema>;
+
+export async function createInternalTransfer(payload: {
+  from_account_id: number;
+  to_account_id: number;
+  amount: number; // in cents
+  commentary?: string | null;
+  idempotency_key?: string;
+}): Promise<InternalTransferResponse> {
+  return api.post<InternalTransferResponse>("/api/v1/accounts/transfer/internal", payload, {
+    schema: InternalTransferResponseSchema,
+  });
+}
+
