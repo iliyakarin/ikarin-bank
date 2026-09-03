@@ -58,7 +58,9 @@ async def main():
     while True:
         Path("/tmp/heartbeat.txt").touch(exist_ok=True)
         await run_sync_check()
-        await asyncio.sleep(CHECK_INTERVAL)
+        for _ in range(max(1, CHECK_INTERVAL // 30)):
+            await asyncio.sleep(30)
+            Path("/tmp/heartbeat.txt").touch(exist_ok=True)
 
 if __name__ == "__main__":
     asyncio.run(main())

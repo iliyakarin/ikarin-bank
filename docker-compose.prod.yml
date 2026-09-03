@@ -292,9 +292,7 @@ services:
     labels:
     - autoheal=true
     healthcheck:
-      test:
-      - CMD-SHELL
-      - wget --spider -q localhost:8001 || exit 1
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\" || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -379,9 +377,7 @@ services:
     labels:
     - autoheal=true
     healthcheck:
-      test:
-      - CMD-SHELL
-      - wget --spider -q localhost:8002/health || exit 1
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health')\" || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -409,9 +405,7 @@ services:
     labels:
     - autoheal=true
     healthcheck:
-      test:
-      - CMD-SHELL
-      - wget --spider -q localhost:8000 || exit 1
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')\" || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -421,6 +415,9 @@ services:
     container_name: bank-frontend
     user: 1000:1000
     env_file: .env.prod
+    environment:
+    - HOSTNAME=0.0.0.0
+    - PORT=3000
     security_opt:
     - no-new-privileges:true
     cap_drop:
@@ -493,6 +490,9 @@ services:
     - SIM_USER2_PASSWORD=${SIM_USER2_PASSWORD}
     - SIMULATOR_SERVICE_KEY=${SIMULATOR_SERVICE_KEY}
     - STATE_DB_PATH=/tmp/simulator_state.db
+    - TICK_INTERVAL_SECONDS=${SIM_TICK_INTERVAL_SECONDS:-300}
+    - PURCHASE_CHANCE_PER_TICK=${SIM_PURCHASE_CHANCE:-0.5}
+    - P2P_CHANCE_PER_TICK=${SIM_P2P_CHANCE:-0.25}
     security_opt:
     - no-new-privileges:true
     cap_drop:
@@ -516,9 +516,7 @@ services:
     labels:
     - autoheal=true
     healthcheck:
-      test:
-      - CMD-SHELL
-      - wget --spider -q localhost:8004/status || exit 1
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8004/status')\" || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

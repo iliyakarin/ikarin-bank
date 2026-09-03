@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     SIMULATOR_SERVICE_KEY: str
 
     # Simulation cadence
-    TICK_INTERVAL_SECONDS: int = 3600
+    TICK_INTERVAL_SECONDS: int = 300
 
     # Amounts, in cents
     SALARY_AMOUNT_CENTS: int = 250000
@@ -32,8 +32,8 @@ class Settings(BaseSettings):
     CAR_INSURANCE_AMOUNT_CENTS: int = 12000
 
     # Probability (0-1) per tick of firing a one-time merchant purchase / P2P transfer
-    PURCHASE_CHANCE_PER_TICK: float = 0.15
-    P2P_CHANCE_PER_TICK: float = 0.05
+    PURCHASE_CHANCE_PER_TICK: float = 0.35
+    P2P_CHANCE_PER_TICK: float = 0.20
 
     STATE_DB_PATH: str = "/app/data/simulator_state.db"
 

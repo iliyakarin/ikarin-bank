@@ -133,7 +133,7 @@ class FinancialLifeSimulator:
                     current_balance -= amount
 
         # 5. Stochastic Activities during daytime ticks
-        activity_multiplier = 1.5 if is_daytime else 0.1
+        activity_multiplier = 1.5 if is_daytime else 0.4
         purchase_chance = settings.PURCHASE_CHANCE_PER_TICK * activity_multiplier
         p2p_chance = settings.P2P_CHANCE_PER_TICK * activity_multiplier
         deposit_chance = 0.04 * activity_multiplier
