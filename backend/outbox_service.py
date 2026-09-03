@@ -97,8 +97,8 @@ async def send_to_kafka(session: AsyncSession, event: Outbox) -> bool:
 
         if tx_id:
             tx = (await session.execute(select(Transaction).where(Transaction.id == tx_id))).scalars().first()
-            if tx:
-                tx.status = "sent_to_kafka"
+            if tx and tx.status not in ("cleared", "settled", "failed", "cancelled"):
+                tx.status = "processing"
 
         await session.commit()
         return True
