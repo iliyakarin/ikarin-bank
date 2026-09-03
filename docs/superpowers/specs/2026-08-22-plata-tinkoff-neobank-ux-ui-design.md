@@ -1,8 +1,8 @@
 # Specification: Plata & Tinkoff Pure Neobank UX/UI Architecture for KarinBank
 
 **Document ID:** `SPEC-2026-08-22-NEOBANK-UX-UI`  
-**Date:** 2026-08-22  
-**Status:** Approved by User / Ready for Implementation Planning  
+**Date:** 2026-08-22 (Updated: 2026-09-02)  
+**Status:** Implemented & Deployed to Production  
 **Target Platform:** Next.js 15 (React 19), Tailwind CSS, Framer Motion, Lucide Icons  
 
 ---
@@ -133,6 +133,27 @@ Replaces disjointed tabs with an intelligent single-flow transfer experience:
   - `ATM Cash Withdrawals` (toggle on/off).
 - **Spending Limit Slider:** Interactive daily and monthly limit slider with live budget utilization.
 - **Generate Disposable Virtual Card:** Creates a 1-time virtual card token for safe online shopping.
+
+### 3.7. Between-Accounts Internal Transfer Hub (`BetweenAccountsTab.tsx` & `/client/send?tab=internal`)
+Designed for frictionless movement between a customer's own checking, sub-accounts, and savings vaults:
+- **Bi-Directional Account Selector:**
+  - Source account selection with real-time Available Balance check.
+  - Destination account selection with current balance and validation preventing identical source/destination.
+  - Interactive Swap Direction button with 180° rotation Framer Motion transition.
+- **Quick-Amount Chips & Max Fill:** Instant buttons for `$25`, `$50`, `$100`, `$250`, `$500`, and `Max Available`.
+- **Compounding APY Banner:** Automatically displays an alert when moving funds into high-yield vaults (`"Deposited funds automatically accrue 4.85% APY compounded daily and backed by KarinBank Treasury"`).
+- **Endpoint:** Integrates with backend `/api/v1/accounts/transfer/internal` via `createInternalTransfer()`.
+
+### 3.8. High-Yield Vault Direct Management (`VaultTransferModal.tsx`)
+1-tap modal overlay for dedicated vault management:
+- **Instant Access Points:** Direct triggers from `VaultCard` ("Deposit" and "Withdraw" buttons), `StoriesBar` ("4.85% APY Vaults" story slide CTA), and `QuickActionHub`.
+- **Mode Switching:** Tabbed toggling between **Deposit** (Primary Checking → Vault) and **Withdrawal** (Vault → Primary Checking).
+- **Yield Calculation:** Live yield breakdown displaying daily compounding and annual APY returns before confirmation.
+
+### 3.9. Transaction Settlement Engine & Outbox Status Preservation
+- **45-Second Auto-Settlement Worker (`backend/sync_checker.py`):** Background worker running on a 15s cadence; queries pending/processing transactions older than 45 seconds and transitions them to `cleared` while enqueuing `transaction.status_update` outbox events.
+- **Terminal Status Preservation (`backend/outbox_service.py`):** Ensures that already cleared or settled transactions are never overwritten or downgraded to internal Kafka states, and actively moving transactions register as `processing`.
+- **Professional Banking Presentation:** User-facing UI displays authentic banking statuses (`Cleared`, `Settled`, `Processing`) instead of internal engineering terms (`sent_to_kafka`), and `ReceiptModal` displays complete, untruncated transaction reference IDs.
 
 ---
 

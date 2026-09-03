@@ -1,242 +1,159 @@
 # Karin Bank
 
-A full-stack banking application built with Next.js 15, FastAPI, PostgreSQL, ClickHouse, and Kafka.
+A modern, high-performance digital neobank platform built with Next.js 15 (React 19), FastAPI, PostgreSQL 16, ClickHouse, and Apache Kafka. Featuring authentic US banking rails (Fedwire RTGS, FedNow 24/7 instant settlement, FedACH), an autonomous financial life simulator, real-time analytics, and a signature dark glassmorphism aesthetic inspired by Tinkoff and Plata Bank.
 
-## Features
+---
 
-### Banking Capabilities
-- **Account Management**: UUID-based account identities with secure encryption
-- **Scheduled Payments**: Recurring or one-time orchestration via `transfer_service`
-- **P2P Transfers**: Simplified flow using integer-cents for precision
-- **Money Requests**: Atomic request/pay cycle with idempotency
-- **Transaction History**: Real-time sync between Postgres (ledger) and ClickHouse (analytics)
-- **Contact Management**: Reusable contact types (karinbank, merchant, bank)
+## Key Features
 
-### System Features
-- **Event-Driven Architecture**: Async transaction processing via Kafka
-- **Idempotency**: All operations use idempotency keys to prevent duplicates
-- **Analytics**: Real-time analytics with ClickHouse
-- **Persistent Storage**: All data persists across container restarts
-- **User Preferences**: Customize time format (12h/24h) and date format (US/EU)
+### Banking & Neobank Capabilities
+- **Between-Accounts Internal Transfers:** Instant movement between checking, sub-accounts, and savings vaults with 1-click direction swap, available balance checks, and quick-amount chips.
+- **High-Yield Savings Vaults (4.85% APY):** Dedicated vaults with daily compounding interest, goal tracking, and direct 1-tap Deposit & Withdrawal modals.
+- **Interactive Neobank UI Suite:**
+  - **Stories & Financial Highlights:** Timed auto-advancing slides covering APY vaults, FedNow instant rails, cashback, and FDIC protection.
+  - **Multi-Product Hero Carousel:** Swipeable cards for Primary Checking, High-Yield Vault, and Black Platinum card with 3D tilt and 1-tap CVV reveal.
+  - **Quick Action Hub & Fast Pay:** 1-tap glass action buttons and favorite avatars with pre-filled payment sheets.
+  - **Daily Activity Feed & Receipts:** Chronologically grouped transactions with rail badges (`⚡ FedNow`, `🏛️ Fedwire`, `⏱️ FedACH`, `💳 Debit Card`) and authentic digital watermark receipts with full reference IDs.
+- **Real-Time ClickHouse Analytics Studio (`/client/analytics`):** Dynamic timeframe filtering (`24h`, `7d`, `30d`, `90d`, `1y`), cashflow trends, spending by category, merchant leaderboards, and rail distribution meters.
+- **Admin Banking Governance (`/admin`):** Bank-wide transaction audit ledger, real-time banking metrics, and Federal Reserve reconciliation controls.
+- **Developer `⚡ Sim Lab` Drawer:** Floating drawer role-gated strictly to administrators (`role: "admin"`) for live Federal Reserve Master Account liquidity inspection and 1-click scenario injection.
 
-## Architecture
+### Reliability & Infrastructure Patterns
+- **45-Second Auto-Settlement Engine:** Background worker (`backend/sync_checker.py`) that monitors in-flight transactions and transitions them to `cleared` status with outbox event synchronization.
+- **Transactional Outbox Pattern:** Guarantees event delivery to Kafka without distributed transactions or state loss, preserving terminal settlement states.
+- **Integer Cents Precision:** Strict monetary policy storing all currency as integers (cents), eliminating floating-point rounding errors.
+- **Mod-10 ABA Routing Validation:** Real-time routing number directory lookup with official Federal Reserve District resolution and checksum verification.
+- **Hardened Healthchecks:** Container healthchecks bound to `127.0.0.1` via Python `urllib.request` to prevent IPv6 DNS resolution issues and autoheal restart loops.
 
-### Backend Stack
-- **FastAPI** (Python) - REST API with thin router handlers
-- **PostgreSQL 16** - Primary relational ledger (integers for money, UUIDs for accounts)
-- **ClickHouse** - Scalable analytics and audit logs
-- **Apache Kafka** - High-throughput event streaming with SASL auth
+---
 
-### Frontend Stack
-- **Next.js 15** (App Router) - React framework
-- **TypeScript** - Type safety
-- **Tailwind CSS** - Styling
-- **Framer Motion** - Animations
-- **Recharts** - Data visualization
+## Service Architecture & Ports
 
-### Infrastructure
-- **Docker Compose** - Service orchestration
-- **Nginx** - Reverse proxy
-- **Persistent Volumes** - Data persistence
+```
++----------------------------------------------------------------------------------------------------+
+|                                      Karin Bank Ecosystem                                          |
++----------------------------------------------------------------------------------------------------+
+|                                                                                                    |
+|  [ Frontend (Next.js 15) ] --------------------> [ Nginx Reverse Proxy ]                           |
+|       Port 3000                                          Port 80 / 443                             |
+|                                                                |                                   |
+|                                                                v                                   |
+|                                                     [ Backend API (FastAPI) ]                      |
+|                                                              Port 8000                             |
+|                                                                |                                   |
+|               +-----------------------+------------------------+-----------------------+           |
+|               |                       |                        |                       |           |
+|               v                       v                        v                       v           |
+|      [ PostgreSQL 16 ]       [ ClickHouse ]            [ Apache Kafka ]       [ Sync Checker ]     |
+|          Port 5432              Port 8123                 Port 9092              (45s Worker)      |
+|                                                                |                                   |
+|                                                                v                                   |
+|                                                     [ Transaction Consumer ]                       |
+|                                                                                                    |
+|  [ Autonomous Simulators & Mock Rails ]                                                            |
+|  ├── mock-fed-gateway (Port 8002)     : Fedwire RTGS, FedNow 24/7, FedACH, 12 FRB Districts        |
+|  ├── vendor-simulator (Port 8001)     : Bill-pay aggregator (Utilities, Telecom, Insurance)       |
+|  ├── financial-life-simulator (8004)  : Autonomous persona lifecycle engine (300s tick cadence)   |
+|  └── deposit-funds-mock (Port 8003)   : External top-up mock provider                              |
++----------------------------------------------------------------------------------------------------+
+```
+
+### Microservices Port Allocation
+
+| Service | Container Name | Port | Healthcheck Endpoint | Description |
+|---------|----------------|------|----------------------|-------------|
+| **Frontend** | `bank-frontend` | `3000` | `GET /` | Next.js 15 neobank client & admin portal |
+| **Backend API** | `bank-api` | `8000` | `GET /docs` | FastAPI core banking REST engine |
+| **Vendor Simulator** | `bank-vendor-simulator` | `8001` | `GET /vendors` | Third-party bill pay aggregator |
+| **Mock Fed Gateway** | `bank-fed-gateway` | `8002` | `GET /health` | US Federal Reserve multi-rail simulator |
+| **Deposit Mock** | `deposit-funds-mock` | `8003` | `GET /` | Mock debit/card deposit provider |
+| **Financial Simulator** | `bank-financial-life-simulator` | `8004` | `GET /status` | Background autonomous transaction engine |
+| **ClickHouse** | `bank-clickhouse` | `8123` / `9000` | `GET /ping` | High-throughput analytics engine |
+| **PostgreSQL** | `bank-postgres` | `5432` | `pg_isready` | Relational ledger of record |
+| **Kafka Broker** | `bank-kafka` | `9092` | Broker check | Event streaming bus with SASL auth |
+
+---
 
 ## Quick Start
 
 ### Prerequisites
-- Docker and Docker Compose
-- Python 3.10+
+- Docker & Docker Compose
 - Node.js 20+
+- Python 3.10+
 
-### Installation
+### Installation & Execution
 
-1. **Clone the repository**
+1. **Clone the repository:**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/iliyakarin/ikarin-bank.git
    cd karin-bank
    ```
 
-2. **Setup environment**
+2. **Configure environment:**
    ```bash
    cp .env.example .env
-   # Edit .env with your local credentials. Do NOT commit .env.
+   # Ensure required secrets and keys are populated (see SETUP_ENV.md)
    ```
 
-3. **Start all services**
+3. **Launch the stack:**
    ```bash
    docker-compose up -d
    ```
 
-4. **Access the application**
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:8000
-   - ClickHouse: http://localhost:8123
+4. **Access the application:**
+   - **Frontend Application:** `http://localhost:3000` (or `http://192.168.11.160`)
+   - **Interactive API Docs:** `http://localhost:8000/docs`
+   - **ClickHouse HTTP Interface:** `http://localhost:8123`
+   - **Federal Reserve Gateway:** `http://localhost:8002/health`
+   - **Financial Life Simulator:** `http://localhost:8004/status`
 
-## Development
-
-### Backend Development
-
-1. **Create virtual environment**
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-
-2. **Install dependencies**
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   ```
-
-3. **Run tests**
-   ```bash
-   pytest tests/ -v
-   ```
-
-4. **Access running services**
-   ```bash
-   docker-compose exec api python main.py
-   ```
-
-### Frontend Development
-
-1. **Install dependencies**
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-2. **Run development server**
-   ```bash
-   npm run dev
-   ```
-
-3. **Run tests**
-   ```bash
-   npx playwright test
-   ```
-
-## Database Models
-
-### PostgreSQL Tables
-- `users` - User accounts and authentication
-- `accounts` - Account records and balances
-- `scheduled_payments` - Recurring payment configurations
-- `payment_requests` - Money request records
-- `contacts` - Contact management
-- `transactions` - Transaction ledger
-- `idempotency_keys` - Idempotency tracking
-- `outbox` - Event publishing outbox
-
-### ClickHouse Analytics
-- `transactions` - Transaction analytics and reporting
-- `transaction_ledger` - Detailed transaction history
-
-## Configuration
-
-### Environment Variables (.env)
-
-The application uses `backend/config.py` as the source of truth. Reference `.env.example` for all required variables and their descriptions.
-
-> [!IMPORTANT]
-> Never commit `.env` files or hardcoded secrets. Use the provided `.env.example` as a template.
-
-## Project Structure
-
-```
-karin-bank/
-├── backend/              # FastAPI app (routers/, services/, models/, schemas/)
-├── frontend/             # Next.js 15 app (app/, components/, lib/api/)
-├── mock-fed-gateway/     # Mock Federal Reserve ACH gateway
-├── vendor-simulator/     # Mock bill pay vendor service
-├── deposit-funds-mock/   # Mock deposit/top-up provider
-├── tests/                # Integration, unit, and E2E tests
-├── init-db/              # DB initialization configs
-├── docs/                 # Policies and reference docs
-├── docker-compose.yml    # Service orchestration
-├── .env.example          # Environment variable template
-├── CLAUDE.md             # AI agent development rules
-└── SECURITY.md           # Security policy
-```
-
-## User Roles
-
-- **user** - Regular user with full access
-- **admin** - Administrator with elevated privileges
-- **restricted_user** - Limited access user
-
-## Key Features
-
-### Security
-- Bcrypt password hashing
-- JWT authentication with refresh tokens
-- Idempotency key management
-- SASL_PLAINTEXT for Kafka
-- CORS configuration
-- Persistent secure storage
-
-### Architecture Patterns
-- **Outbox Pattern**: Ensures event consistency
-- **Idempotency**: Prevents duplicate operations
-- **Async Processing**: Event-driven architecture
-- **Microservices**: Separated workers and services
+---
 
 ## Testing
 
-### Backend Tests (pytest)
 ```bash
-cd backend
-pytest tests/ -v
+# Backend unit & integration tests
+pytest tests/integration/ -v
+
+# Frontend component & neobank unit tests
+cd frontend && npm test
+
+# Federal Reserve Gateway tests
+cd mock-fed-gateway && pytest tests/ -v
+
+# End-to-end browser tests
+cd tests/e2e && npx playwright test
 ```
 
-### Frontend Tests (Playwright)
+---
+
+## Database Management & Operations
+
 ```bash
-cd frontend
-npx playwright test
-```
-
-## Documentation
-
-- **[CLAUDE.md](CLAUDE.md)** — AI agent development rules
-- **[SECURITY.md](SECURITY.md)** — Security policy and vulnerability reporting
-- **[SETUP_ENV.md](SETUP_ENV.md)** — Environment variable setup guide
-- **[docs/financial_precision_policy.md](docs/financial_precision_policy.md)** — Integer-cents monetary policy
-
-## Database Management
-
-### View logs
-```bash
-docker-compose logs -f api
-docker-compose logs -f consumer
-docker-compose logs -f frontend
-```
-
-### Access databases
-```bash
-# PostgreSQL
+# PostgreSQL CLI
 psql -h localhost -p 5432 -U admin -d banking_db
 
-# ClickHouse
+# ClickHouse Client
 clickhouse-client --host localhost --port 8123
+
+# Container Logs
+docker-compose logs -f api
+docker-compose logs -f consumer
+docker-compose logs -f sync-checker
+docker-compose logs -f financial-life-simulator
 ```
 
-### Clean data
-```bash
-rm -rf ./data/*
-docker-compose down -v
-docker-compose up -d
-```
+---
 
-## Contributing
+## Documentation Links
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
-
-## License
-
-This project is proprietary software.
-
-## Support
-
-For issues and questions, please refer to the documentation files or contact the development team.
+- **[PROJECT-DOCUMENTATION.md](PROJECT-DOCUMENTATION.md)** — Architectural blueprint & domain reference
+- **[SETUP_ENV.md](SETUP_ENV.md)** — Detailed environment variable guide
+- **[SECURITY.md](SECURITY.md)** — Vulnerability reporting and security controls
+- **[docs/financial_precision_policy.md](docs/financial_precision_policy.md)** — Integer-cents monetary policy
+- **[docs/superpowers/specs/2026-08-22-plata-tinkoff-neobank-ux-ui-design.md](docs/superpowers/specs/2026-08-22-plata-tinkoff-neobank-ux-ui-design.md)** — Plata & Tinkoff Neobank UX/UI design specification
+- **[frontend/README.md](frontend/README.md)** — Frontend component catalog and routing
+- **[mock-fed-gateway/README.md](mock-fed-gateway/README.md)** — Federal Reserve multi-rail gateway guide
+- **[financial-life-simulator/README.md](financial-life-simulator/README.md)** — Autonomous persona engine guide
+- **[vendor-simulator/README.md](vendor-simulator/README.md)** — Bill pay aggregator simulator guide
+- **[scripts/DEPLOY-AGENT.md](scripts/DEPLOY-AGENT.md)** — Automated VM deployment agent architecture
