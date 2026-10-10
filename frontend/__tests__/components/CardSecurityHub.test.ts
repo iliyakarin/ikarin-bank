@@ -27,4 +27,22 @@ describe('CardSecurityHub Logic - Task 8', () => {
     const updatedLimitCard = { ...initialCard, dailySpendingLimitCents: 250000 };
     assert.equal(updatedLimitCard.dailySpendingLimitCents, 250000);
   });
+
+  it('generates a valid new virtual card with default security limits', async () => {
+    const { generateVirtualCard, generateVirtualCardNumber } = await import('../../lib/neobank/cardGenerator');
+    const virtualCard = generateVirtualCard('ILIA KARIN');
+
+    assert.equal(virtualCard.cardType, 'virtual');
+    assert.equal(virtualCard.cardHolder, 'ILIA KARIN');
+    assert.ok(virtualCard.cardNumber);
+    assert.equal(virtualCard.cardNumber!.length, 16);
+    assert.equal(virtualCard.cardNumber!.startsWith('4790'), true);
+    assert.equal(virtualCard.isFrozen, false);
+    assert.equal(virtualCard.dailySpendingLimitCents, 100000);
+    assert.equal(virtualCard.monthlySpendingLimitCents, 500000);
+    assert.equal(virtualCard.onlinePaymentsEnabled, true);
+    assert.equal(virtualCard.atmWithdrawalsEnabled, false);
+    assert.equal(virtualCard.cvv.length, 3);
+  });
 });
+

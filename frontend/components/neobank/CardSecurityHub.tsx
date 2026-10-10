@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   CreditCard,
@@ -21,9 +21,12 @@ import DigitalCardPreview from './DigitalCardPreview';
 import { formatCurrency } from '@/lib/transactionUtils';
 import { CardDetails } from '@/lib/neobank/types';
 
+import { generateVirtualCard } from '@/lib/neobank/cardGenerator';
+import { useAuth } from '@/lib/AuthContext';
+
 interface CardSecurityHubProps {
   cards?: CardDetails[];
-  onGenerateVirtualCard?: () => void;
+  onGenerateVirtualCard?: (card: CardDetails) => void;
 }
 
 const DEFAULT_CARDS: CardDetails[] = [
@@ -58,13 +61,35 @@ const DEFAULT_CARDS: CardDetails[] = [
 ];
 
 export default function CardSecurityHub({
-  cards = DEFAULT_CARDS,
+  cards: propCards,
   onGenerateVirtualCard,
 }: CardSecurityHubProps) {
-  const [selectedCardId, setSelectedCardId] = useState<string>(cards[0]?.id || 'card-debit-1');
+  const { user } = useAuth();
+  const userName = user
+    ? `${user.first_name || ''} ${user.last_name || ''}`.trim().toUpperCase() || 'VALUED CLIENT'
+    : 'JOHN DOE';
+
+  const [cardsList, setCardsList] = useState<CardDetails[]>(() => {
+    if (propCards && propCards.length > 0) return propCards;
+    if (typeof window !== 'undefined') {
+      try {
+        const storageKey = `karin_bank_cards_${user?.id || 'default'}`;
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.warn('Failed to load saved cards', e);
+      }
+    }
+    return DEFAULT_CARDS.map((c) => ({ ...c, cardHolder: userName }));
+  });
+
+  const [selectedCardId, setSelectedCardId] = useState<string>(() => cardsList[0]?.id || 'card-debit-1');
   const [cardStates, setCardStates] = useState<Record<string, CardDetails>>(() => {
     const map: Record<string, CardDetails> = {};
-    for (const c of cards) {
+    for (const c of cardsList) {
       map[c.id] = { ...c };
     }
     return map;
@@ -72,18 +97,77 @@ export default function CardSecurityHub({
 
   const [notification, setNotification] = useState<string | null>(null);
 
-  const currentCard = cardStates[selectedCardId] || cards[0];
+  // Sync if propCards updates externally
+  useEffect(() => {
+    if (propCards && propCards.length > 0) {
+      setCardsList(propCards);
+      setCardStates((prev) => {
+        const map = { ...prev };
+        for (const c of propCards) {
+          if (!map[c.id]) map[c.id] = { ...c };
+        }
+        return map;
+      });
+    }
+  }, [propCards]);
+
+  const currentCard = cardStates[selectedCardId] || cardsList[0] || DEFAULT_CARDS[0];
 
   const updateCurrentCard = (updates: Partial<CardDetails>) => {
+    const updatedCard = {
+      ...currentCard,
+      ...updates,
+    };
+
     setCardStates((prev) => ({
       ...prev,
-      [selectedCardId]: {
-        ...prev[selectedCardId],
-        ...updates,
-      },
+      [selectedCardId]: updatedCard,
     }));
+
+    setCardsList((prev) => {
+      const updatedList = prev.map((c) => (c.id === selectedCardId ? updatedCard : c));
+      if (typeof window !== 'undefined') {
+        try {
+          const storageKey = `karin_bank_cards_${user?.id || 'default'}`;
+          localStorage.setItem(storageKey, JSON.stringify(updatedList));
+        } catch (e) {
+          console.warn('Failed to save cards', e);
+        }
+      }
+      return updatedList;
+    });
+
     setNotification('Card security preferences updated instantly.');
     setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleGenerateVirtualCard = () => {
+    const newCard = generateVirtualCard(userName);
+    const updatedList = [...cardsList, newCard];
+
+    setCardsList(updatedList);
+    setCardStates((prev) => ({
+      ...prev,
+      [newCard.id]: newCard,
+    }));
+    setSelectedCardId(newCard.id);
+
+    if (typeof window !== 'undefined') {
+      try {
+        const storageKey = `karin_bank_cards_${user?.id || 'default'}`;
+        localStorage.setItem(storageKey, JSON.stringify(updatedList));
+      } catch (e) {
+        console.warn('Failed to persist cards', e);
+      }
+    }
+
+    const last4 = (newCard.cardNumber || '').slice(-4);
+    setNotification(`✨ Virtual card created: •••• ${last4}. Ready for online transactions.`);
+    setTimeout(() => setNotification(null), 4000);
+
+    if (onGenerateVirtualCard) {
+      onGenerateVirtualCard(newCard);
+    }
   };
 
   return (
@@ -106,8 +190,9 @@ export default function CardSecurityHub({
 
         {/* Generate Virtual Card Button */}
         <button
-          onClick={onGenerateVirtualCard}
-          className="px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 font-bold text-xs text-white transition-all flex items-center gap-2 shadow-lg shadow-purple-500/20 active:scale-98 self-start sm:self-auto"
+          onClick={handleGenerateVirtualCard}
+          id="new-virtual-card-btn"
+          className="px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 font-bold text-xs text-white transition-all flex items-center gap-2 shadow-lg shadow-purple-500/20 active:scale-98 self-start sm:self-auto cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           <span>New Virtual Card</span>
@@ -116,21 +201,27 @@ export default function CardSecurityHub({
 
       {/* Card Switcher Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-        {cards.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => setSelectedCardId(c.id)}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2.5 ${
-              selectedCardId === c.id
-                ? 'bg-white/15 text-white border border-white/20 shadow-lg'
-                : 'bg-white/[0.04] text-white/50 hover:text-white border border-white/5'
-            }`}
-          >
-            <CreditCard className="w-4 h-4" />
-            <span className="capitalize">{c.cardType || c.type || 'debit'} Card</span>
-            <span className="font-mono text-[10px] text-white/40">•••• {(c.cardNumber || c.number || '0000').slice(-4)}</span>
-          </button>
-        ))}
+        {cardsList.map((c) => {
+          const cardTypeLabel = c.cardType === 'virtual' ? 'Virtual' : (c.cardType || c.type || 'debit');
+          const last4 = (c.cardNumber || c.number || '0000').slice(-4);
+          const isSelected = selectedCardId === c.id;
+
+          return (
+            <button
+              key={c.id}
+              onClick={() => setSelectedCardId(c.id)}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2.5 cursor-pointer ${
+                isSelected
+                  ? 'bg-white/15 text-white border border-white/20 shadow-lg'
+                  : 'bg-white/[0.04] text-white/50 hover:text-white border border-white/5'
+              }`}
+            >
+              <CreditCard className="w-4 h-4" />
+              <span className="capitalize">{cardTypeLabel} Card</span>
+              <span className="font-mono text-[10px] text-white/40">•••• {last4}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Notification banner */}
