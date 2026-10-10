@@ -16,6 +16,7 @@ import {
   RotateCcw,
   CheckCircle2,
   Building2,
+  Trash2,
 } from 'lucide-react';
 import DigitalCardPreview from './DigitalCardPreview';
 import { formatCurrency } from '@/lib/transactionUtils';
@@ -96,6 +97,7 @@ export default function CardSecurityHub({
   });
 
   const [notification, setNotification] = useState<string | null>(null);
+  const [confirmDeleteCardId, setConfirmDeleteCardId] = useState<string | null>(null);
 
   // Sync if propCards updates externally
   useEffect(() => {
@@ -151,6 +153,7 @@ export default function CardSecurityHub({
       [newCard.id]: newCard,
     }));
     setSelectedCardId(newCard.id);
+    setConfirmDeleteCardId(null);
 
     if (typeof window !== 'undefined') {
       try {
@@ -168,6 +171,42 @@ export default function CardSecurityHub({
     if (onGenerateVirtualCard) {
       onGenerateVirtualCard(newCard);
     }
+  };
+
+  const handleDeleteVirtualCard = () => {
+    if (currentCard.cardType !== 'virtual') return;
+
+    if (confirmDeleteCardId !== currentCard.id) {
+      setConfirmDeleteCardId(currentCard.id);
+      return;
+    }
+
+    const cardToDeleteId = currentCard.id;
+    const cardLast4 = (currentCard.cardNumber || '').slice(-4);
+    const updatedList = cardsList.filter((c) => c.id !== cardToDeleteId);
+
+    setCardsList(updatedList);
+    setCardStates((prev) => {
+      const nextMap = { ...prev };
+      delete nextMap[cardToDeleteId];
+      return nextMap;
+    });
+
+    const nextSelected = updatedList[0]?.id || 'card-debit-1';
+    setSelectedCardId(nextSelected);
+    setConfirmDeleteCardId(null);
+
+    if (typeof window !== 'undefined') {
+      try {
+        const storageKey = `karin_bank_cards_${user?.id || 'default'}`;
+        localStorage.setItem(storageKey, JSON.stringify(updatedList));
+      } catch (e) {
+        console.warn('Failed to persist cards', e);
+      }
+    }
+
+    setNotification(`🗑️ Virtual card •••• ${cardLast4} was permanently deleted.`);
+    setTimeout(() => setNotification(null), 4000);
   };
 
   return (
@@ -209,7 +248,10 @@ export default function CardSecurityHub({
           return (
             <button
               key={c.id}
-              onClick={() => setSelectedCardId(c.id)}
+              onClick={() => {
+                setSelectedCardId(c.id);
+                setConfirmDeleteCardId(null);
+              }}
               className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2.5 cursor-pointer ${
                 isSelected
                   ? 'bg-white/15 text-white border border-white/20 shadow-lg'
@@ -413,6 +455,54 @@ export default function CardSecurityHub({
               />
             </div>
           </div>
+
+          {/* Delete Virtual Card Section */}
+          {currentCard.cardType === 'virtual' && (
+            <div className="p-5 rounded-2xl bg-rose-500/[0.04] border border-rose-500/20 backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-white block">Delete Virtual Card</span>
+                  <span className="text-[10px] text-white/50 block">Permanently destroy this virtual card and reject future charges</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {confirmDeleteCardId === currentCard.id ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteCardId(null)}
+                      className="px-3 py-2 rounded-xl text-xs font-medium text-white/70 hover:text-white bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      id="confirm-delete-virtual-card-btn"
+                      onClick={handleDeleteVirtualCard}
+                      className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 shadow-lg shadow-rose-600/30 transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Confirm Delete</span>
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    id="delete-virtual-card-btn"
+                    onClick={handleDeleteVirtualCard}
+                    className="px-4 py-2.5 rounded-xl text-xs font-semibold text-rose-400 hover:text-white bg-rose-500/10 hover:bg-rose-600 border border-rose-500/30 hover:border-rose-500 transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Delete Card</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
