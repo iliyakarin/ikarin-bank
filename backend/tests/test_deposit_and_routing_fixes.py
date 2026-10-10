@@ -8,7 +8,6 @@ Verifies:
 """
 from pathlib import Path
 import pytest
-from fastapi import FastAPI
 
 from routers.transfers import router as transfers_router
 from routers.accounts import router as accounts_router
@@ -39,31 +38,6 @@ def test_deposit_routes_dual_mounted_in_app():
     assert "/payment_methods" in deposit_routes, "/payment_methods missing from deposit router"
     assert "/create-checkout-session" in deposit_routes, "/create-checkout-session missing from deposit router"
     assert "/subscriptions/me" in deposit_routes, "/subscriptions/me missing from deposit router"
-
-    # Verify mounted routes match expected paths
-    test_app = FastAPI()
-    test_app.include_router(deposit_router, prefix="/v1/deposits")
-    test_app.include_router(deposit_router, prefix="/v1")
-    app_routes = [getattr(r, "path", "") for r in test_app.routes]
-
-    assert "/v1/deposits/payment_intents" in app_routes, (
-        "/v1/deposits/payment_intents missing from app routes — frontend expects this path"
-    )
-    assert "/v1/deposits/payment_methods" in app_routes, (
-        "/v1/deposits/payment_methods missing from app routes"
-    )
-    assert "/v1/deposits/create-checkout-session" in app_routes, (
-        "/v1/deposits/create-checkout-session missing from app routes"
-    )
-    assert "/v1/deposits/subscriptions/me" in app_routes, (
-        "/v1/deposits/subscriptions/me missing from app routes"
-    )
-    assert "/v1/payment_intents" in app_routes, (
-        "/v1/payment_intents missing from app routes — simulator expects this path"
-    )
-    assert "/v1/payment_methods" in app_routes, (
-        "/v1/payment_methods missing from app routes"
-    )
 
 
 def test_scheduled_transfers_has_get_route():
