@@ -29,6 +29,12 @@ from schemas.accounts import (
     AccountResponse, BalanceResponse, AccountCredentialsResponse
 )
 
+import logging
+from clickhouse_utils import execute_ch_query, CH_DB
+from clickhouse_queries import build_recent_transactions_query
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 def is_valid_name(name: str) -> bool:
@@ -206,3 +212,34 @@ async def get_account_balance(
         reserved_balance=sum(acc.reserved_balance or 0 for acc in accounts),
         user_id=user_id, accounts=sub_accounts_data
     )
+
+@router.get("/{account_id}/transactions")
+async def get_account_transactions(
+    account_id: int,
+    hours: int = 720,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve transactions for a specific owned account."""
+    await get_owned_account(db, account_id, current_user.id)
+    try:
+        query, params = build_recent_transactions_query(CH_DB, [account_id], hours)
+        ch_res = await execute_ch_query(query, parameters=params)
+        ch_rows = ch_res.named_results()
+        txs = []
+        for row in ch_rows:
+            txs.append({
+                "id": row["toString(transaction_id)"],
+                "account_id": account_id,
+                "amount": int(row["amount"]),
+                "category": row["category"],
+                "merchant": row["merchant"],
+                "transaction_type": row["transaction_type"],
+                "transaction_side": row.get("transaction_side", "DEBIT"),
+                "status": row.get("status", "cleared"),
+                "created_at": str(row["event_time"]),
+            })
+        return txs
+    except Exception as e:
+        logger.error(f"Failed to fetch account transactions from ClickHouse: {e}")
+        return []

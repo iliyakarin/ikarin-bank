@@ -226,6 +226,7 @@ async def decline_payment_request(
     return {"status": "success", "new_status": req.status}
 
 @router.get("/scheduled", response_model=List[ScheduledPaymentResponse])
+@router.get("/transfers/scheduled", response_model=List[ScheduledPaymentResponse])
 async def get_scheduled_payments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)

@@ -118,11 +118,15 @@ export async function request<T>(
 
         const detailObj =
           typeof errorDetail === "object" ? errorDetail : {};
+        const statusMsg =
+          response.statusText ||
+          (typeof detailObj.detail === "string" ? detailObj.detail : null) ||
+          `Status ${response.status}`;
         throw new ApiError(
           response.status,
-          `API Error: ${response.statusText}`,
+          `API Error: ${statusMsg}`,
           errorDetail,
-          detailObj.code || detailObj.detail,
+          detailObj.code || (typeof detailObj.detail === "string" ? detailObj.detail : undefined),
         );
       }
 

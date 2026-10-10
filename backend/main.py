@@ -110,6 +110,7 @@ app.include_router(transfers.router, prefix=api_v1_prefix)
 app.include_router(dashboard.router, prefix=api_v1_prefix)
 app.include_router(contacts.router, prefix=api_v1_prefix)
 app.include_router(vendors.router, prefix=api_v1_prefix)
+app.include_router(deposit.router, prefix="/v1/deposits")
 app.include_router(deposit.router, prefix=api_v1_prefix)
 
 # Include V2 Gateway Router

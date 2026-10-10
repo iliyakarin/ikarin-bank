@@ -6,7 +6,7 @@ import { toCents, formatCurrency } from '@/lib/transactionUtils';
 import { useAuth } from "@/lib/AuthContext";
 import DepositModal from "@/components/DepositModal";
 import { createCheckoutSession, createPortalSession, getSubscriptionStatus, UserSubscription } from "@/lib/api/deposits";
-import { getAccountTransactions, Transaction } from "@/lib/api/accounts";
+import { getRecentTransactions, Transaction } from "@/lib/api/accounts";
 
 export default function DepositPage() {
     const { token } = useAuth();
@@ -27,11 +27,7 @@ export default function DepositPage() {
         if (!token) return;
         setTxLoading(true);
         try {
-            // We use generic transaction fetcher but filter for deposits here or in service
-            const data = await getAccountTransactions(0); // 0 or specific account if needed, here we just want recent
-            // Actually getRecentTransactions might be better, but DepositPage specifically looked at /api/v1/transactions
-            // Let's use getAccountTransactions or add getTransactions to accounts.ts
-            // For now, let's keep it simple.
+            const data = await getRecentTransactions(720);
             const depositTxs = data.filter((t: Transaction) =>
                 t.category === "Top-up" ||
                 t.category === "Subscription" ||

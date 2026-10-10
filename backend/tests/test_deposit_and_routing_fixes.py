@@ -74,7 +74,7 @@ def test_accounts_router_has_transactions_endpoint():
     ]
     
     has_account_txs = any(
-        path == "/{account_id}/transactions" and "GET" in methods
+        (path == "/accounts/{account_id}/transactions" or path == "/{account_id}/transactions") and "GET" in methods
         for path, methods in routes
     )
     assert has_account_txs, (
