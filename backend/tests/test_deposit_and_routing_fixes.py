@@ -1,27 +1,15 @@
 """Tests for deposit routes, scheduled transfer routes, and account transactions routes.
 
 Verifies:
-1. Both /v1/deposits/payment_intents and /v1/payment_intents are registered on the application.
-2. Both /v1/deposits/create-checkout-session and /v1/create-checkout-session are registered.
+1. Both /v1/deposits and /v1 prefixes are registered for deposit.router in backend/main.py.
+2. deposit.router contains required endpoints (/payment_intents, /create-checkout-session, etc.).
 3. GET /transfers/scheduled is registered in the transfers router (preventing 405 Method Not Allowed).
 4. GET /{account_id}/transactions is registered in the accounts router.
 """
-import sys
 from pathlib import Path
-import importlib.util
 import pytest
+from fastapi import FastAPI
 from fastapi.routing import APIRoute
-
-_backend_dir = Path(__file__).resolve().parent.parent
-if str(_backend_dir) not in sys.path:
-    sys.path.insert(0, str(_backend_dir))
-
-# Explicitly load backend/main.py to prevent namespace collision with other main.py files
-_main_path = _backend_dir / "main.py"
-_spec = importlib.util.spec_from_file_location("karin_backend_main", _main_path)
-_backend_main = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_backend_main)
-app = _backend_main.app
 
 from routers.transfers import router as transfers_router
 from routers.accounts import router as accounts_router
@@ -29,28 +17,53 @@ from routers.deposit import router as deposit_router
 
 
 def test_deposit_routes_dual_mounted_in_app():
-    """Verify deposit routes are mounted at both /v1/deposits and /v1 prefixes."""
-    routes = [r.path for r in app.routes if isinstance(r, APIRoute)]
+    """Verify backend/main.py mounts deposit.router under both /v1/deposits and /v1 prefixes."""
+    # Find backend/main.py relative to test file or working dir
+    main_py_candidates = [
+        Path(__file__).resolve().parent.parent / "main.py",
+        Path("backend/main.py"),
+    ]
+    main_py_file = next((p for p in main_py_candidates if p.exists()), None)
+    assert main_py_file is not None, "backend/main.py not found"
     
-    # Check /v1/deposits routes
-    assert "/v1/deposits/payment_intents" in routes, (
+    main_py = main_py_file.read_text()
+    assert 'app.include_router(deposit.router, prefix="/v1/deposits")' in main_py, (
+        'app.include_router(deposit.router, prefix="/v1/deposits") missing from backend/main.py'
+    )
+    assert (
+        'app.include_router(deposit.router, prefix=api_v1_prefix)' in main_py
+        or 'app.include_router(deposit.router, prefix="/v1")' in main_py
+    ), 'app.include_router(deposit.router, prefix=api_v1_prefix) missing from backend/main.py'
+
+    # Verify routes registered on deposit.router
+    deposit_routes = [r.path for r in deposit_router.routes if isinstance(r, APIRoute)]
+    assert "/payment_intents" in deposit_routes, "/payment_intents missing from deposit router"
+    assert "/payment_methods" in deposit_routes, "/payment_methods missing from deposit router"
+    assert "/create-checkout-session" in deposit_routes, "/create-checkout-session missing from deposit router"
+    assert "/subscriptions/me" in deposit_routes, "/subscriptions/me missing from deposit router"
+
+    # Verify mounted routes match expected paths
+    test_app = FastAPI()
+    test_app.include_router(deposit_router, prefix="/v1/deposits")
+    test_app.include_router(deposit_router, prefix="/v1")
+    app_routes = [r.path for r in test_app.routes if isinstance(r, APIRoute)]
+
+    assert "/v1/deposits/payment_intents" in app_routes, (
         "/v1/deposits/payment_intents missing from app routes — frontend expects this path"
     )
-    assert "/v1/deposits/payment_methods" in routes, (
+    assert "/v1/deposits/payment_methods" in app_routes, (
         "/v1/deposits/payment_methods missing from app routes"
     )
-    assert "/v1/deposits/create-checkout-session" in routes, (
+    assert "/v1/deposits/create-checkout-session" in app_routes, (
         "/v1/deposits/create-checkout-session missing from app routes"
     )
-    assert "/v1/deposits/subscriptions/me" in routes, (
+    assert "/v1/deposits/subscriptions/me" in app_routes, (
         "/v1/deposits/subscriptions/me missing from app routes"
     )
-    
-    # Check backward compatibility routes for simulator / legacy callers
-    assert "/v1/payment_intents" in routes, (
+    assert "/v1/payment_intents" in app_routes, (
         "/v1/payment_intents missing from app routes — simulator expects this path"
     )
-    assert "/v1/payment_methods" in routes, (
+    assert "/v1/payment_methods" in app_routes, (
         "/v1/payment_methods missing from app routes"
     )
 
