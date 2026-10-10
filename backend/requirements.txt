@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
-sqlalchemy
+sqlalchemy[asyncio]
+greenlet
 aiokafka          # Async Kafka for FastAPI
 confluent-kafka   # High-performance Kafka for the Consumer
 clickhouse-connect
