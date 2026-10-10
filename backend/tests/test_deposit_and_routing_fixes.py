@@ -6,9 +6,23 @@ Verifies:
 3. GET /transfers/scheduled is registered in the transfers router (preventing 405 Method Not Allowed).
 4. GET /{account_id}/transactions is registered in the accounts router.
 """
+import sys
+from pathlib import Path
+import importlib.util
 import pytest
 from fastapi.routing import APIRoute
-from main import app
+
+_backend_dir = Path(__file__).resolve().parent.parent
+if str(_backend_dir) not in sys.path:
+    sys.path.insert(0, str(_backend_dir))
+
+# Explicitly load backend/main.py to prevent namespace collision with other main.py files
+_main_path = _backend_dir / "main.py"
+_spec = importlib.util.spec_from_file_location("karin_backend_main", _main_path)
+_backend_main = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_backend_main)
+app = _backend_main.app
+
 from routers.transfers import router as transfers_router
 from routers.accounts import router as accounts_router
 from routers.deposit import router as deposit_router
