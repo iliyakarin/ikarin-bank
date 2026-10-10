@@ -9,7 +9,6 @@ Verifies:
 from pathlib import Path
 import pytest
 from fastapi import FastAPI
-from fastapi.routing import APIRoute
 
 from routers.transfers import router as transfers_router
 from routers.accounts import router as accounts_router
@@ -18,7 +17,6 @@ from routers.deposit import router as deposit_router
 
 def test_deposit_routes_dual_mounted_in_app():
     """Verify backend/main.py mounts deposit.router under both /v1/deposits and /v1 prefixes."""
-    # Find backend/main.py relative to test file or working dir
     main_py_candidates = [
         Path(__file__).resolve().parent.parent / "main.py",
         Path("backend/main.py"),
@@ -36,7 +34,7 @@ def test_deposit_routes_dual_mounted_in_app():
     ), 'app.include_router(deposit.router, prefix=api_v1_prefix) missing from backend/main.py'
 
     # Verify routes registered on deposit.router
-    deposit_routes = [r.path for r in deposit_router.routes if isinstance(r, APIRoute)]
+    deposit_routes = [getattr(r, "path", "") for r in deposit_router.routes]
     assert "/payment_intents" in deposit_routes, "/payment_intents missing from deposit router"
     assert "/payment_methods" in deposit_routes, "/payment_methods missing from deposit router"
     assert "/create-checkout-session" in deposit_routes, "/create-checkout-session missing from deposit router"
@@ -46,7 +44,7 @@ def test_deposit_routes_dual_mounted_in_app():
     test_app = FastAPI()
     test_app.include_router(deposit_router, prefix="/v1/deposits")
     test_app.include_router(deposit_router, prefix="/v1")
-    app_routes = [r.path for r in test_app.routes if isinstance(r, APIRoute)]
+    app_routes = [getattr(r, "path", "") for r in test_app.routes]
 
     assert "/v1/deposits/payment_intents" in app_routes, (
         "/v1/deposits/payment_intents missing from app routes — frontend expects this path"
@@ -71,9 +69,8 @@ def test_deposit_routes_dual_mounted_in_app():
 def test_scheduled_transfers_has_get_route():
     """Verify transfers router supports GET /transfers/scheduled."""
     routes = [
-        (r.path, tuple(r.methods))
+        (getattr(r, "path", ""), tuple(getattr(r, "methods", [])))
         for r in transfers_router.routes
-        if isinstance(r, APIRoute)
     ]
     
     get_scheduled = any(
@@ -95,9 +92,8 @@ def test_scheduled_transfers_has_get_route():
 def test_accounts_router_has_transactions_endpoint():
     """Verify accounts router supports GET /{account_id}/transactions."""
     routes = [
-        (r.path, tuple(r.methods))
+        (getattr(r, "path", ""), tuple(getattr(r, "methods", [])))
         for r in accounts_router.routes
-        if isinstance(r, APIRoute)
     ]
     
     has_account_txs = any(
