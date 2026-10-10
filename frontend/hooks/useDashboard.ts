@@ -48,6 +48,16 @@ export function useTransactions(hours: number = 24, autoRefresh: boolean = true)
     }, [fetchTransactions, autoRefresh]);
 
     useEffect(() => {
+        const handleBalanceUpdate = () => {
+            fetchTransactions(true);
+        };
+        window.addEventListener("balanceUpdate", handleBalanceUpdate);
+        return () => {
+            window.removeEventListener("balanceUpdate", handleBalanceUpdate);
+        };
+    }, [fetchTransactions]);
+
+    useEffect(() => {
         mountedRef.current = true;
         return () => { mountedRef.current = false; };
     }, []);
@@ -107,6 +117,16 @@ export function useBalance(autoRefresh: boolean = true): UseBalanceResult {
             return () => clearInterval(interval);
         }
     }, [fetchBalance, autoRefresh]);
+
+    useEffect(() => {
+        const handleBalanceUpdate = () => {
+            fetchBalance(true);
+        };
+        window.addEventListener("balanceUpdate", handleBalanceUpdate);
+        return () => {
+            window.removeEventListener("balanceUpdate", handleBalanceUpdate);
+        };
+    }, [fetchBalance]);
 
     useEffect(() => {
         mountedRef.current = true;

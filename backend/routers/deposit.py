@@ -80,9 +80,22 @@ async def create_payment_intent(payload: PaymentIntentCreate, db: AsyncSession =
         if existing: raise HTTPException(status_code=400, detail="User already subscribed")
     
     try:
-        data = {"amount": payload.amount, "currency": payload.currency or "usd", "metadata[user_id]": str(current_user.id), "metadata[type]": "deposit", "metadata[mode]": "payment"}
+        data = {
+            "amount": payload.amount,
+            "currency": payload.currency or "usd",
+            "metadata": {
+                "user_id": str(current_user.id),
+                "type": "deposit",
+                "mode": "payment"
+            },
+            "metadata[user_id]": str(current_user.id),
+            "metadata[type]": "deposit",
+            "metadata[mode]": "payment"
+        }
         if payload.metadata:
-            for k, v in payload.metadata.items(): data[f"metadata[{k}]"] = str(v)
+            for k, v in payload.metadata.items():
+                data[f"metadata[{k}]"] = str(v)
+                data["metadata"][k] = str(v)
         intent = await gateway_client.post("/v1/payment_intents", data=data)
         return PaymentIntentResponse(
             client_secret=intent["client_secret"],

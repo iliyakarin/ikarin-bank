@@ -13,6 +13,20 @@ app = FastAPI(title="Deposit Funds Mock Service")
 # In-memory store for mock objects
 payment_intents = {}
 
+async def _get_request_data(request: Request) -> dict:
+    """Helper to parse request data from either JSON or Form data."""
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            return await request.json()
+        except Exception:
+            return {}
+    try:
+        form = await request.form()
+        return dict(form)
+    except Exception:
+        return {}
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -22,23 +36,27 @@ async def create_payment_intent(request: Request):
     """
     Mock Deposit Funds Payment Intent creation.
     """
-    form_data = await request.form()
-    amount = form_data.get("amount")
-    currency = form_data.get("currency", "usd")
+    data = await _get_request_data(request)
+    amount = data.get("amount")
+    currency = data.get("currency", "usd")
     metadata = {}
 
+    if isinstance(data.get("metadata"), dict):
+        metadata.update(data["metadata"])
+
     # Parse metadata from form data if present (deposit client sends metadata[key])
-    for key, value in form_data.items():
+    for key, value in data.items():
         if key.startswith("metadata[") and key.endswith("]"):
             meta_key = key[9:-1]
             metadata[meta_key] = value
+
     intent_id = f"pi_{uuid.uuid4().hex}"
     client_secret = f"{intent_id}_secret_{uuid.uuid4().hex}"
 
     intent = {
         "id": intent_id,
         "object": "payment_intent",
-        "amount": int(amount) if amount else 0,
+        "amount": int(amount) if amount is not None else 0,
         "currency": currency,
         "status": "requires_payment_method",
         "client_secret": client_secret,
@@ -62,8 +80,8 @@ async def create_checkout_session(request: Request):
     """
     Mock Deposit Funds Checkout Session creation.
     """
-    form_data = await request.form()
-    success_url = form_data.get("success_url", "http://localhost:3000/dashboard/deposit/success")
+    data = await _get_request_data(request)
+    success_url = data.get("success_url", "http://localhost:3000/dashboard/deposit/success")
     session_id = f"cs_test_{uuid.uuid4().hex}"
 
     return JSONResponse({
@@ -95,8 +113,8 @@ async def create_portal_session(request: Request):
     """
     Mock Deposit Funds Billing Portal Session creation.
     """
-    form_data = await request.form()
-    return_url = form_data.get("return_url", "http://localhost:3000/dashboard")
+    data = await _get_request_data(request)
+    return_url = data.get("return_url", "http://localhost:3000/dashboard")
     return JSONResponse({
         "id": f"bps_{uuid.uuid4().hex[:12]}",
         "object": "billing_portal.session",
