@@ -1,15 +1,17 @@
+import importlib.util
+import os
 import pytest
 from httpx import AsyncClient, ASGITransport
-import sys
-import os
 
-# Ensure deposit-funds-mock can be imported
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../deposit-funds-mock")))
-from main import app, payment_intents
+mock_main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../deposit-funds-mock/main.py"))
+spec = importlib.util.spec_from_file_location("deposit_funds_mock_main", mock_main_path)
+deposit_mock_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(deposit_mock_module)
+mock_app = deposit_mock_module.app
 
 @pytest.mark.asyncio
 async def test_mock_payment_intent_json():
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=mock_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         payload = {
             "amount": 10000,
@@ -38,7 +40,7 @@ async def test_mock_payment_intent_json():
 
 @pytest.mark.asyncio
 async def test_mock_checkout_session_json():
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=mock_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         payload = {
             "amount": 10000,
