@@ -111,16 +111,22 @@ export async function request<T>(
 
         let errorDetail: any;
         try {
-          errorDetail = await response.json();
+          const text = await response.text();
+          try {
+            errorDetail = JSON.parse(text);
+          } catch {
+            errorDetail = text;
+          }
         } catch {
-          errorDetail = await response.text();
+          errorDetail = {};
         }
 
         const detailObj =
-          typeof errorDetail === "object" ? errorDetail : {};
+          typeof errorDetail === "object" && errorDetail !== null ? errorDetail : {};
         const statusMsg =
-          response.statusText ||
           (typeof detailObj.detail === "string" ? detailObj.detail : null) ||
+          response.statusText ||
+          (typeof errorDetail === "string" && errorDetail.trim() ? errorDetail.trim() : null) ||
           `Status ${response.status}`;
         throw new ApiError(
           response.status,

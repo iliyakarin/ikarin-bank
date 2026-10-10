@@ -103,6 +103,7 @@ async def handle_checkout_completed(session: dict, db: AsyncSession):
         except Exception as e:
             await db.rollback()
             logger.error(f"Deposit fail for user {u_id}: {e}")
+            raise
     elif mode == "subscription":
         ik = f"deposit_sub_{session.get('subscription')}"
         if await check_idempotency(db, ik, u_id):

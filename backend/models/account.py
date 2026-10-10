@@ -51,8 +51,8 @@ class PaymentMethod(Base, TimestampMixin):
     # Encrypted sensitive data
     card_number_encrypted: Mapped[str] = mapped_column(String(255))
     expiry_date_encrypted: Mapped[str] = mapped_column(String(255))
-    cvc_encrypted: Mapped[str] = mapped_column(String(255))
-    cardholder_name_encrypted: Mapped[str] = mapped_column(String(255))
+    cvc_encrypted: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    cardholder_name_encrypted: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Safe display data
     card_last_4: Mapped[str] = mapped_column(String(4))

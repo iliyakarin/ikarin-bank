@@ -105,6 +105,8 @@ async def create_payment_method(payload: PaymentMethodCreate, db: AsyncSession =
         gateway_pm_id=pm_id, account_id=account.id,
         card_number_encrypted=encrypt_card_data(payload.card_number),
         expiry_date_encrypted=encrypt_card_data(f"{payload.exp_month}/{payload.exp_year}"),
+        cvc_encrypted=encrypt_card_data(payload.cvc) if payload.cvc else None,
+        cardholder_name_encrypted=encrypt_card_data(payload.name) if payload.name else None,
         card_last_4=payload.card_number[-4:], card_brand="visa"
     )
     db.add(new_pm)

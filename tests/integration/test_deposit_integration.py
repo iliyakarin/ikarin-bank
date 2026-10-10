@@ -159,3 +159,38 @@ async def test_confirm_payment_intent(mock_fastapi_dependency, mock_user, mock_d
     assert response["status"] == "succeeded"
     assert response["id"] == "pi_123"
     mock_handle.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_create_payment_method(mock_fastapi_dependency, mock_user, mock_db):
+    main_module = mock_fastapi_dependency
+
+    # Mock user's main account
+    mock_account = MagicMock()
+    mock_account.id = 1
+    mock_account.is_main = True
+
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = mock_account
+    mock_db.execute.return_value = mock_result
+
+    from schemas.deposit import PaymentMethodCreate
+    payload = PaymentMethodCreate(
+        card_number="4242424242424242",
+        exp_month="12",
+        exp_year="2030",
+        cvc="123",
+        name="Jane Doe"
+    )
+
+    response = await main_module.create_payment_method(
+        payload=payload,
+        db=mock_db,
+        current_user=mock_user
+    )
+
+    assert response.id.startswith("pm_")
+    assert response.card.last4 == "4242"
+    assert response.card.brand == "visa"
+    mock_db.add.assert_called_once()
+    mock_db.commit.assert_called_once()
