@@ -24,4 +24,4 @@ USER appuser
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 # Default command (will be overridden by docker-compose for the API)
-CMD ["gunicorn", "main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
+CMD ["gunicorn", "main:app", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--no-control-socket"]
