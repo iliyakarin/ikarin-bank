@@ -43,6 +43,12 @@ def test_clickhouse_low_mem_xml():
     for tag, cap in caps.items():
         elem = root.find(tag)
         assert elem is not None and elem.text and 0 < int(elem.text.strip()) <= cap
+    bg_pool = int(root.findtext("background_pool_size"))
+    for tag in ("number_of_free_entries_in_pool_to_lower_max_size_of_merge",
+                "number_of_free_entries_in_pool_to_execute_mutation",
+                "number_of_free_entries_in_pool_to_execute_optimize_entire_partition"):
+        val = root.findtext(f"merge_tree/{tag}")
+        assert val is not None and 0 < int(val.strip()) < bg_pool * 2
 
 
 def test_entrypoint_gates_migrations():
