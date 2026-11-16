@@ -18,8 +18,8 @@ engine = create_async_engine(
     DATABASE_URL,
     echo=False,
     future=True,
-    pool_size=20,
-    max_overflow=20
+    pool_size=5,
+    max_overflow=5
 )
 
 SessionLocal = async_sessionmaker(

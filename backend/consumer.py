@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # OPTIMIZED CONFIGURATION
 OPTIMAL_BATCH_SIZE = 100
 OPTIMAL_FLUSH_INTERVAL = 5
-OPTIMAL_SESSION_TIMEOUT = 10000  # 10 seconds
+OPTIMAL_SESSION_TIMEOUT = 30000  # 30 seconds
 
 class KafkaConsumerApp:
     def __init__(self):

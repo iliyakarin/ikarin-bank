@@ -11,7 +11,7 @@ bcrypt==4.0.1
 python-jose[cryptography]
 python-multipart
 asyncpg
-gunicorn
+gunicorn>=25.1.0
 pytest
 pytest-asyncio
 httpx

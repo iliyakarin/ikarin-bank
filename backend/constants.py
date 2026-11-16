@@ -5,7 +5,7 @@ SUBSCRIPTION_BLACK_PRICE = 4900  # $49.00/month
 
 # Timeouts (in milliseconds)
 KAFKA_REQUEST_TIMEOUT_MS = 10000
-OPTIMAL_SESSION_TIMEOUT = 10000
+OPTIMAL_SESSION_TIMEOUT = 30000  # 30 seconds
 
 # Sync check interval (in seconds)
 CHECK_INTERVAL_SECONDS = 86400  # 24 hours
