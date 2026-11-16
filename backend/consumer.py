@@ -7,6 +7,7 @@ from pathlib import Path
 
 from confluent_kafka import Consumer, KafkaError
 from config import settings
+from constants import OPTIMAL_SESSION_TIMEOUT
 from security_utils import decrypt_payload
 from handlers.message_handlers import (
     flush_batch_to_clickhouse,
@@ -23,7 +24,6 @@ logger = logging.getLogger(__name__)
 # OPTIMIZED CONFIGURATION
 OPTIMAL_BATCH_SIZE = 100
 OPTIMAL_FLUSH_INTERVAL = 5
-OPTIMAL_SESSION_TIMEOUT = 30000  # 30 seconds
 
 class KafkaConsumerApp:
     def __init__(self):
